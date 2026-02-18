@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BoardHub — Storyboard OS</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;}
+h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
+::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
+.card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
+.card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;}
+.btn-dark{background:var(--text);color:white;}.btn-dark:hover{opacity:.85;transform:translateY(-1px);}
+.btn-outline{background:transparent;color:var(--muted);border:1px solid var(--border);}.btn-outline:hover{border-color:var(--text);color:var(--text);}
+.btn-ghost{background:transparent;color:var(--muted);border:none;padding:6px 10px;border-radius:6px;}.btn-ghost:hover{color:var(--text);background:var(--bg);}
+.btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}.btn-danger:hover{background:#FEE2E2;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.85rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;background:transparent;border:none;outline:none;width:100%;font-family:'Figtree',sans-serif;letter-spacing:.01em;}
+.nav-item:hover{background:rgba(28,25,23,.05);color:var(--text);}.nav-item.active{background:var(--text);color:white;}
+.tag{display:inline-block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:4px;}
+.tag-green{background:#E8F5EC;color:#276b3e;}.tag-yellow{background:#FEF9E7;color:#92700b;}.tag-gray{background:#F0EDE9;color:var(--muted);}.tag-red{background:#FDEDED;color:#9B1C1C;}.tag-blue{background:#EFF6FF;color:#1e40af;}
+.input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;color:var(--text);transition:border-color .2s;}.input-bare:focus{border-color:var(--text);}
+.input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Figtree',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s;width:100%;}.input-box:focus{border-color:var(--text);}
+.label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+.tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.fade-up{animation:fadeUp .35s ease both;}
+@keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
+@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
+.overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
+/* Mentor overlay: offset for the 220px sidebar so modal visually centers in content area */
+.overlay-offset{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
+.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:32px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:90vh;overflow-y:auto;}
+.upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
+.upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
+.cover-wrap{position:relative;}.cover-edit-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .25s;cursor:pointer;}
+.cover-wrap:hover .cover-edit-overlay{background:rgba(0,0,0,.45);opacity:1;}
+.task-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}.task-row:last-child{border-bottom:none;}
+.task-check{width:18px;height:18px;border-radius:5px;border:2px solid var(--border-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;}
+.task-check.done{background:var(--text);border-color:var(--text);}.task-check.done::after{content:'';width:5px;height:9px;border:2px solid white;border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);display:block;}
+@keyframes lbIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
+.lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
+.lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;}
+.ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Figtree',sans-serif;transition:all .12s;}
+.ptask-Pendente{background:#F0EDE9;color:var(--muted);}.ptask-Fazendo{background:#FEF9E7;color:#92700b;}.ptask-Concluído{background:#E8F5EC;color:#276b3e;}.ptask-Atrasado{background:#FDEDED;color:#9B1C1C;}
+@keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .25s ease;display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
+const LS_KEY = 'boardhub_v2';
+const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
+const lsSave = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} };
+const persisted = lsLoad();
+
+// ─── SEED DATA ────────────────────────────────────────────────────────────────
+const SEED = {
+  projects:[
+    {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:"2024-11-01",deadline:"2024-11-22",deleted:false,
+     cover:"https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&q=80&w=1200",
+     notes:"Referências de motion blur e cores saturadas. Diretor quer câmera baixa nas cenas de corrida.",
+     mentors:[],researchImages:[],
+     projectTasks:[{id:1,text:"Entregar animatic",status:"Fazendo"},{id:2,text:"Revisar paleta de cores",status:"Pendente"}],
+     timelineEvents:[{id:1,date:"10/Nov",title:"Briefing"},{id:2,date:"15/Nov",title:"Roughs v1"}]},
+    {id:2,type:'personal',title:"Graphic Novel 'Ecos'",client:"Projeto Autoral",status:"Pausado",startDate:"2024-10-01",deadline:"2024-12-30",deleted:false,
+     cover:"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200",
+     notes:"Estudo de arquitetura brutalista. Personagem principal precisa de redesign.",
+     mentors:[],researchImages:[],projectTasks:[],timelineEvents:[]},
+    {id:3,type:'work',title:"Série Documental — Amazônia",client:"TV Cultura",status:"Concluído",startDate:"2024-09-01",deadline:"2024-10-15",deleted:false,
+     cover:"https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1200",
+     notes:"Projeto concluído. Feedback excelente da produtora.",
+     mentors:[],researchImages:[],
+     projectTasks:[{id:1,text:"Entrega final",status:"Concluído"}],
+     timelineEvents:[{id:1,date:"02/Set",title:"Kickoff"},{id:2,date:"15/Set",title:"Animatic"},{id:3,date:"15/Out",title:"Entrega final"}]}
+  ],
+  clients:[
+    {id:1,name:"Fernanda Costa",company:"O2 Filmes",email:"fer@o2.com",role:"Produtora Executiva",status:"Ativo",notes:"",photo:"",deleted:false},
+    {id:2,name:"Carlos Mendes",company:"Freelance",email:"carlos@gmail.com",role:"Diretor",status:"Lead",notes:"",photo:"",deleted:false},
+    {id:3,name:"Ana Luz",company:"Conspiração Filmes",email:"ana@conspiracao.com.br",role:"Diretora de Arte",status:"Ativo",notes:"",photo:"",deleted:false}
+  ],
+  notes:[
+    {id:1,title:"Ideia para Curta",content:"Um robô que quer ser pintor. Cenas longas, pouco diálogo. Inspiração: Tati.",date:"Hoje",deleted:false},
+    {id:2,title:"Referências Estéticas",content:"Estudar o uso de sombra em Orson Welles. The Third Man.",date:"Ontem",deleted:false},
+    {id:3,title:"Lista de Materiais",content:"Lápis 6B, Papel Canson A3, Nanquim Rotring.",date:"Semana passada",deleted:true}
+  ],
+  mentors:[
+    {id:1,name:"Hayao Miyazaki",area:"Narrativa Visual",medium:"Animação",notes:"Estudar uso de silêncio e natureza. Nausicaä é essencial.",links:"https://ghibli.jp",active:true,photo:"",photos:[],deleted:false},
+    {id:2,name:"Moebius",area:"Composição de Quadro",medium:"HQ / Storyboard",notes:"Linha clara, horizonte baixo. Incal é referência obrigatória.",links:"",active:true,photo:"",photos:[],deleted:false}
+  ],
+  tasks:[
+    {id:1,text:"Revisar roughs do Nike",done:false,noteId:null},
+    {id:2,text:"Estudar iluminação Blade Runner",done:false,noteId:null}
+  ],
+  socialPosts:[],
+  galleryPosts:[
+    {id:1,folder:'movie-studies',title:"Luz em Blade Runner",date:"2024-02-14",content:"Análise de silhuetas e luz contrastante.",images:["https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:2,folder:'sketchbooks',title:"Metrô — Linha 4",date:"2024-02-10",content:"Gestos rápidos no trajeto diário.",images:["https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:3,folder:'movie-studies',title:"Monocromia de Dune",date:"2024-01-20",content:"Estudo de paleta laranja/areia.",images:["https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:4,folder:'gestures',title:"Estudo de Movimento",date:"2024-01-15",content:"30 segundos por pose.",images:["https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800"],deleted:false}
+  ]
+};
+
+const socialTemplates=[
+  {label:"Bastidores",text:"🎬 Bastidores do projeto de hoje. Do rascunho à arte final.\n\nCada quadro é uma decisão de câmera.\n\n#storyboard #bastidores #artprocess"},
+  {label:"Novo Job",text:"🔥 Novo projeto saindo do forno!\n\nFiquei responsável por visualizar essa história incrível. Mais em breve.\n\n#storyboard #directiondesign"},
+  {label:"Estudo Diário",text:"📚 Estudo do dia — [FILME/LIVRO].\n\nO que aprendi: [INSIGHT]\n\n#estudos #filmanalysis #visualdevelopment"}
+];
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+const statusTag=s=>({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluído':'tag-gray','Cancelado':'tag-red'}[s]||'tag-gray');
+const Icon=({name,size=16,style={}})=><i data-lucide={name} style={{width:size,height:size,display:'inline-block',flexShrink:0,...style}}></i>;
+const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
+const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+
+// ─── TRASH BANNER ─────────────────────────────────────────────────────────────
+const TrashBanner=({label,onExit})=>(
+  <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'#991B1B'}}>
+    <Icon name="trash-2" size={14}/>
+    <span>Você está vendo a lixeira de <strong>{label}</strong>. Itens aqui podem ser restaurados ou excluídos permanentemente.</span>
+    <button onClick={onExit} className="btn btn-ghost" style={{marginLeft:'auto',padding:'3px 10px',fontSize:'.78rem',color:'#991B1B'}}>Sair da lixeira</button>
+  </div>
+);
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
+  <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal" style={{maxWidth:width}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+        <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{title}</h2>
+        <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+const Sidebar=({activeView,setView,saveFlash})=>{
+  const nav=[
+    {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
+    {id:'projects', icon:'folder-open',     label:'Projetos'},
+    {id:'gallery',  icon:'image',           label:'Galeria'},
+    {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
+    {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
+    {id:'social',   icon:'share-2',         label:'Social'},
+    {id:'clients',  icon:'users',           label:'Clientes'},
+    {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
+  ];
+  return(
+    <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
+      <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
+        <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
+        <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
+      </div>
+      <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
+        {nav.map(item=>(
+          <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
+            <Icon name={item.icon} size={15}/>{item.label}
+          </button>
+        ))}
+      </nav>
+      <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+      </div>
+    </aside>
+  );
+};
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
+  const active=projects.filter(p=>!p.deleted&&p.status==='Em Andamento');
+  const activeMentors=mentors.filter(m=>!m.deleted&&m.active);
+  const recentNotes=notes.filter(n=>!n.deleted).slice(0,3);
+  const greeting=()=>{const h=new Date().getHours();return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';};
+  const [newTask,setNewTask]=useState('');
+
+  // Collect all project tasks from active projects
+  const allPTasks=active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title})));
+
+  const stats=[
+    {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects'},
+    {label:'Mentores Ativos',value:activeMentors.length,icon:'graduation-cap',view:'mentors'},
+    {label:'Tarefas Pendentes',value:tasks.filter(t=>!t.done).length,icon:'check-square',view:'dashboard'}
+  ];
+  const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
+  const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const removeTask=id=>setTasks(p=>p.filter(t=>t.id!==id));
+  const taskToNote=task=>{const n={id:Date.now(),title:task.text,content:'',date:'Agora',deleted:false};setNotes(p=>[n,...p]);setTasks(p=>p.map(t=>t.id===task.id?{...t,noteId:n.id}:t));};
+
+  return(
+    <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
+      <div style={{marginBottom:40}}>
+        <h1 className="serif" style={{fontSize:'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting()}, <em>Artista.</em></h1>
+        <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
+        {stats.map(s=>(
+          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <span style={{fontSize:'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
+              <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
+            </div>
+            <span style={{fontSize:'.8rem',color:'var(--muted)',fontWeight:500}}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          {/* Projetos ativos */}
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span className="label">Em andamento</span>
+              <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+            </div>
+            {active.length===0&&<div className="card" style={{padding:20,textAlign:'center',color:'var(--muted)',fontSize:'.82rem'}}>Nenhum projeto ativo.</div>}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {active.map(p=>(
+                <div key={p.id} className="card card-click" onClick={()=>setView('projects')} style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                  <div style={{width:36,height:36,borderRadius:7,flexShrink:0,backgroundImage:`url(${p.cover})`,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
+                    <div style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.client}</div>
+                  </div>
+                  {(p.projectTasks||[]).length>0&&(
+                    <span style={{fontSize:'.7rem',color:'var(--muted)',flexShrink:0}}>
+                      {(p.projectTasks||[]).filter(t=>t.status==='Fazendo').length} fazendo
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Tarefas de projetos */}
+          {allPTasks.length>0&&(
+            <div>
+              <div style={{marginBottom:12}}><span className="label">Tarefas Abertas dos Projetos</span></div>
+              <div className="card" style={{padding:'12px 16px'}}>
+                {allPTasks.slice(0,6).map(t=>(
+                  <div key={`${t.id}-${t.projectTitle}`} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+                    <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
+                    <span style={{flex:1,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</span>
+                    <span style={{fontSize:'.7rem',color:'var(--muted)',flexShrink:0,maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{t.projectTitle}</span>
+                  </div>
+                ))}
+                {allPTasks.length>6&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:8}}>+{allPTasks.length-6} mais</div>}
+              </div>
+            </div>
+          )}
+          {/* Atividades gerais */}
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span className="label">Lista de Atividades</span>
+              <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('ideas')}>Ver Ideias <Icon name="arrow-right" size={12}/></button>
+            </div>
+            <div className="card" style={{padding:'16px 20px'}}>
+              <div style={{display:'flex',gap:8,marginBottom:tasks.length>0?12:0}}>
+                <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
+                  placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',color:'var(--text)',paddingBottom:4}}/>
+                <button onClick={addTask} className="btn btn-dark" style={{padding:'4px 10px',fontSize:'.78rem'}}><Icon name="plus" size={13}/></button>
+              </div>
+              {tasks.length===0&&<p style={{fontSize:'.82rem',color:'var(--muted)',margin:'8px 0 0',textAlign:'center'}}>Nenhuma atividade.</p>}
+              {tasks.map(t=>(
+                <div key={t.id} className="task-row">
+                  <div className={`task-check ${t.done?'done':''}`} onClick={()=>toggleTask(t.id)}/>
+                  <span style={{flex:1,fontSize:'.85rem',textDecoration:t.done?'line-through':'none',color:t.done?'var(--muted)':'var(--text)',lineHeight:1.4}}>{t.text}</span>
+                  <div style={{display:'flex',gap:4,flexShrink:0}}>
+                    {!t.noteId&&<button onClick={()=>taskToNote(t)} title="Salvar como nota" className="btn btn-ghost" style={{padding:3}}><Icon name="file-plus" size={13}/></button>}
+                    {t.noteId&&<span style={{color:'var(--muted)',padding:'0 4px'}}><Icon name="file-check" size={13}/></span>}
+                    <button onClick={()=>removeTask(t.id)} className="btn btn-ghost" style={{padding:3}}><Icon name="x" size={13}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          {/* Mentores */}
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span className="label">Mentores Ativos</span>
+              <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+            </div>
+            {activeMentors.length===0&&<div className="card" style={{padding:16,textAlign:'center',color:'var(--muted)',fontSize:'.8rem'}}>Nenhum mentor.</div>}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {activeMentors.slice(0,2).map(m=>(
+                <div key={m.id} className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+                  {m.photo?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                    :<div style={{width:32,height:32,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                    <div style={{fontSize:'.7rem',color:'var(--muted)'}}>{m.area}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Notas recentes */}
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span className="label">Notas Recentes</span>
+              <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('ideas')}>Ver todas <Icon name="arrow-right" size={12}/></button>
+            </div>
+            {recentNotes.length===0&&<div className="card" style={{padding:16,textAlign:'center',color:'var(--muted)',fontSize:'.8rem'}}>Nenhuma nota.</div>}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {recentNotes.map(n=>(
+                <div key={n.id} className="card card-click" onClick={()=>setView('ideas')} style={{padding:'10px 14px'}}>
+                  <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.content}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── NEW PROJECT MODAL ────────────────────────────────────────────────────────
+const NewProjectModal=({onSave,onClose})=>{
+  const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],projectTasks:[],timelineEvents:[],deleted:false});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const coverRef=useRef();
+  const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await readFile(file));};
+  const save=()=>{if(!form.title.trim())return;onSave({...form,id:Date.now(),cover:form.cover||'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'});};
+  return(
+    <Modal title="Novo Projeto" onClose={onClose} width={520} offsetSidebar>
+      <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        <div onClick={()=>coverRef.current.click()} style={{height:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+          {form.cover?<img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
+          {form.cover&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',gap:6,fontSize:'.82rem'}}><Icon name="camera" size={16}/>Trocar</div>}
+          <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
+        </div>
+        <Field label="Título *"><input className="input-box" value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Ex: Comercial Nike Summer"/></Field>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Field label="Cliente"><input className="input-box" value={form.client} onChange={e=>set('client',e.target.value)} placeholder="Ex: Wieden+Kennedy"/></Field>
+          <Field label="Tipo"><select className="input-box" value={form.type} onChange={e=>set('type',e.target.value)} style={{cursor:'pointer'}}><option value="work">Trabalho</option><option value="personal">Pessoal</option></select></Field>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+          <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option></select></Field>
+          <Field label="Início"><input className="input-box" type="date" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></Field>
+          <Field label="Deadline"><input className="input-box" type="date" value={form.deadline} onChange={e=>set('deadline',e.target.value)}/></Field>
+        </div>
+        <Field label="Notas iniciais"><textarea className="input-box" rows={3} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Briefing, referências..." style={{resize:'none',lineHeight:1.7}}/></Field>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:4}}>
+          <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-dark" onClick={save}><Icon name="check" size={14}/> Criar Projeto</button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// ─── PROJECTS LIST ────────────────────────────────────────────────────────────
+const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
+  const [filterType,setFilterType]=useState('all');
+  const [onlyActive,setOnlyActive]=useState(false);
+  const [trash,setTrash]=useState(false);
+  const visible=projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
+  const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
+  const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.'))setProjects(p=>p.filter(x=>x.id!==id));};
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+            <Icon name="trash-2" size={13}/>
+            {trash?'Sair da Lixeira':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
+          </button>
+          {!trash&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
+        </div>
+      </div>
+      {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
+      {!trash&&(
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:24}}>
+          <div style={{display:'flex',gap:4}}>
+            {[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=>(
+              <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
+            ))}
+          </div>
+          <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
+            Apenas ativos
+            <div onClick={()=>setOnlyActive(!onlyActive)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:onlyActive?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s'}}>
+              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:onlyActive?'translateX(16px)':'translateX(0)'}}/>
+            </div>
+          </label>
+        </div>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:16}}>
+        {visible.map(p=>(
+          <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
+            onClick={()=>!trash&&onSelect(p)}>
+            {!trash&&(
+              <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
+                style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.parentElement.classList.add('hovered');}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
+                <Icon name="trash-2" size={12}/>
+              </button>
+            )}
+            <div style={{height:150,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
+              <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
+                <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
+              </div>
+            </div>
+            <div style={{padding:'18px 20px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:'.95rem',marginBottom:3}}>{p.title}</div>
+                <div style={{fontSize:'.78rem',color:'var(--muted)'}}>{p.client}</div>
+              </div>
+              {!trash?(
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
+                  <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
+                  <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
+                </div>
+              ):(
+                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
+                  <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
+                  <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
+      </div>
+    </div>
+  );
+};
+
+// ─── PROJECT DETAIL ───────────────────────────────────────────────────────────
+const PTASK_STATUSES=['Pendente','Fazendo','Concluído','Atrasado'];
+const PTASK_NEXT={'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
+
+const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
+  const [local,setLocal]=useState(project);
+  const [tab,setTab]=useState('Visão Geral');
+  const [newEvtTitle,setNewEvtTitle]=useState('');
+  const [newEvtDate,setNewEvtDate]=useState('');
+  const [editEvt,setEditEvt]=useState(null); // event being edited
+  const coverRef=useRef();
+  const researchRef=useRef();
+  const update=(field,value)=>{const u={...local,[field]:value};setLocal(u);onUpdate(u);};
+  const addEvent=()=>{if(!newEvtTitle||!newEvtDate)return;update('timelineEvents',[...(local.timelineEvents||[]),{id:Date.now(),title:newEvtTitle,date:newEvtDate}]);setNewEvtTitle('');setNewEvtDate('');};
+  const saveEditEvt=()=>{if(!editEvt)return;update('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));setEditEvt(null);};
+  const deleteEditEvt=()=>{update('timelineEvents',local.timelineEvents.filter(e=>e.id!==editEvt.id));setEditEvt(null);};
+  const toggleMentor=id=>{const m=local.mentors||[];update('mentors',m.includes(id)?m.filter(x=>x!==id):[...m,id]);};
+  const [newPTask,setNewPTask]=useState('');
+  const addPTask=()=>{if(!newPTask.trim())return;update('projectTasks',[...(local.projectTasks||[]),{id:Date.now(),text:newPTask.trim(),status:'Pendente'}]);setNewPTask('');};
+  const cyclePTaskStatus=id=>update('projectTasks',(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t));
+  const removePTask=id=>update('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
+  const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;update('cover',await readFile(file));};
+  const handleResearchUpload=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));update('researchImages',[...(local.researchImages||[]),...urls]);e.target.value='';};
+  const removeResearchImage=idx=>{const imgs=[...(local.researchImages||[])];imgs.splice(idx,1);update('researchImages',imgs);};
+  const linkedMentors=globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id));
+  const openTasks=(local.projectTasks||[]).filter(t=>t.status!=='Concluído');
+
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto',paddingBottom:60}}>
+      <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
+      <input ref={researchRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleResearchUpload}/>
+
+      {/* Timeline event edit modal */}
+      {editEvt&&(
+        <Modal title="Editar Evento" onClose={()=>setEditEvt(null)} width={380} offsetSidebar>
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <Field label="Data"><input className="input-box" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})} placeholder="Ex: 15/Nov"/></Field>
+            <Field label="Título do Evento"><input className="input-box" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} onKeyDown={e=>e.key==='Enter'&&saveEditEvt()} placeholder="Nome do evento" autoFocus/></Field>
+            <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
+              <button className="btn btn-danger" onClick={deleteEditEvt}><Icon name="trash-2" size={13}/> Remover</button>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-outline" onClick={()=>setEditEvt(null)}>Cancelar</button>
+                <button className="btn btn-dark" onClick={saveEditEvt}><Icon name="check" size={13}/> Salvar</button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Cover */}
+      <div className="cover-wrap" style={{height:260,borderRadius:16,overflow:'hidden',marginBottom:28}}>
+        <div style={{position:'absolute',inset:0,backgroundImage:local.cover?`url(${local.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.2) 60%,transparent 100%)'}}/>
+        <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white'}}><Icon name="camera" size={28}/><span style={{fontSize:'.82rem',fontWeight:500}}>Trocar capa</span></div>
+        </div>
+        <div style={{position:'absolute',inset:0,padding:28,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+            <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+              <Icon name="arrow-left" size={13}/> Voltar
+            </button>
+            <button onClick={e=>{e.stopPropagation();if(window.confirm('Mover projeto para a lixeira?')){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+              <Icon name="trash-2" size={13}/> Excluir Projeto
+            </button>
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+            <div>
+              <h1 className="serif" style={{fontSize:'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em'}}>{local.title}</h1>
+              <p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>
+            </div>
+            <select value={local.status} onChange={e=>{e.stopPropagation();update('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all'}}>
+              <option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div className="card" style={{padding:'22px 24px',marginBottom:20}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div>
+            <span className="label">Timeline do Projeto</span>
+            <span style={{fontSize:'.72rem',color:'var(--muted)',marginLeft:10}}>Clique em um evento para editar</span>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <input value={newEvtDate} onChange={e=>setNewEvtDate(e.target.value)} placeholder="Data (10/Nov)" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:110}}/>
+            <input value={newEvtTitle} onChange={e=>setNewEvtTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addEvent()} placeholder="Evento" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:130}}/>
+            <button onClick={addEvent} className="btn btn-dark" style={{padding:'5px 12px'}}><Icon name="plus" size={12}/></button>
+          </div>
+        </div>
+        <div style={{overflowX:'auto',paddingBottom:8}}>
+          {local.timelineEvents.length===0
+            ?<div style={{color:'var(--muted)',fontSize:'.82rem'}}>Nenhum evento. Adicione acima.</div>
+            :(
+              <div style={{display:'flex',alignItems:'flex-start',position:'relative',paddingTop:4,whiteSpace:'nowrap'}}>
+                <div style={{position:'absolute',top:8,left:0,right:0,height:1,background:'var(--border)'}}/>
+                {local.timelineEvents.map(evt=>(
+                  <div key={evt.id} onClick={()=>setEditEvt({...evt})} title="Clique para editar"
+                    style={{flexShrink:0,width:140,position:'relative',paddingRight:12,cursor:'pointer',whiteSpace:'normal'}}
+                    onMouseEnter={e=>{e.currentTarget.querySelector('.evt-node').style.background='#276b3e';e.currentTarget.querySelector('.evt-node').style.boxShadow='0 0 0 1px #276b3e';}}
+                    onMouseLeave={e=>{e.currentTarget.querySelector('.evt-node').style.background='var(--text)';e.currentTarget.querySelector('.evt-node').style.boxShadow='0 0 0 1px var(--text)';}}>
+                    <div className="evt-node" style={{width:10,height:10,borderRadius:'50%',background:'var(--text)',border:'3px solid var(--bg)',boxShadow:'0 0 0 1px var(--text)',marginBottom:12,transition:'background .15s,box-shadow .15s'}}/>
+                    <div style={{fontSize:'.7rem',fontWeight:600,color:'var(--muted)',marginBottom:3}}>{evt.date}</div>
+                    <div style={{fontSize:'.82rem',fontWeight:600,lineHeight:1.3}}>{evt.title}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
+        {['Visão Geral','Tarefas','Mentores','Pesquisa'].map(t=>(
+          <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent'}}>{t}</button>
+        ))}
+      </div>
+
+      {tab==='Visão Geral'&&(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 220px',gap:20}}>
+          <div style={{display:'flex',flexDirection:'column',gap:16}}>
+            <div className="card" style={{padding:32}}>
+              <span className="label" style={{display:'block',marginBottom:14}}>Notas & Direção de Arte</span>
+              <textarea style={{background:'transparent',outline:'none',resize:'none',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',height:200,border:'none',width:'100%'}}
+                value={local.notes} onChange={e=>update('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
+            </div>
+            {openTasks.length>0&&(
+              <div className="card" style={{padding:'20px 24px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                  <span className="label">Tarefas em Aberto</span>
+                  <button onClick={()=>setTab('Tarefas')} className="btn btn-ghost" style={{padding:'3px 8px',fontSize:'.75rem'}}>Ver todas <Icon name="arrow-right" size={11}/></button>
+                </div>
+                {openTasks.slice(0,5).map(t=>(
+                  <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+                    <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
+                    <span style={{fontSize:'.84rem',flex:1}}>{t.text}</span>
+                  </div>
+                ))}
+                {openTasks.length>5&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:8}}>+{openTasks.length-5} mais</div>}
+              </div>
+            )}
+          </div>
+          <div className="card" style={{padding:28}}>
+            <span className="label" style={{display:'block',marginBottom:16}}>Datas</span>
+            <div style={{display:'flex',flexDirection:'column',gap:20}}>
+              <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Início</label>
+                <input type="date" value={local.startDate} onChange={e=>update('startDate',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:500,width:'100%',paddingBottom:4}}/></div>
+              <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Deadline</label>
+                <input type="date" value={local.deadline} onChange={e=>update('deadline',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:600,color:'#9B1C1C',width:'100%',paddingBottom:4}}/></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab==='Tarefas'&&(
+        <div className="card" style={{padding:36}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+            <span className="label">Tarefas do Projeto</span>
+            <div style={{display:'flex',gap:6}}>
+              {PTASK_STATUSES.map(s=><span key={s} className={`ptask-pill ptask-${s}`} style={{cursor:'default'}}>{s}: {(local.projectTasks||[]).filter(t=>t.status===s).length}</span>)}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
+            <input value={newPTask} onChange={e=>setNewPTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addPTask()} placeholder="Adicionar nova tarefa..." className="input-box" style={{flex:1}}/>
+            <button onClick={addPTask} className="btn btn-dark"><Icon name="plus" size={14}/> Adicionar</button>
+          </div>
+          {(local.projectTasks||[]).length===0&&(
+            <div style={{textAlign:'center',padding:'24px 0',color:'var(--muted)',fontSize:'.85rem'}}><Icon name="check-square" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Nenhuma tarefa.</div>
+          )}
+          {(local.projectTasks||[]).map(t=>(
+            <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+              <button onClick={()=>cyclePTaskStatus(t.id)} className={`ptask-pill ptask-${t.status}`} style={{flexShrink:0,minWidth:80,justifyContent:'center',display:'inline-flex'}}>
+                {t.status==='Concluído'&&<Icon name="check" size={10}/>}{t.status==='Fazendo'&&<Icon name="clock" size={10}/>}
+                {t.status==='Atrasado'&&<Icon name="alert-circle" size={10}/>}{t.status==='Pendente'&&<Icon name="circle" size={10}/>}
+                {t.status}
+              </button>
+              <span style={{flex:1,fontSize:'.88rem',textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
+              <button onClick={()=>removePTask(t.id)} className="btn btn-ghost" style={{padding:4}}><Icon name="trash-2" size={13}/></button>
+            </div>
+          ))}
+          <p style={{fontSize:'.75rem',color:'var(--muted)',marginTop:16,marginBottom:0}}>Clique no status para alternar: Pendente → Fazendo → Concluído → Atrasado</p>
+        </div>
+      )}
+
+      {tab==='Mentores'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          <div className="card" style={{padding:24}}>
+            <span className="label" style={{display:'block',marginBottom:10}}>Vincular mentores a este projeto</span>
+            <p style={{fontSize:'.82rem',color:'var(--muted)',marginBottom:14}}>Selecione os artistas cujos ensinamentos estão sendo aplicados.</p>
+            {globalMentors.filter(m=>!m.deleted).length===0?<p style={{fontSize:'.82rem',color:'var(--muted)'}}>Cadastre mentores primeiro.</p>:(
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {globalMentors.filter(m=>!m.deleted).map(m=>{const on=(local.mentors||[]).includes(m.id);return(
+                  <button key={m.id} onClick={()=>toggleMentor(m.id)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                    {on&&<Icon name="check" size={12}/>}{m.name}
+                  </button>
+                );})}
+              </div>
+            )}
+          </div>
+          {linkedMentors.length>0&&(
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:12}}>
+              {linkedMentors.map(m=>(
+                <div key={m.id} className="card" style={{padding:20}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                    {m.photo?<img src={m.photo} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover'}}/>
+                      :<div style={{width:36,height:36,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500}}>{m.name.charAt(0)}</div>}
+                    <div><div style={{fontWeight:600,fontSize:'.88rem'}}>{m.name}</div><div style={{fontSize:'.72rem',color:'var(--muted)'}}>{m.area} · {m.medium}</div></div>
+                  </div>
+                  {m.notes&&<p style={{fontSize:'.8rem',color:'var(--muted)',lineHeight:1.6,margin:0,borderTop:'1px solid var(--border)',paddingTop:12}}>{m.notes}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab==='Pesquisa'&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12}}>
+            {(local.researchImages||[]).map((img,i)=>(
+              <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'1',backgroundColor:'var(--bg)'}}>
+                <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                <button onClick={()=>removeResearchImage(i)} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={12}/></button>
+              </div>
+            ))}
+            <div className="upload-zone" style={{aspectRatio:'1',minHeight:0}} onClick={()=>researchRef.current.click()}>
+              <Icon name="image-plus" size={22} style={{marginBottom:8}}/><span style={{fontSize:'.78rem'}}>Adicionar<br/>imagens</span>
+            </div>
+          </div>
+          {(local.researchImages||[]).length===0&&<p style={{textAlign:'center',color:'var(--muted)',fontSize:'.82rem',marginTop:16}}>Clique no ícone acima para carregar referências.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── GALLERY ─────────────────────────────────────────────────────────────────
+const Gallery=({posts,setPosts})=>{
+  const folders=['movie-studies','sketchbooks','gestures'];
+  const folderLabels={'movie-studies':'Estudos de Filme','sketchbooks':'Sketchbooks','gestures':'Gestuais'};
+  const [activeFolder,setActiveFolder]=useState('movie-studies');
+  const [selected,setSelected]=useState(null);
+  const [lightbox,setLightbox]=useState(null);
+  const [trash,setTrash]=useState(false);
+  const addImgRef=useRef();
+  const active=posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder));
+  const grouped=active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
+  const upd=(field,value)=>{const u={...selected,[field]:value};setSelected(u);setPosts(posts.map(p=>p.id===u.id?u:p));};
+  const handleAddImages=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));upd('images',[...selected.images,...urls]);e.target.value='';};
+  const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
+  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
+  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setPosts(p=>p.filter(x=>x.id!==id));};
+
+  if(lightbox)return(
+    <div className="lightbox" onClick={()=>setLightbox(null)}>
+      <img src={lightbox} onClick={e=>e.stopPropagation()} alt=""/>
+      <button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)'}}><Icon name="x" size={20}/></button>
+    </div>
+  );
+
+  if(selected)return(
+    <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
+      <input ref={addImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleAddImages}/>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}>
+        <button className="btn btn-outline" onClick={()=>setSelected(null)}><Icon name="arrow-left" size={13}/> Voltar</button>
+        <button className="btn btn-danger" onClick={()=>{softDelete(selected.id);setSelected(null);}}><Icon name="trash-2" size={13}/> Mover para Lixeira</button>
+      </div>
+      <div className="card" style={{padding:32}}>
+        <input value={selected.title} onChange={e=>upd('title',e.target.value)}
+          style={{fontSize:'2rem',fontWeight:400,background:'transparent',outline:'none',border:'none',borderBottom:'1px solid var(--border)',width:'100%',marginBottom:24,paddingBottom:8,color:'var(--text)',fontFamily:'Cormorant Garamond,serif'}}/>
+        <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
+          style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
+          {selected.images.map((img,i)=>(
+            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'1',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
+              <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.05)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+              <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+            </div>
+          ))}
+          <div className="upload-zone" style={{aspectRatio:'1',minHeight:0}} onClick={()=>addImgRef.current.click()}>
+            <Icon name="plus" size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>Adicionar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+        <div><h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
+          <p style={{color:'var(--muted)',fontSize:'.85rem'}}>Acervo visual & estudos</p></div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
+          </button>
+          {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
+        </div>
+      </div>
+      {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
+      {!trash&&(
+        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
+          {folders.map(f=><button key={f} onClick={()=>setActiveFolder(f)} className="tab-btn" style={{color:activeFolder===f?'var(--text)':'var(--muted)',borderBottom:activeFolder===f?'2px solid var(--text)':'2px solid transparent'}}>{folderLabels[f]}</button>)}
+        </div>
+      )}
+      {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
+      {Object.entries(grouped).map(([month,monthPosts])=>(
+        <div key={month} style={{marginBottom:36}}>
+          <div style={{borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:16}}><span className="label">{month}</span></div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:14}}>
+            {monthPosts.map(post=>(
+              <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
+                <div style={{aspectRatio:'4/5',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {post.images.length>0
+                    ?<img src={post.images[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
+                </div>
+                <div style={{padding:'12px 14px'}}>
+                  <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:2}}>{post.title}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:trash?8:0}}>{post.date}</div>
+                  {trash&&(
+                    <div style={{display:'flex',gap:5}}>
+                      <button onClick={e=>{e.stopPropagation();restore(post.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="refresh-cw" size={10}/> Restaurar</button>
+                      <button onClick={e=>{e.stopPropagation();hardDelete(post.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="trash-2" size={10}/> Excluir</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── IDEAS ────────────────────────────────────────────────────────────────────
+const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
+  const [folder,setFolder]=useState('notes');
+  const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
+  const [newTask,setNewTask]=useState('');
+  const visible=notes.filter(n=>folder==='notes'?!n.deleted:n.deleted);
+  const active=notes.find(n=>n.id===activeId)||null;
+  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
+  const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
+  const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));setActiveId(null);};
+  const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?'))setNotes(p=>p.filter(n=>n.id!==id));setActiveId(null);};
+  const noteToTask=()=>{if(!active)return;setTasks(p=>[...p,{id:Date.now(),text:active.title,done:false,noteId:active.id}]);};
+  const isAlreadyTask=active&&tasks.some(t=>t.noteId===active.id);
+  const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
+  const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const removeTask=id=>setTasks(p=>p.filter(t=>t.id!==id));
+  return(
+    <div className="fade-up" style={{maxWidth:1100,margin:'0 auto',height:'calc(100vh - 80px)',display:'flex',gap:20}}>
+      {/* Left */}
+      <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
+        <h1 className="serif" style={{fontSize:'2rem',fontWeight:300}}>Ideias</h1>
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
+            <button key={v} onClick={()=>{setFolder(v);setActiveId(null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
+              {l} <span style={{opacity:.6,fontSize:'.75rem'}}>({notes.filter(n=>v==='notes'?!n.deleted:n.deleted).length})</span>
+            </button>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+          {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
+          {visible.map(n=>(
+            <div key={n.id} onClick={()=>setActiveId(n.id)}
+              style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
+              onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
+              onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
+              <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+              <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
+            </div>
+          ))}
+        </div>
+        {folder==='notes'&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
+      </div>
+      {/* Center */}
+      <div className="card" style={{flex:1,padding:32,display:'flex',flexDirection:'column',minWidth:0}}>
+        {active?(
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
+              <input value={active.title} onChange={e=>update('title',e.target.value)} disabled={folder==='trash'}
+                style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+              <div style={{display:'flex',gap:4,flexShrink:0}}>
+                {folder==='notes'&&<button onClick={noteToTask} disabled={isAlreadyTask} title={isAlreadyTask?"Já na lista":"Adicionar à lista"} className="btn btn-ghost" style={{padding:6,opacity:isAlreadyTask?.4:1}}><Icon name="check-square" size={16}/></button>}
+                <button onClick={()=>toggleTrash(active.id)} className="btn btn-ghost" style={{padding:6}}
+                  onMouseEnter={e=>e.currentTarget.style.color=folder==='notes'?'#DC2626':'var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                  <Icon name={folder==='notes'?'trash-2':'refresh-cw'} size={17}/>
+                </button>
+                {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost" style={{padding:6}} title="Excluir permanentemente"
+                  onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash" size={17}/></button>}
+              </div>
+            </div>
+            <textarea value={active.content} onChange={e=>update('content',e.target.value)} disabled={folder==='trash'} placeholder="Comece a escrever..."
+              style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1}}/>
+          </>
+        ):(
+          <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+            <Icon name="file-text" size={28} style={{display:'block',margin:'0 auto 10px'}}/>
+            <p style={{fontSize:'.85rem'}}>Selecione ou crie uma nota</p>
+          </div>
+        )}
+      </div>
+      {/* Right tasks */}
+      <div style={{width:260,flexShrink:0}}>
+        <div className="card" style={{height:'100%',padding:20,display:'flex',flexDirection:'column'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+            <span className="label">Atividades</span>
+            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{tasks.filter(t=>!t.done).length} pendentes</span>
+          </div>
+          <div style={{display:'flex',gap:6,marginBottom:12}}>
+            <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
+              placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',color:'var(--text)',paddingBottom:3}}/>
+            <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px'}}><Icon name="plus" size={12}/></button>
+          </div>
+          <div style={{flex:1,overflowY:'auto'}}>
+            {tasks.length===0&&<p style={{fontSize:'.8rem',color:'var(--muted)',textAlign:'center',marginTop:16}}>Nenhuma atividade.</p>}
+            {tasks.map(t=>(
+              <div key={t.id} className="task-row" style={{padding:'7px 0'}}>
+                <div className={`task-check ${t.done?'done':''}`} onClick={()=>toggleTask(t.id)}/>
+                <span style={{flex:1,fontSize:'.82rem',textDecoration:t.done?'line-through':'none',color:t.done?'var(--muted)':'var(--text)',lineHeight:1.4,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</span>
+                <button onClick={()=>removeTask(t.id)} className="btn btn-ghost" style={{padding:2,flexShrink:0}}><Icon name="x" size={12}/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── MENTOR DETAIL PAGE ───────────────────────────────────────────────────────
+const MentorDetail=({mentor,onBack,onSave,onDelete})=>{
+  const [form,setForm]=useState(mentor);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const photoRef=useRef();
+  const galleryRef=useRef();
+  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await readFile(file));};
+  const handleGallery=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));set('photos',[...(form.photos||[]),...urls].slice(0,4));e.target.value='';};
+  const removeGalleryPhoto=idx=>{const p=[...(form.photos||[])];p.splice(idx,1);set('photos',p);};
+  return(
+    <div className="fade-up" style={{maxWidth:680,margin:'0 auto',paddingBottom:60}}>
+      <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
+      <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleGallery}/>
+      <button className="btn btn-outline" onClick={onBack} style={{marginBottom:28}}><Icon name="arrow-left" size={13}/> Voltar</button>
+      <div className="card" style={{padding:32,marginBottom:20}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
+          <div onClick={()=>photoRef.current.click()} style={{width:80,height:80,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
+            onMouseEnter={e=>e.currentTarget.querySelector('.ch').style.opacity=1} onMouseLeave={e=>e.currentTarget.querySelector('.ch').style.opacity=0}>
+            {form.photo
+              ?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,color:'var(--muted)'}}>{form.name.charAt(0)||'?'}</span>}
+            <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
+          </div>
+          <div style={{flex:1,display:'flex',flexDirection:'column',gap:12}}>
+            <Field label="Nome do Artista / Referência"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontSize:'1rem',fontWeight:600}} placeholder="Ex: Hayao Miyazaki"/></Field>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <Field label="Área de Influência"><input className="input-box" value={form.area} onChange={e=>set('area',e.target.value)} placeholder="Ex: Narrativa Visual"/></Field>
+              <Field label="Meio / Formato"><input className="input-box" value={form.medium} onChange={e=>set('medium',e.target.value)} placeholder="Ex: Animação, HQ"/></Field>
+            </div>
+          </div>
+        </div>
+        {/* Status */}
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
+          <div onClick={()=>set('active',!form.active)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.active?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
+            <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.active?'translateX(16px)':'translateX(0)'}}/>
+          </div>
+          <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor ativo (aparece no dashboard)</span>
+          <span className={`tag ${form.active?'tag-green':'tag-gray'}`} style={{marginLeft:'auto'}}>{form.active?'Ativo':'Inativo'}</span>
+        </div>
+        {/* Notes */}
+        <Field label="Notas & Ensinamentos">
+          <textarea className="input-box" rows={5} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="O que você aprende estudando este artista?" style={{resize:'vertical',lineHeight:1.7,minHeight:120}}/>
+        </Field>
+        {/* Gallery */}
+        <div style={{marginTop:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span className="label">Galeria de Referências (até 4)</span>
+            {(form.photos||[]).length<4&&<button type="button" onClick={()=>galleryRef.current.click()} className="btn btn-ghost" style={{padding:'3px 10px',fontSize:'.75rem'}}><Icon name="plus" size={12}/> Adicionar</button>}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
+            {(form.photos||[]).map((img,i)=>(
+              <div key={i} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',backgroundColor:'var(--bg)'}}>
+                <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                <button onClick={()=>removeGalleryPhoto(i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+              </div>
+            ))}
+            {Array.from({length:4-(form.photos||[]).length}).map((_,i)=>(
+              <div key={i} onClick={()=>galleryRef.current.click()} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'var(--muted)',transition:'border-color .15s'}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}><Icon name="image-plus" size={20} style={{opacity:.35}}/></div>
+            ))}
+          </div>
+        </div>
+        {/* Links */}
+        <div style={{marginTop:20}}>
+          <Field label="Links / Referências"><input className="input-box" value={form.links} onChange={e=>set('links',e.target.value)} placeholder="https://..."/></Field>
+        </div>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between'}}>
+        <button className="btn btn-danger" onClick={onDelete}><Icon name="trash-2" size={14}/> Mover para Lixeira</button>
+        <button className="btn btn-dark" onClick={()=>onSave(form)}><Icon name="check" size={14}/> Salvar</button>
+      </div>
+    </div>
+  );
+};
+
+const Mentors=({mentors,setMentors})=>{
+  const [selected,setSelected]=useState(null);
+  const [trash,setTrash]=useState(false);
+  const save=form=>{setMentors(p=>p.map(m=>m.id===form.id?form:m));setSelected(form);};
+  const softDelete=()=>{setMentors(p=>p.map(m=>m.id===selected.id?{...m,deleted:true}:m));setSelected(null);};
+  const restore=id=>setMentors(p=>p.map(m=>m.id===id?{...m,deleted:false}:m));
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setMentors(p=>p.filter(m=>m.id!==id));};
+  const add=()=>{const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,photo:'',photos:[],deleted:false};setMentors(p=>[n,...p]);setSelected(n);};
+  const visible=mentors.filter(m=>trash?m.deleted:!m.deleted);
+
+  if(selected&&!trash)return<MentorDetail mentor={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
+
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+        <div>
+          <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores de Arte</h1>
+          <p style={{color:'var(--muted)',fontSize:'.85rem'}}>Artistas & referências que moldam sua linguagem visual</p>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&mentors.filter(m=>m.deleted).length>0&&` (${mentors.filter(m=>m.deleted).length})`}
+          </button>
+          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="plus" size={14}/> Adicionar</button>}
+        </div>
+      </div>
+      {trash&&<TrashBanner label="Mentores" onExit={()=>setTrash(false)}/>}
+      {visible.length===0&&(
+        <div className="card" style={{padding:56,textAlign:'center'}}>
+          <Icon name="graduation-cap" size={32} style={{display:'block',margin:'0 auto 16px',opacity:.3}}/>
+          <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:20}}>{trash?'Lixeira vazia.':'Nenhum mentor cadastrado.'}</p>
+          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="plus" size={14}/> Primeiro mentor</button>}
+        </div>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:16}}>
+        {visible.map(m=>(
+          <div key={m.id} className={`card ${!trash?'card-click':''}`} onClick={()=>!trash&&setSelected(m)} style={{padding:24,cursor:trash?'default':'pointer'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                {m.photo?<img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                  :<div style={{width:44,height:44,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.3rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
+                <div><div style={{fontWeight:600,fontSize:'.92rem'}}>{m.name}</div><div style={{fontSize:'.75rem',color:'var(--muted)'}}>{m.medium}</div></div>
+              </div>
+              <div style={{display:'flex',gap:2}} onClick={e=>e.stopPropagation()}>
+                {!trash?(
+                  <><button className="btn btn-ghost" style={{padding:5}} onClick={()=>setSelected(m)}><Icon name="pencil" size={14}/></button>
+                  <button className="btn btn-ghost" style={{padding:5}} onClick={()=>setMentors(p=>p.map(x=>x.id===m.id?{...x,deleted:true}:x))}><Icon name="trash-2" size={14}/></button></>
+                ):(
+                  <><button className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}} onClick={()=>restore(m.id)}><Icon name="refresh-cw" size={12}/></button>
+                  <button className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}} onClick={()=>hardDelete(m.id)}><Icon name="trash-2" size={12}/></button></>
+                )}
+              </div>
+            </div>
+            {!trash&&<>
+              <div style={{display:'flex',gap:6,marginBottom:m.notes||m.links?14:0}}>
+                <span className={`tag ${m.active?'tag-green':'tag-gray'}`}>{m.active?'Ativo':'Inativo'}</span>
+                {m.area&&<span className="tag tag-blue">{m.area}</span>}
+              </div>
+              {m.notes&&<p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.7,margin:0,borderTop:'1px solid var(--border)',paddingTop:14}}>{m.notes}</p>}
+              {(m.photos||[]).length>0&&(
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,borderTop:'1px solid var(--border)',paddingTop:14,marginTop:m.notes?14:0}}>
+                  {(m.photos||[]).map((img,i)=>(<div key={i} style={{aspectRatio:'1',borderRadius:6,overflow:'hidden'}}><img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/></div>))}
+                </div>
+              )}
+              {m.links&&<a href={m.links} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',gap:6,fontSize:'.78rem',color:'var(--muted)',textDecoration:'none',borderTop:'1px solid var(--border)',paddingTop:12,marginTop:12}}
+                onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                <Icon name="external-link" size={12}/>{m.links}
+              </a>}
+            </>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── SOCIAL ───────────────────────────────────────────────────────────────────
+const Social=({posts,setPosts})=>{
+  const [text,setText]=useState('');
+  const [editId,setEditId]=useState(null);
+  const [trash,setTrash]=useState(false);
+  const activePosts=posts.filter(p=>!p.deleted);
+  const trashedPosts=posts.filter(p=>p.deleted);
+  const savePost=()=>{
+    if(!text.trim())return;
+    if(editId){setPosts(p=>p.map(x=>x.id===editId?{...x,text}:x));setEditId(null);}
+    else setPosts(p=>[{id:Date.now(),text,date:new Date().toLocaleDateString('pt-BR'),platform:'Instagram',deleted:false},...p]);
+    setText('');
+  };
+  const startEdit=p=>{setText(p.text);setEditId(p.id);setTrash(false);};
+  const cancelEdit=()=>{setText('');setEditId(null);};
+  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
+  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setPosts(p=>p.filter(x=>x.id!==id));};
+  const displayed=trash?trashedPosts:activePosts;
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
+        <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+          <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
+        </button>
+      </div>
+      {trash&&<TrashBanner label="Social Media" onExit={()=>setTrash(false)}/>}
+      {!trash&&(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:20,marginBottom:32}}>
+          <div className="card" style={{padding:24,display:'flex',flexDirection:'column'}}>
+            {editId&&<div style={{fontSize:'.75rem',color:'#92700b',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+              <Icon name="pencil" size={11}/> Editando post — <button onClick={cancelEdit} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontFamily:'Figtree,sans-serif',fontSize:'.75rem',padding:0}}>cancelar</button>
+            </div>}
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:220,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)'}}/>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8}}>
+              <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{text.length} caracteres</span>
+              <button className="btn btn-dark" onClick={savePost} disabled={!text.trim()} style={{opacity:text.trim()?1:.5}}><Icon name={editId?'check':'save'} size={13}/> {editId?'Atualizar':'Salvar Post'}</button>
+            </div>
+          </div>
+          <div>
+            <span className="label" style={{display:'block',marginBottom:12}}>Templates</span>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {socialTemplates.map((t,i)=>(
+                <button key={i} onClick={()=>setText(t.text)} style={{textAlign:'left',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px',cursor:'pointer',transition:'border-color .15s',fontFamily:'Figtree,sans-serif'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                  <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:4}}>{t.label}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {displayed.length>0&&(
+        <div>
+          <span className="label" style={{display:'block',marginBottom:16}}>{trash?'Posts na Lixeira':'Posts Salvos'}</span>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {displayed.map(p=>(
+              <div key={p.id} className="card" style={{padding:'18px 22px',display:'flex',gap:16,alignItems:'flex-start'}}>
+                <div style={{flex:1}}>
+                  <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap'}}>{p.text}</p>
+                  <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center'}}>
+                    <span className="tag tag-blue">{p.platform}</span>
+                    <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.date}</span>
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                  {!trash?(
+                    <><button className="btn btn-ghost" style={{padding:5}} onClick={()=>startEdit(p)}><Icon name="pencil" size={14}/></button>
+                    <button className="btn btn-ghost" style={{padding:5}} onClick={()=>softDelete(p.id)}><Icon name="trash-2" size={14}/></button></>
+                  ):(
+                    <><button className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>restore(p.id)}><Icon name="refresh-cw" size={12}/> Restaurar</button>
+                    <button className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>hardDelete(p.id)}><Icon name="trash-2" size={12}/> Excluir</button></>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {trash&&trashedPosts.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.85rem'}}>Lixeira vazia.</div>}
+    </div>
+  );
+};
+
+// ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
+const ClientDetail=({client,onBack,onSave,onDelete})=>{
+  const [form,setForm]=useState(client);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const photoRef=useRef();
+  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await readFile(file));};
+  return(
+    <div className="fade-up" style={{maxWidth:680,margin:'0 auto',paddingBottom:60}}>
+      <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
+      <button className="btn btn-outline" onClick={onBack} style={{marginBottom:28}}><Icon name="arrow-left" size={13}/> Voltar</button>
+      <div className="card" style={{padding:32,marginBottom:20}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
+          <div onClick={()=>photoRef.current.click()} style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
+            onMouseEnter={e=>e.currentTarget.querySelector('.ch').style.opacity=1} onMouseLeave={e=>e.currentTarget.querySelector('.ch').style.opacity=0}>
+            {form.photo?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{form.name.charAt(0)||'?'}</span>}
+            <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
+          </div>
+          <div style={{flex:1,display:'flex',flexDirection:'column',gap:12}}>
+            <Field label="Nome"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontSize:'1rem',fontWeight:600}}/></Field>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <Field label="Empresa"><input className="input-box" value={form.company} onChange={e=>set('company',e.target.value)}/></Field>
+              <Field label="Cargo"><input className="input-box" value={form.role} onChange={e=>set('role',e.target.value)}/></Field>
+            </div>
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+          <Field label="Email"><input className="input-box" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></Field>
+          <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Ativo</option><option>Lead</option><option>Inativo</option><option>Arquivado</option></select></Field>
+        </div>
+        <Field label="Notas & Histórico"><textarea className="input-box" rows={4} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Preferências, histórico de projetos..." style={{resize:'vertical',lineHeight:1.7,minHeight:100}}/></Field>
+      </div>
+      <div style={{display:'flex',justifyContent:'space-between'}}>
+        <button className="btn btn-danger" onClick={onDelete}><Icon name="trash-2" size={14}/> Mover para Lixeira</button>
+        <button className="btn btn-dark" onClick={()=>onSave(form)}><Icon name="check" size={14}/> Salvar</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── CLIENTS ──────────────────────────────────────────────────────────────────
+const Clients=({clients,setClients})=>{
+  const [selected,setSelected]=useState(null);
+  const [trash,setTrash]=useState(false);
+  const tagColor=s=>({'Ativo':'tag-green','Lead':'tag-yellow','Inativo':'tag-gray','Arquivado':'tag-gray'}[s]||'tag-gray');
+  const save=form=>{setClients(p=>p.map(c=>c.id===form.id?form:c));setSelected(null);};
+  const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true}:c));setSelected(null);};
+  const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false}:c));
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setClients(p=>p.filter(c=>c.id!==id));};
+  const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
+  const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
+  if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
+          </button>
+          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
+        </div>
+      </div>
+      {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
+        {visible.map(c=>(
+          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+              {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+              <div>
+                <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
+                <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
+              </div>
+            </div>
+            {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
+              {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
+                <div style={{display:'flex',gap:5}}>
+                  <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
+                  <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+                </div>
+              )}
+              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
+                <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
+      </div>
+    </div>
+  );
+};
+
+// ─── SYNC HUB ─────────────────────────────────────────────────────────────────
+const SyncHub=({appState,onImport,onClearSave})=>{
+  const [importStatus,setImportStatus]=useState(null);
+  const importRef=useRef();
+  const exportData=()=>{
+    const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
+    const blob=new Blob([data],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
+  };
+  const handleImport=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{const data=JSON.parse(ev.target.result);onImport(data);setImportStatus({ok:true,msg:`Importado com sucesso! Backup de ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`});}
+      catch{setImportStatus({ok:false,msg:'Arquivo inválido. Verifique se é um backup BoardHub.'});}
+    };
+    reader.readAsText(file);e.target.value='';
+  };
+  const counts=[
+    {label:'Projetos',value:(appState.projects||[]).filter(p=>!p.deleted).length},
+    {label:'Clientes',value:(appState.clients||[]).filter(c=>!c.deleted).length},
+    {label:'Mentores',value:(appState.mentors||[]).filter(m=>!m.deleted).length},
+    {label:'Notas',value:(appState.notes||[]).filter(n=>!n.deleted).length},
+    {label:'Atividades',value:(appState.tasks||[]).length},
+    {label:'Posts',value:(appState.socialPosts||[]).filter(p=>!p.deleted).length},
+  ];
+  return(
+    <div className="fade-up" style={{maxWidth:760,margin:'0 auto'}}>
+      <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:8}}>Sincronizar</h1>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:32}}>Dados salvos automaticamente no navegador. Use o backup manual para transferir entre dispositivos ou fazer cópias de segurança.</p>
+      <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:24}}>
+        {counts.map(s=>(
+          <div key={s.label} className="card" style={{padding:'16px 20px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:'.8rem',color:'var(--muted)'}}>{s.label}</span>
+            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:500}}>{s.value}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20}}>
+        <div className="card" style={{padding:28}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="download" size={18} style={{color:'white'}}/></div>
+            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Exportar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Baixar backup completo</div></div>
+          </div>
+          <button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={exportData}><Icon name="download" size={14}/> Baixar backup JSON</button>
+        </div>
+        <div className="card" style={{padding:28}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="upload" size={18} style={{color:'#1e40af'}}/></div>
+            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Importar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Restaurar de backup</div></div>
+          </div>
+          <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={14}/> Carregar arquivo JSON</button>
+        </div>
+      </div>
+      <div className="card" style={{padding:24,marginBottom:20}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:20}}>
+          <div>
+            <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:4}}>Limpar save local</div>
+            <div style={{fontSize:'.8rem',color:'var(--muted)'}}>Remove os dados salvos no navegador e restaura os dados de exemplo.</div>
+          </div>
+          <button className="btn btn-danger" style={{flexShrink:0}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
+            <Icon name="trash-2" size={14}/> Limpar
+          </button>
+        </div>
+      </div>
+      {importStatus&&(
+        <div style={{padding:'14px 20px',borderRadius:10,background:importStatus.ok?'#E8F5EC':'#FDEDED',border:`1px solid ${importStatus.ok?'#bbf7d0':'#FECACA'}`,color:importStatus.ok?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
+          <Icon name={importStatus.ok?'check-circle':'alert-circle'} size={16}/>{importStatus.msg}
+          <button onClick={()=>setImportStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+const App=()=>{
+  const [view,setView]=useState('dashboard');
+  const [selectedProject,setSelectedProject]=useState(null);
+  const [showNewProject,setShowNewProject]=useState(false);
+  const [saveFlash,setSaveFlash]=useState(false);
+
+  // Initialize from localStorage if available, else seed
+  const [projects,setProjects]=useState(()=>persisted?.projects||SEED.projects);
+  const [clients,setClients]=useState(()=>persisted?.clients||SEED.clients);
+  const [mentors,setMentors]=useState(()=>persisted?.mentors||SEED.mentors);
+  const [notes,setNotes]=useState(()=>persisted?.notes||SEED.notes);
+  const [tasks,setTasks]=useState(()=>persisted?.tasks||SEED.tasks);
+  const [socialPosts,setSocialPosts]=useState(()=>persisted?.socialPosts||SEED.socialPosts);
+  const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
+
+  // Auto-save to localStorage on any state change
+  useEffect(()=>{
+    const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
+    lsSave(state);
+    setSaveFlash(true);
+    const t=setTimeout(()=>setSaveFlash(false),1800);
+    return ()=>clearTimeout(t);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
+
+  // Lucide icons re-render
+  useEffect(()=>{setTimeout(()=>lucide.createIcons(),60);},[view,selectedProject,projects,mentors,clients,notes,showNewProject,tasks,socialPosts,galleryPosts,saveFlash]);
+
+  const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
+  const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
+  const addProject=p=>{setProjects(prev=>[p,...prev]);setShowNewProject(false);setSelectedProject(p);setView('project-detail');};
+  const softDeleteProject=id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p));
+
+  const clearSave=()=>{
+    setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
+    setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);
+    navigate('dashboard');
+  };
+
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
+  const handleImport=data=>{
+    if(data.projects)setProjects(data.projects);
+    if(data.clients)setClients(data.clients);
+    if(data.mentors)setMentors(data.mentors);
+    if(data.notes)setNotes(data.notes);
+    if(data.tasks)setTasks(data.tasks);
+    if(data.socialPosts)setSocialPosts(data.socialPosts);
+    if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
+  };
+
+  return(
+    <div style={{display:'flex',minHeight:'100vh'}}>
+      {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
+      <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
+      <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
+        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes}/>}
+        {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
+        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors}/>}
+        {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
+        {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks}/>}
+        {view==='mentors'        && <Mentors mentors={mentors} setMentors={setMentors}/>}
+        {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts}/>}
+        {view==='clients'        && <Clients clients={clients} setClients={setClients}/>}
+        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave}/>}
+      </main>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
