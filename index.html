@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>BoardHub — Storyboard OS</title>
-<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -37,8 +36,7 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 .overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
-/* Mentor overlay: offset for the 220px sidebar so modal visually centers in content area */
-.overlay-offset{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
+.overlay-offset{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;padding-left:calc(220px + 20px);}
 .modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:32px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:90vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
@@ -59,7 +57,7 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 // ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
 const LS_KEY = 'boardhub_v2';
@@ -97,8 +95,8 @@ const SEED = {
     {id:3,title:"Lista de Materiais",content:"Lápis 6B, Papel Canson A3, Nanquim Rotring.",date:"Semana passada",deleted:true}
   ],
   mentors:[
-    {id:1,name:"Hayao Miyazaki",area:"Narrativa Visual",medium:"Animação",notes:"Estudar uso de silêncio e natureza. Nausicaä é essencial.",links:"https://ghibli.jp",active:true,photo:"",photos:[],deleted:false},
-    {id:2,name:"Moebius",area:"Composição de Quadro",medium:"HQ / Storyboard",notes:"Linha clara, horizonte baixo. Incal é referência obrigatória.",links:"",active:true,photo:"",photos:[],deleted:false}
+    {id:1,name:"Hayao Miyazaki",area:"Narrativa Visual",medium:"Animação",notes:"Estudar uso de silêncio e natureza. Nausicaä é essencial.",links:"https://ghibli.jp",active:true,main:true,photo:"",photos:[],deleted:false},
+    {id:2,name:"Moebius",area:"Composição de Quadro",medium:"HQ / Storyboard",notes:"Linha clara, horizonte baixo. Incal é referência obrigatória.",links:"",active:true,main:false,photo:"",photos:[],deleted:false}
   ],
   tasks:[
     {id:1,text:"Revisar roughs do Nike",done:false,noteId:null},
@@ -212,14 +210,13 @@ const Sidebar=({activeView,setView,saveFlash})=>{
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
-  const active=projects.filter(p=>!p.deleted&&p.status==='Em Andamento');
-  const activeMentors=mentors.filter(m=>!m.deleted&&m.active);
-  const recentNotes=notes.filter(n=>!n.deleted).slice(0,3);
-  const greeting=()=>{const h=new Date().getHours();return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';};
+  const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
+  const activeMentors=useMemo(()=>mentors.filter(m=>!m.deleted&&m.active&&m.main).slice(0,3),[mentors]);
+  const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
+  const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
+  const h=new Date().getHours();
+  const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
-
-  // Collect all project tasks from active projects
-  const allPTasks=active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title})));
 
   const stats=[
     {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects'},
@@ -234,7 +231,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
   return(
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
       <div style={{marginBottom:40}}>
-        <h1 className="serif" style={{fontSize:'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting()}, <em>Artista.</em></h1>
+        <h1 className="serif" style={{fontSize:'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
@@ -344,8 +341,8 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
       {activeMentors.length>0&&(
         <div style={{marginTop:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <span className="label">Mentores Ativos</span>
-            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+            <span className="label">Mentores Principais</span>
+            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Gerenciar <Icon name="arrow-right" size={12}/></button>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
             {activeMentors.map(m=>(
@@ -409,72 +406,128 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
   const visible=projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
   const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.'))setProjects(p=>p.filter(x=>x.id!==id));};
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
+
+  // All pending tasks grouped by project
+  const activeProjsWithTasks=projects.filter(p=>!p.deleted&&(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
+  const PTASK_STATUS_ORDER=['Fazendo','Atrasado','Pendente'];
+  const statusColor={'Fazendo':'#92700b','Atrasado':'#9B1C1C','Pendente':'var(--muted)'};
+  const statusBg={'Fazendo':'#FEF9E7','Atrasado':'#FDEDED','Pendente':'#F0EDE9'};
+
   return(
-    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
-        <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-            <Icon name="trash-2" size={13}/>
-            {trash?'Sair da Lixeira':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
-          </button>
-          {!trash&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
-        </div>
-      </div>
-      {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
-      {!trash&&(
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:24}}>
-          <div style={{display:'flex',gap:4}}>
-            {[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=>(
-              <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
-            ))}
-          </div>
-          <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
-            Apenas ativos
-            <div onClick={()=>setOnlyActive(!onlyActive)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:onlyActive?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s'}}>
-              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:onlyActive?'translateX(16px)':'translateX(0)'}}/>
-            </div>
-          </label>
-        </div>
-      )}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:16}}>
-        {visible.map(p=>(
-          <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
-            onClick={()=>!trash&&onSelect(p)}>
-            {!trash&&(
-              <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
-                style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
-                onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.parentElement.classList.add('hovered');}}
-                onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
-                <Icon name="trash-2" size={12}/>
+    <div className="fade-up" style={{maxWidth:1200,margin:'0 auto'}}>
+      <div style={{display:'flex',gap:28,alignItems:'flex-start'}}>
+        {/* LEFT: projects list */}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
+            <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
+                <Icon name="trash-2" size={13}/>
+                {trash?'Sair da Lixeira':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
               </button>
-            )}
-            <div style={{height:150,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
-              <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
-                <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
-              </div>
-            </div>
-            <div style={{padding:'18px 20px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:'.95rem',marginBottom:3}}>{p.title}</div>
-                <div style={{fontSize:'.78rem',color:'var(--muted)'}}>{p.client}</div>
-              </div>
-              {!trash?(
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
-                  <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
-                  <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
-                </div>
-              ):(
-                <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
-                  <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
-                  <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
-                </div>
-              )}
+              {!trash&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
             </div>
           </div>
-        ))}
-        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
+          {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
+          {!trash&&(
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:24}}>
+              <div style={{display:'flex',gap:4}}>
+                {[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
+                ))}
+              </div>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
+                Apenas ativos
+                <div onClick={()=>setOnlyActive(!onlyActive)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:onlyActive?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s'}}>
+                  <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:onlyActive?'translateX(16px)':'translateX(0)'}}/>
+                </div>
+              </label>
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:16}}>
+            {visible.map(p=>(
+              <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
+                onClick={()=>!trash&&onSelect(p)}>
+                {!trash&&(
+                  <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
+                    style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
+                    onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
+                    onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
+                    <Icon name="trash-2" size={12}/>
+                  </button>
+                )}
+                <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
+                  <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
+                    <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
+                  </div>
+                </div>
+                <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
+                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
+                  </div>
+                  {!trash?(
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                      <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
+                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
+                    </div>
+                  ):(
+                    <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
+                      <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
+                      <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
+          </div>
+        </div>
+
+        {/* RIGHT: tasks sidebar hub */}
+        {!trash&&(
+          <div style={{width:280,flexShrink:0,position:'sticky',top:48}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+              <span className="label">Tarefas Pendentes</span>
+              <span style={{fontSize:'.7rem',color:'var(--muted)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:20,padding:'1px 8px'}}>
+                {activeProjsWithTasks.reduce((s,p)=>(s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length),0)}
+              </span>
+            </div>
+            {activeProjsWithTasks.length===0?(
+              <div className="card" style={{padding:'24px 20px',textAlign:'center'}}>
+                <Icon name="check-circle" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.25}}/>
+                <p style={{fontSize:'.82rem',color:'var(--muted)',margin:0}}>Nenhuma tarefa pendente.</p>
+              </div>
+            ):(
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {activeProjsWithTasks.map(p=>{
+                  const pending=(p.projectTasks||[]).filter(t=>t.status!=='Concluído')
+                    .sort((a,b)=>PTASK_STATUS_ORDER.indexOf(a.status)-PTASK_STATUS_ORDER.indexOf(b.status));
+                  return(
+                    <div key={p.id} className="card" style={{padding:'14px 16px',overflow:'hidden'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,paddingBottom:10,borderBottom:'1px solid var(--border)'}}>
+                        <div style={{width:20,height:20,borderRadius:5,flexShrink:0,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                        <span style={{fontWeight:600,fontSize:'.78rem',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</span>
+                        <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0}}>{pending.length}</span>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                        {pending.map(t=>(
+                          <div key={t.id} style={{display:'flex',alignItems:'flex-start',gap:7}}>
+                            <span style={{display:'inline-block',flexShrink:0,fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',padding:'2px 6px',borderRadius:3,marginTop:1,background:statusBg[t.status]||'#F0EDE9',color:statusColor[t.status]||'var(--muted)'}}>
+                              {t.status}
+                            </span>
+                            <span style={{fontSize:'.78rem',color:'var(--text)',lineHeight:1.4}}>{t.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -491,11 +544,54 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const [newEvtDate,setNewEvtDate]=useState('');
   const [editEvt,setEditEvt]=useState(null); // event being edited
   const coverRef=useRef();
-  const update=(field,value)=>{const u={...local,[field]:value};setLocal(u);onUpdate(u);};
-  const addEvent=()=>{if(!newEvtTitle||!newEvtDate)return;update('timelineEvents',[...(local.timelineEvents||[]),{id:Date.now(),title:newEvtTitle,date:newEvtDate}]);setNewEvtTitle('');setNewEvtDate('');};
+
+  // Sync local state if the project prop changes from outside (e.g. after navigation)
+  useEffect(()=>{setLocal(project);},[project.id]);
+
+  const update=(field,value)=>{
+    setLocal(prev=>{
+      const u={...prev,[field]:value};
+      setTimeout(()=>onUpdate(u),0);
+      return u;
+    });
+  };
+  const updateMany=patch=>{
+    setLocal(prev=>{
+      const u={...prev,...patch};
+      setTimeout(()=>onUpdate(u),0);
+      return u;
+    });
+  };
+  const addEvent=()=>{
+    if(!newEvtTitle||!newEvtDate)return;
+    const evtId=Date.now();
+    const taskId=evtId+1;
+    const newTask={id:taskId,text:`[${newEvtDate}] ${newEvtTitle}`,status:'Pendente',fromTimeline:true};
+    const newEvt={id:evtId,title:newEvtTitle,date:newEvtDate,taskId};
+    updateMany({
+      timelineEvents:[...(local.timelineEvents||[]),newEvt],
+      projectTasks:[...(local.projectTasks||[]),newTask]
+    });
+    setNewEvtTitle('');setNewEvtDate('');
+  };
   const saveEditEvt=()=>{if(!editEvt)return;update('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));setEditEvt(null);};
-  const deleteEditEvt=()=>{update('timelineEvents',local.timelineEvents.filter(e=>e.id!==editEvt.id));setEditEvt(null);};
-  const toggleMentor=id=>{const m=local.mentors||[];update('mentors',m.includes(id)?m.filter(x=>x!==id):[...m,id]);};
+  const deleteEditEvt=()=>{
+    // Also remove the linked task if it was auto-created from this timeline event
+    const evt=editEvt;
+    const newEvts=local.timelineEvents.filter(e=>e.id!==evt.id);
+    const newTasks=evt.taskId?(local.projectTasks||[]).filter(t=>t.id!==evt.taskId):(local.projectTasks||[]);
+    updateMany({timelineEvents:newEvts,projectTasks:newTasks});
+    setEditEvt(null);
+  };
+  const toggleMentor=id=>{
+    setLocal(prev=>{
+      const m=prev.mentors||[];
+      const next=m.includes(id)?m.filter(x=>x!==id):[...m,id];
+      const u={...prev,mentors:next};
+      setTimeout(()=>onUpdate(u),0);
+      return u;
+    });
+  };
   const [newPTask,setNewPTask]=useState('');
   const addPTask=()=>{if(!newPTask.trim())return;update('projectTasks',[...(local.projectTasks||[]),{id:Date.now(),text:newPTask.trim(),status:'Pendente'}]);setNewPTask('');};
   const cyclePTaskStatus=id=>update('projectTasks',(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t));
@@ -517,8 +613,8 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const updateResearch=(field,val)=>{const rn=(local.researchNotes||[]).map(n=>n.id===activeResearchId?{...n,[field]:val}:n);update('researchNotes',rn);};
   const deleteResearch=id=>{update('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
   const researchImgRef=useRef();
-  const linkedMentors=globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id));
-  const openTasks=(local.projectTasks||[]).filter(t=>t.status!=='Concluído');
+  const linkedMentors=useMemo(()=>globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id)),[globalMentors,local.mentors]);
+  const openTasks=useMemo(()=>(local.projectTasks||[]).filter(t=>t.status!=='Concluído'),[local.projectTasks]);
 
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto',paddingBottom:60}}>
@@ -596,6 +692,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
                     <div className="evt-node" style={{width:10,height:10,borderRadius:'50%',background:'var(--text)',border:'3px solid var(--bg)',boxShadow:'0 0 0 1px var(--text)',marginBottom:12,transition:'background .15s,box-shadow .15s'}}/>
                     <div style={{fontSize:'.7rem',fontWeight:600,color:'var(--muted)',marginBottom:3}}>{evt.date}</div>
                     <div style={{fontSize:'.82rem',fontWeight:600,lineHeight:1.3}}>{evt.title}</div>
+                    {evt.taskId&&<div style={{fontSize:'.65rem',color:'#276b3e',marginTop:3,display:'flex',alignItems:'center',gap:3}}><Icon name="check-square" size={10}/>tarefa vinculada</div>}
                   </div>
                 ))}
               </div>
@@ -685,7 +782,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
             {globalMentors.filter(m=>!m.deleted).length===0?<p style={{fontSize:'.82rem',color:'var(--muted)'}}>Cadastre mentores primeiro.</p>:(
               <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                 {globalMentors.filter(m=>!m.deleted).map(m=>{const on=(local.mentors||[]).includes(m.id);return(
-                  <button key={m.id} onClick={()=>toggleMentor(m.id)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                  <button key={m.id} onClick={e=>{e.stopPropagation();e.preventDefault();toggleMentor(m.id);}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
                     {on&&<Icon name="check" size={12}/>}{m.name}
                   </button>
                 );})}
@@ -791,12 +888,24 @@ const Gallery=({posts,setPosts})=>{
   const addImgRef=useRef();
   const active=posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder));
   const grouped=active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
-  const upd=(field,value)=>{const u={...selected,[field]:value};setSelected(u);setPosts(posts.map(p=>p.id===u.id?u:p));};
-  const handleAddImages=async e=>{const files=Array.from(e.target.files);setUploading(true);const urls=await Promise.all(files.map(uploadImage));setUploading(false);upd('images',[...selected.images,...urls]);e.target.value=''};
+  const upd=(field,value)=>{
+    const updated={...selected,[field]:value};
+    setSelected(updated);
+    setPosts(prev=>prev.map(p=>p.id===updated.id?updated:p));
+  };
+  const handleAddImages=async e=>{
+    const files=Array.from(e.target.files);
+    setUploading(true);
+    const urls=await Promise.all(files.map(uploadImage));
+    setUploading(false);
+    const merged=[...(selected.images||[]),...urls];
+    upd('images',merged);
+    e.target.value='';
+  };
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setPosts(p=>p.filter(x=>x.id!==id));};
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
 
   if(lightbox)return(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
@@ -886,13 +995,13 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
   const [folder,setFolder]=useState('notes');
   const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
   const [newTask,setNewTask]=useState('');
-  const visible=notes.filter(n=>folder==='notes'?!n.deleted:n.deleted);
+  const visible=useMemo(()=>notes.filter(n=>folder==='notes'?!n.deleted:n.deleted),[notes,folder]);
   // Guard: only treat a note as active if it actually lives in the current folder
-  const active=notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null;
+  const active=useMemo(()=>notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null,[notes,activeId,folder]);
   const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
   const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
-  const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));setActiveId(null);};
-  const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?'))setNotes(p=>p.filter(n=>n.id!==id));setActiveId(null);};
+  const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);};
+  const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);}};
   const noteToTask=()=>{if(!active)return;setTasks(p=>[...p,{id:Date.now(),text:active.title,done:false,noteId:active.id}]);};
   const isAlreadyTask=active&&tasks.some(t=>t.noteId===active.id);
   const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
@@ -1012,12 +1121,21 @@ const MentorDetail=({mentor,onBack,onSave,onDelete})=>{
           </div>
         </div>
         {/* Status */}
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
-          <div onClick={()=>set('active',!form.active)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.active?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
-            <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.active?'translateX(16px)':'translateX(0)'}}/>
+        <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div onClick={()=>set('active',!form.active)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.active?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
+              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.active?'translateX(16px)':'translateX(0)'}}/>
+            </div>
+            <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor ativo</span>
+            <span className={`tag ${form.active?'tag-green':'tag-gray'}`} style={{marginLeft:'auto'}}>{form.active?'Ativo':'Inativo'}</span>
           </div>
-          <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor ativo (aparece no dashboard)</span>
-          <span className={`tag ${form.active?'tag-green':'tag-gray'}`} style={{marginLeft:'auto'}}>{form.active?'Ativo':'Inativo'}</span>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div onClick={()=>set('main',!form.main)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.main?'#276b3e':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
+              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.main?'translateX(16px)':'translateX(0)'}}/>
+            </div>
+            <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor principal <span style={{fontSize:'.75rem'}}>(aparece no dashboard — máx. 3)</span></span>
+            {form.main&&<span className="tag tag-green" style={{marginLeft:'auto'}}>Principal</span>}
+          </div>
         </div>
         {/* Notes */}
         <Field label="Notas & Ensinamentos">
@@ -1061,8 +1179,8 @@ const Mentors=({mentors,setMentors})=>{
   const save=form=>{setMentors(p=>p.map(m=>m.id===form.id?form:m));setSelected(form);};
   const softDelete=()=>{setMentors(p=>p.map(m=>m.id===selected.id?{...m,deleted:true}:m));setSelected(null);};
   const restore=id=>setMentors(p=>p.map(m=>m.id===id?{...m,deleted:false}:m));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setMentors(p=>p.filter(m=>m.id!==id));};
-  const add=()=>{const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,photo:'',photos:[],deleted:false};setMentors(p=>[n,...p]);setSelected(n);};
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setMentors(p=>p.filter(m=>m.id!==id));}}
+  const add=()=>{const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[],deleted:false};setMentors(p=>[n,...p]);setSelected(n);};
   const visible=mentors.filter(m=>trash?m.deleted:!m.deleted);
 
   if(selected&&!trash)return<MentorDetail mentor={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
@@ -1111,6 +1229,7 @@ const Mentors=({mentors,setMentors})=>{
             {!trash&&<>
               <div style={{display:'flex',gap:6,marginBottom:m.notes||m.links?14:0}}>
                 <span className={`tag ${m.active?'tag-green':'tag-gray'}`}>{m.active?'Ativo':'Inativo'}</span>
+                {m.main&&<span className="tag" style={{background:'#d1fae5',color:'#065f46'}}>⭐ Principal</span>}
                 {m.area&&<span className="tag tag-blue">{m.area}</span>}
               </div>
               {m.notes&&<p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.7,margin:0,borderTop:'1px solid var(--border)',paddingTop:14}}>{m.notes}</p>}
@@ -1148,7 +1267,7 @@ const Social=({posts,setPosts})=>{
   const cancelEdit=()=>{setText('');setEditId(null);};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setPosts(p=>p.filter(x=>x.id!==id));};
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
   const displayed=trash?trashedPosts:activePosts;
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
@@ -1265,7 +1384,7 @@ const Clients=({clients,setClients})=>{
   const save=form=>{setClients(p=>p.map(c=>c.id===form.id?form:c));setSelected(null);};
   const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true}:c));setSelected(null);};
   const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false}:c));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?'))setClients(p=>p.filter(c=>c.id!==id));};
+  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
   const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
   if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
@@ -1543,8 +1662,8 @@ const App=()=>{
     return ()=>clearTimeout(t);
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
 
-  // Lucide icons re-render
-  useEffect(()=>{setTimeout(()=>lucide.createIcons(),60);},[view,selectedProject,projects,mentors,clients,notes,showNewProject,tasks,socialPosts,galleryPosts,saveFlash]);
+  // Lucide icons: re-run after every render so new icons are always initialized
+  useEffect(()=>{const t=setTimeout(()=>lucide.createIcons(),50);return()=>clearTimeout(t);});
 
   const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
