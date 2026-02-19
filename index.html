@@ -73,17 +73,16 @@ const SEED = {
     {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:"2024-11-01",deadline:"2024-11-22",deleted:false,
      cover:"https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&q=80&w=1200",
      notes:"Referências de motion blur e cores saturadas. Diretor quer câmera baixa nas cenas de corrida.",
-     mentors:[],researchImages:[],
-     projectTasks:[{id:1,text:"Entregar animatic",status:"Fazendo"},{id:2,text:"Revisar paleta de cores",status:"Pendente"}],
+     mentors:[],researchImages:[],researchNotes:[],
      timelineEvents:[{id:1,date:"10/Nov",title:"Briefing"},{id:2,date:"15/Nov",title:"Roughs v1"}]},
     {id:2,type:'personal',title:"Graphic Novel 'Ecos'",client:"Projeto Autoral",status:"Pausado",startDate:"2024-10-01",deadline:"2024-12-30",deleted:false,
      cover:"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200",
      notes:"Estudo de arquitetura brutalista. Personagem principal precisa de redesign.",
-     mentors:[],researchImages:[],projectTasks:[],timelineEvents:[]},
+     mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[]},
     {id:3,type:'work',title:"Série Documental — Amazônia",client:"TV Cultura",status:"Concluído",startDate:"2024-09-01",deadline:"2024-10-15",deleted:false,
      cover:"https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1200",
      notes:"Projeto concluído. Feedback excelente da produtora.",
-     mentors:[],researchImages:[],
+     mentors:[],researchImages:[],researchNotes:[],
      projectTasks:[{id:1,text:"Entrega final",status:"Concluído"}],
      timelineEvents:[{id:1,date:"02/Set",title:"Kickoff"},{id:2,date:"15/Set",title:"Animatic"},{id:3,date:"15/Out",title:"Entrega final"}]}
   ],
@@ -125,6 +124,24 @@ const statusTag=s=>({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluí
 const Icon=({name,size=16,style={}})=><i data-lucide={name} style={{width:size,height:size,display:'inline-block',flexShrink:0,...style}}></i>;
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+
+// Upload to Imgur (anonymous, no auth needed) — returns permanent URL.
+// Falls back to base64 if upload fails so the app always works.
+const IMGUR_CLIENT_ID='546c25a59c58ad7'; // public anonymous client id
+const uploadImage=async file=>{
+  try{
+    const b64=await readFile(file);
+    const body=new FormData();
+    body.append('image',b64.split(',')[1]);
+    body.append('type','base64');
+    const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body});
+    const json=await res.json();
+    if(json.success)return json.data.link;
+    return b64; // fallback
+  }catch{
+    return readFile(file); // fallback to base64
+  }
+};
 
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
 const TrashBanner=({label,onExit})=>(
@@ -219,6 +236,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
         ))}
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+        {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
           {/* Projetos ativos */}
           <div>
@@ -260,6 +278,10 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
               </div>
             </div>
           )}
+        </div>
+
+        {/* RIGHT: activities + recent notes */}
+        <div style={{display:'flex',flexDirection:'column',gap:20}}>
           {/* Atividades gerais */}
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -286,28 +308,6 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
               ))}
             </div>
           </div>
-        </div>
-        <div style={{display:'flex',flexDirection:'column',gap:20}}>
-          {/* Mentores */}
-          <div>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-              <span className="label">Mentores Ativos</span>
-              <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
-            </div>
-            {activeMentors.length===0&&<div className="card" style={{padding:16,textAlign:'center',color:'var(--muted)',fontSize:'.8rem'}}>Nenhum mentor.</div>}
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {activeMentors.slice(0,2).map(m=>(
-                <div key={m.id} className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
-                  {m.photo?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                    :<div style={{width:32,height:32,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
-                  <div style={{minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                    <div style={{fontSize:'.7rem',color:'var(--muted)'}}>{m.area}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
           {/* Notas recentes */}
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -326,13 +326,35 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
           </div>
         </div>
       </div>
+
+      {/* BOTTOM: mentors full-width */}
+      {activeMentors.length>0&&(
+        <div style={{marginTop:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span className="label">Mentores Ativos</span>
+            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+            {activeMentors.map(m=>(
+              <div key={m.id} className="card" style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
+                {m.photo?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                  :<div style={{width:32,height:32,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
+                <div style={{minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                  <div style={{fontSize:'.7rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // ─── NEW PROJECT MODAL ────────────────────────────────────────────────────────
 const NewProjectModal=({onSave,onClose})=>{
-  const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],projectTasks:[],timelineEvents:[],deleted:false});
+  const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const coverRef=useRef();
   const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await readFile(file));};
@@ -456,7 +478,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const [newEvtDate,setNewEvtDate]=useState('');
   const [editEvt,setEditEvt]=useState(null); // event being edited
   const coverRef=useRef();
-  const researchRef=useRef();
   const update=(field,value)=>{const u={...local,[field]:value};setLocal(u);onUpdate(u);};
   const addEvent=()=>{if(!newEvtTitle||!newEvtDate)return;update('timelineEvents',[...(local.timelineEvents||[]),{id:Date.now(),title:newEvtTitle,date:newEvtDate}]);setNewEvtTitle('');setNewEvtDate('');};
   const saveEditEvt=()=>{if(!editEvt)return;update('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));setEditEvt(null);};
@@ -467,15 +488,28 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const cyclePTaskStatus=id=>update('projectTasks',(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t));
   const removePTask=id=>update('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
   const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;update('cover',await readFile(file));};
-  const handleResearchUpload=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));update('researchImages',[...(local.researchImages||[]),...urls]);e.target.value='';};
-  const removeResearchImage=idx=>{const imgs=[...(local.researchImages||[])];imgs.splice(idx,1);update('researchImages',imgs);};
+  const handleResearchImgUpload=async(noteId,e)=>{
+    const files=Array.from(e.target.files);
+    const urls=await Promise.all(files.map(uploadImage));
+    const rn=(local.researchNotes||[]).map(n=>n.id===noteId?{...n,images:[...(n.images||[]),...urls]}:n);
+    update('researchNotes',rn);e.target.value='';
+  };
+  const removeResearchImg=(noteId,idx)=>{
+    const rn=(local.researchNotes||[]).map(n=>{if(n.id!==noteId)return n;const imgs=[...(n.images||[])];imgs.splice(idx,1);return{...n,images:imgs};});
+    update('researchNotes',rn);
+  };
+  const [activeResearchId,setActiveResearchId]=useState(()=>(project.researchNotes||[])[0]?.id||null);
+  const activeResearch=(local.researchNotes||[]).find(n=>n.id===activeResearchId)||null;
+  const addResearchNote=()=>{const n={id:Date.now(),title:'Nova Pesquisa',content:'',url:'',images:[],date:new Date().toLocaleDateString('pt-BR')};update('researchNotes',[...(local.researchNotes||[]),n]);setActiveResearchId(n.id);};
+  const updateResearch=(field,val)=>{const rn=(local.researchNotes||[]).map(n=>n.id===activeResearchId?{...n,[field]:val}:n);update('researchNotes',rn);};
+  const deleteResearch=id=>{update('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
+  const researchImgRef=useRef();
   const linkedMentors=globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id));
   const openTasks=(local.projectTasks||[]).filter(t=>t.status!=='Concluído');
 
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto',paddingBottom:60}}>
       <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
-      <input ref={researchRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleResearchUpload}/>
 
       {/* Timeline event edit modal */}
       {editEvt&&(
@@ -663,19 +697,69 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
       )}
 
       {tab==='Pesquisa'&&(
-        <div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12}}>
-            {(local.researchImages||[]).map((img,i)=>(
-              <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'1',backgroundColor:'var(--bg)'}}>
-                <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-                <button onClick={()=>removeResearchImage(i)} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={12}/></button>
+        <div style={{display:'flex',gap:16,minHeight:480}}>
+          {/* Left: list of research notes */}
+          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
+            {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
+            {(local.researchNotes||[]).map(n=>(
+              <div key={n.id} onClick={()=>setActiveResearchId(n.id)}
+                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
+                onMouseEnter={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='var(--surface)';}}
+                onMouseLeave={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='transparent';}}>
+                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
+                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
               </div>
             ))}
-            <div className="upload-zone" style={{aspectRatio:'1',minHeight:0}} onClick={()=>researchRef.current.click()}>
-              <Icon name="image-plus" size={22} style={{marginBottom:8}}/><span style={{fontSize:'.78rem'}}>Adicionar<br/>imagens</span>
-            </div>
           </div>
-          {(local.researchImages||[]).length===0&&<p style={{textAlign:'center',color:'var(--muted)',fontSize:'.82rem',marginTop:16}}>Clique no ícone acima para carregar referências.</p>}
+          {/* Right: editor */}
+          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+            {activeResearch?(
+              <>
+                <input ref={researchImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleResearchImgUpload(activeResearchId,e)}/>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+                  <input value={activeResearch.title} onChange={e=>updateResearch('title',e.target.value)}
+                    style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
+                    placeholder="Título da pesquisa"/>
+                  <button onClick={()=>deleteResearch(activeResearch.id)} className="btn btn-ghost" style={{padding:6,flexShrink:0}}
+                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                    <Icon name="trash-2" size={16}/>
+                  </button>
+                </div>
+                {/* URL field */}
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'7px 12px'}}>
+                  <Icon name="link" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                  <input value={activeResearch.url||''} onChange={e=>updateResearch('url',e.target.value)}
+                    placeholder="Link de referência (https://...)"
+                    style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
+                  {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+                </div>
+                {/* Text */}
+                <textarea value={activeResearch.content} onChange={e=>updateResearch('content',e.target.value)}
+                  placeholder="Notas, análises, referências..."
+                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
+                {/* Images */}
+                {(activeResearch.images||[]).length>0&&(
+                  <div style={{display:'flex',flexWrap:'wrap',gap:10,marginBottom:14}}>
+                    {(activeResearch.images||[]).map((img,i)=>(
+                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',flexShrink:0}}>
+                        <img src={img} style={{display:'block',maxWidth:220,maxHeight:180,objectFit:'contain',background:'var(--bg)'}}/>
+                        <button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="btn btn-outline" style={{alignSelf:'flex-start',padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>researchImgRef.current.click()}>
+                  <Icon name="image-plus" size={13}/> Adicionar imagens
+                </button>
+              </>
+            ):(
+              <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+                <Icon name="book-open" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                <p style={{fontSize:'.85rem'}}>Selecione ou crie uma pesquisa</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -690,11 +774,12 @@ const Gallery=({posts,setPosts})=>{
   const [selected,setSelected]=useState(null);
   const [lightbox,setLightbox]=useState(null);
   const [trash,setTrash]=useState(false);
+  const [uploading,setUploading]=useState(false);
   const addImgRef=useRef();
   const active=posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder));
   const grouped=active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
   const upd=(field,value)=>{const u={...selected,[field]:value};setSelected(u);setPosts(posts.map(p=>p.id===u.id?u:p));};
-  const handleAddImages=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));upd('images',[...selected.images,...urls]);e.target.value='';};
+  const handleAddImages=async e=>{const files=Array.from(e.target.files);setUploading(true);const urls=await Promise.all(files.map(uploadImage));setUploading(false);upd('images',[...selected.images,...urls]);e.target.value=''};
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
@@ -719,15 +804,15 @@ const Gallery=({posts,setPosts})=>{
           style={{fontSize:'2rem',fontWeight:400,background:'transparent',outline:'none',border:'none',borderBottom:'1px solid var(--border)',width:'100%',marginBottom:24,paddingBottom:8,color:'var(--text)',fontFamily:'Cormorant Garamond,serif'}}/>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
+        <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
           {selected.images.map((img,i)=>(
-            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'1',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.05)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',flexShrink:0,cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
+              <img src={img} style={{display:'block',maxWidth:300,maxHeight:260,objectFit:'contain',background:'var(--bg)',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.02)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
             </div>
           ))}
-          <div className="upload-zone" style={{aspectRatio:'1',minHeight:0}} onClick={()=>addImgRef.current.click()}>
-            <Icon name="plus" size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>Adicionar</span>
+          <div className="upload-zone" style={{width:120,height:120,minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
+            <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploading?'Enviando…':'Adicionar'}</span>
           </div>
         </div>
       </div>
@@ -789,7 +874,8 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
   const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
   const [newTask,setNewTask]=useState('');
   const visible=notes.filter(n=>folder==='notes'?!n.deleted:n.deleted);
-  const active=notes.find(n=>n.id===activeId)||null;
+  // Guard: only treat a note as active if it actually lives in the current folder
+  const active=notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null;
   const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
   const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
   const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));setActiveId(null);};
@@ -806,7 +892,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
         <h1 className="serif" style={{fontSize:'2rem',fontWeight:300}}>Ideias</h1>
         <div style={{display:'flex',flexDirection:'column',gap:4}}>
           {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
-            <button key={v} onClick={()=>{setFolder(v);setActiveId(null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
+            <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(first?.id||null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
               {l} <span style={{opacity:.6,fontSize:'.75rem'}}>({notes.filter(n=>v==='notes'?!n.deleted:n.deleted).length})</span>
             </button>
           ))}
@@ -887,7 +973,7 @@ const MentorDetail=({mentor,onBack,onSave,onDelete})=>{
   const photoRef=useRef();
   const galleryRef=useRef();
   const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await readFile(file));};
-  const handleGallery=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(readFile));set('photos',[...(form.photos||[]),...urls].slice(0,4));e.target.value='';};
+  const handleGallery=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(uploadImage));set('photos',[...(form.photos||[]),...urls].slice(0,4));e.target.value='';};
   const removeGalleryPhoto=idx=>{const p=[...(form.photos||[])];p.splice(idx,1);set('photos',p);};
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto',paddingBottom:60}}>
@@ -1213,25 +1299,86 @@ const Clients=({clients,setClients})=>{
   );
 };
 
-// ─── SYNC HUB ─────────────────────────────────────────────────────────────────
+// ─── SYNC HUB (GitHub Gist) ───────────────────────────────────────────────────
 const SyncHub=({appState,onImport,onClearSave})=>{
-  const [importStatus,setImportStatus]=useState(null);
+  const GIST_LS_KEY='boardhub_gist_config';
+  const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{return{};}};
+  const [token,setToken]=useState(()=>loadConfig().token||'');
+  const [gistId,setGistId]=useState(()=>loadConfig().gistId||'');
+  const [tokenInput,setTokenInput]=useState(()=>loadConfig().token||'');
+  const [gistIdInput,setGistIdInput]=useState(()=>loadConfig().gistId||'');
+  const [status,setStatus]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [showConfig,setShowConfig]=useState(false);
   const importRef=useRef();
+  const configured=token&&gistId;
+  const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
+  const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),5000);};
+
+  // Single sync: push local data to Gist
+  const syncNow=async()=>{
+    if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
+    setLoading(true);
+    try{
+      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
+      const res=await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content:data}}})});
+      if(!res.ok)throw new Error(`Erro ${res.status}`);
+      const json=await res.json();
+      showStatus('ok',`✓ Sincronizado com sucesso! ${new Date(json.updated_at).toLocaleString('pt-BR')}`);
+    }catch(e){showStatus('err',`Falha na sincronização: ${e.message}`);}
+    finally{setLoading(false);}
+  };
+
+  // Pull: load data from Gist into local
+  const pullFromGist=async()=>{
+    if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
+    if(!window.confirm('Isso vai substituir todos os seus dados locais pelos dados do Gist. Confirmar?'))return;
+    setLoading(true);
+    try{
+      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${token}`}});
+      if(!res.ok)throw new Error(`Erro ${res.status}`);
+      const json=await res.json();
+      const file=json.files['boardhub-data.json'];
+      if(!file)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
+      const data=JSON.parse(file.content);
+      onImport(data);
+      showStatus('ok',`✓ Dados carregados do Gist! Exportado em: ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`);
+    }catch(e){showStatus('err',`Falha ao carregar: ${e.message}`);}
+    finally{setLoading(false);}
+  };
+
+  const createGist=async()=>{
+    if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
+    setLoading(true);
+    try{
+      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
+      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content:data}}})});
+      if(!res.ok)throw new Error(`Erro ${res.status}`);
+      const json=await res.json();
+      setGistIdInput(json.id);
+      saveConfig(tokenInput,json.id);
+      showStatus('ok',`✓ Gist criado e configurado!`);
+      setShowConfig(false);
+    }catch(e){showStatus('err',`Falha ao criar Gist: ${e.message}`);}
+    finally{setLoading(false);}
+  };
+
   const exportData=()=>{
     const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
     const blob=new Blob([data],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
   };
-  const handleImport=e=>{
+  const handleImportFile=e=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=ev=>{
-      try{const data=JSON.parse(ev.target.result);onImport(data);setImportStatus({ok:true,msg:`Importado com sucesso! Backup de ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`});}
-      catch{setImportStatus({ok:false,msg:'Arquivo inválido. Verifique se é um backup BoardHub.'});}
+      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok',`✓ Importado com sucesso!`);}
+      catch{showStatus('err','Arquivo inválido.');}
     };
     reader.readAsText(file);e.target.value='';
   };
+
   const counts=[
     {label:'Projetos',value:(appState.projects||[]).filter(p=>!p.deleted).length},
     {label:'Clientes',value:(appState.clients||[]).filter(c=>!c.deleted).length},
@@ -1240,52 +1387,113 @@ const SyncHub=({appState,onImport,onClearSave})=>{
     {label:'Atividades',value:(appState.tasks||[]).length},
     {label:'Posts',value:(appState.socialPosts||[]).filter(p=>!p.deleted).length},
   ];
+
   return(
-    <div className="fade-up" style={{maxWidth:760,margin:'0 auto'}}>
-      <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:8}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:32}}>Dados salvos automaticamente no navegador. Use o backup manual para transferir entre dispositivos ou fazer cópias de segurança.</p>
-      <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:24}}>
+    <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
+      <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:24}}>
         {counts.map(s=>(
-          <div key={s.label} className="card" style={{padding:'16px 20px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:'.8rem',color:'var(--muted)'}}>{s.label}</span>
-            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:500}}>{s.value}</span>
+          <div key={s.label} className="card" style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{s.label}</span>
+            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.4rem',fontWeight:500}}>{s.value}</span>
           </div>
         ))}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20}}>
-        <div className="card" style={{padding:28}}>
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="download" size={18} style={{color:'white'}}/></div>
-            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Exportar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Baixar backup completo</div></div>
-          </div>
-          <button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={exportData}><Icon name="download" size={14}/> Baixar backup JSON</button>
-        </div>
-        <div className="card" style={{padding:28}}>
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="upload" size={18} style={{color:'#1e40af'}}/></div>
-            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Importar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Restaurar de backup</div></div>
-          </div>
-          <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={14}/> Carregar arquivo JSON</button>
-        </div>
-      </div>
-      <div className="card" style={{padding:24,marginBottom:20}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:20}}>
-          <div>
-            <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:4}}>Limpar save local</div>
-            <div style={{fontSize:'.8rem',color:'var(--muted)'}}>Remove os dados salvos no navegador e restaura os dados de exemplo.</div>
-          </div>
-          <button className="btn btn-danger" style={{flexShrink:0}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
-            <Icon name="trash-2" size={14}/> Limpar
-          </button>
-        </div>
-      </div>
-      {importStatus&&(
-        <div style={{padding:'14px 20px',borderRadius:10,background:importStatus.ok?'#E8F5EC':'#FDEDED',border:`1px solid ${importStatus.ok?'#bbf7d0':'#FECACA'}`,color:importStatus.ok?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={importStatus.ok?'check-circle':'alert-circle'} size={16}/>{importStatus.msg}
-          <button onClick={()=>setImportStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
+
+      {/* Status message */}
+      {status&&(
+        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
+          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
+          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
         </div>
       )}
+
+      {/* Main sync button */}
+      <div className="card" style={{padding:28,marginBottom:16}}>
+        <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20}}>
+          <div style={{width:48,height:48,borderRadius:12,background:configured?'var(--text)':'var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Icon name="refresh-cw" size={20} style={{color:configured?'white':'var(--muted)'}}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:'1rem',marginBottom:2}}>Sincronizar com GitHub Gist</div>
+            <div style={{fontSize:'.78rem',color:'var(--muted)'}}>{configured?`Gist configurado · ID: ${gistId.slice(0,12)}…`:'Nenhum Gist configurado ainda.'}</div>
+          </div>
+          {configured&&<a href={`https://gist.github.com/${gistId}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:4,fontSize:'.75rem',textDecoration:'none'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn btn-dark" style={{flex:1,justifyContent:'center',padding:'10px 0',fontSize:'.9rem'}} onClick={syncNow} disabled={loading}>
+            <Icon name={loading?'loader':'upload-cloud'} size={15}/> {loading?'Sincronizando…':'Salvar no Gist'}
+          </button>
+          {configured&&(
+            <button className="btn btn-outline" style={{padding:'10px 16px'}} onClick={pullFromGist} disabled={loading} title="Carregar dados do Gist para este computador">
+              <Icon name="download-cloud" size={15}/>
+            </button>
+          )}
+        </div>
+        {configured&&<p style={{fontSize:'.72rem',color:'var(--muted)',marginTop:10,marginBottom:0}}>"Salvar no Gist" envia os dados deste computador. O botão <Icon name="download-cloud" size={11}/> carrega os dados do Gist (sobrescreve o local).</p>}
+      </div>
+
+      {/* Config section (collapsible) */}
+      <div className="card" style={{marginBottom:16,overflow:'hidden'}}>
+        <button onClick={()=>setShowConfig(!showConfig)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 24px',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:600,color:'var(--text)'}}>
+          <span style={{display:'flex',alignItems:'center',gap:8}}><Icon name="settings" size={15}/> Configuração do Gist</span>
+          <Icon name={showConfig?'chevron-up':'chevron-down'} size={15} style={{color:'var(--muted)'}}/>
+        </button>
+        {showConfig&&(
+          <div style={{padding:'0 24px 24px',display:'flex',flexDirection:'column',gap:14,borderTop:'1px solid var(--border)'}}>
+            <div style={{paddingTop:16}}>
+              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6}}>Token do GitHub</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>Gere em <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>github.com/settings/tokens</a> com escopo <code style={{background:'var(--border)',padding:'1px 5px',borderRadius:4}}>gist</code>.</div>
+              <input type="password" className="input-box" value={tokenInput} onChange={e=>setTokenInput(e.target.value)} placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style={{fontFamily:'monospace'}}/>
+            </div>
+            <div>
+              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6}}>Gist ID</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>Se já tem um Gist do BoardHub, cole o ID. Senão, clique "Criar Gist".</div>
+              <input className="input-box" value={gistIdInput} onChange={e=>setGistIdInput(e.target.value)} placeholder="abc123def456..." style={{fontFamily:'monospace'}}/>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={createGist} disabled={loading}>
+                <Icon name="plus-circle" size={13}/> {loading?'Criando…':'Criar novo Gist'}
+              </button>
+              <button className="btn btn-dark" style={{flex:1,justifyContent:'center'}} onClick={()=>{saveConfig(tokenInput,gistIdInput);showStatus('ok','✓ Configuração salva!');setShowConfig(false);}}>
+                <Icon name="check" size={13}/> Salvar
+              </button>
+            </div>
+            {configured&&<button className="btn btn-danger" style={{alignSelf:'flex-start'}} onClick={()=>{localStorage.removeItem(GIST_LS_KEY);setToken('');setGistId('');setTokenInput('');setGistIdInput('');}}>
+              <Icon name="trash-2" size={13}/> Desconectar Gist
+            </button>}
+          </div>
+        )}
+      </div>
+
+      {/* Manual backup */}
+      <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
+      <div className="card" style={{padding:'18px 24px',marginBottom:16,display:'flex',alignItems:'center',gap:16}}>
+        <Icon name="hard-drive" size={18} style={{color:'var(--muted)',flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Backup manual</div>
+          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Exportar ou importar um arquivo JSON local.</div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={exportData}><Icon name="download" size={13}/> Exportar</button>
+          <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={13}/> Importar</button>
+        </div>
+      </div>
+
+      {/* Danger zone */}
+      <div className="card" style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
+        <Icon name="alert-triangle" size={16} style={{color:'#9B1C1C',flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:1}}>Limpar dados locais</div>
+          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Apaga tudo e restaura os exemplos.</div>
+        </div>
+        <button className="btn btn-danger" style={{flexShrink:0,padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
+          <Icon name="trash-2" size={13}/> Limpar
+        </button>
+      </div>
     </div>
   );
 };
@@ -1338,7 +1546,6 @@ const App=()=>{
     if(data.tasks)setTasks(data.tasks);
     if(data.socialPosts)setSocialPosts(data.socialPosts);
     if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
-    if(data.dashMentorIds)setDashMentorIds(data.dashMentorIds);
   };
 
   return(
@@ -1346,7 +1553,7 @@ const App=()=>{
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
       <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
       <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
-        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} dashMentorIds={dashMentorIds} setDashMentorIds={setDashMentorIds}/>}
+        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors}/>}
         {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
