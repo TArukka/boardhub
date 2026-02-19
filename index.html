@@ -1213,97 +1213,25 @@ const Clients=({clients,setClients})=>{
   );
 };
 
-// ─── SYNC HUB (GitHub Gist) ───────────────────────────────────────────────────
+// ─── SYNC HUB ─────────────────────────────────────────────────────────────────
 const SyncHub=({appState,onImport,onClearSave})=>{
-  const GIST_LS_KEY='boardhub_gist_config';
-  const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{return{};}};
-  const [tab,setTab]=useState('sync');
-  const [token,setToken]=useState(()=>loadConfig().token||'');
-  const [gistId,setGistId]=useState(()=>loadConfig().gistId||'');
-  const [tokenInput,setTokenInput]=useState(()=>loadConfig().token||'');
-  const [gistIdInput,setGistIdInput]=useState(()=>loadConfig().gistId||'');
-  const [status,setStatus]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [remoteInfo,setRemoteInfo]=useState(null);
+  const [importStatus,setImportStatus]=useState(null);
   const importRef=useRef();
-  const configured=token&&gistId;
-  const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
-  const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),4000);};
-
-  const pushToGist=async()=>{
-    if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
-    setLoading(true);
-    try{
-      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content:data}}})});
-      if(!res.ok)throw new Error(`Erro ${res.status}: ${res.statusText}`);
-      const json=await res.json();
-      showStatus('ok',`✓ Push realizado! Atualizado em ${new Date(json.updated_at).toLocaleString('pt-BR')}`);
-    }catch(e){showStatus('err',`Falha no push: ${e.message}`);}
-    finally{setLoading(false);}
-  };
-
-  const pullFromGist=async()=>{
-    if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
-    setLoading(true);
-    try{
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${token}`}});
-      if(!res.ok)throw new Error(`Erro ${res.status}: ${res.statusText}`);
-      const json=await res.json();
-      const file=json.files['boardhub-data.json'];
-      if(!file)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
-      const data=JSON.parse(file.content);
-      onImport(data);
-      showStatus('ok',`✓ Pull realizado! Dados de ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`);
-    }catch(e){showStatus('err',`Falha no pull: ${e.message}`);}
-    finally{setLoading(false);}
-  };
-
-  const checkRemote=async()=>{
-    if(!token||!gistId)return;
-    setLoading(true);
-    try{
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${token}`}});
-      if(!res.ok)throw new Error();
-      const json=await res.json();
-      const file=json.files['boardhub-data.json'];
-      if(file){const data=JSON.parse(file.content);setRemoteInfo({updatedAt:new Date(json.updated_at).toLocaleString('pt-BR'),exportedAt:data._exported?new Date(data._exported).toLocaleString('pt-BR'):'—',projects:(data.projects||[]).filter(p=>!p.deleted).length,clients:(data.clients||[]).filter(c=>!c.deleted).length});}
-    }catch{}
-    finally{setLoading(false);}
-  };
-
-  const createGist=async()=>{
-    if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
-    setLoading(true);
-    try{
-      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
-      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content:data}}})});
-      if(!res.ok)throw new Error(`Erro ${res.status}: ${res.statusText}`);
-      const json=await res.json();
-      setGistIdInput(json.id);
-      saveConfig(tokenInput,json.id);
-      showStatus('ok',`✓ Gist criado! ID: ${json.id}`);
-      setTab('sync');
-    }catch(e){showStatus('err',`Falha ao criar Gist: ${e.message}`);}
-    finally{setLoading(false);}
-  };
-
   const exportData=()=>{
     const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
     const blob=new Blob([data],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
   };
-  const handleImportFile=e=>{
+  const handleImport=e=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=ev=>{
-      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok',`✓ Importado de ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`);}
-      catch{showStatus('err','Arquivo inválido.');}
+      try{const data=JSON.parse(ev.target.result);onImport(data);setImportStatus({ok:true,msg:`Importado com sucesso! Backup de ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`});}
+      catch{setImportStatus({ok:false,msg:'Arquivo inválido. Verifique se é um backup BoardHub.'});}
     };
     reader.readAsText(file);e.target.value='';
   };
-
   const counts=[
     {label:'Projetos',value:(appState.projects||[]).filter(p=>!p.deleted).length},
     {label:'Clientes',value:(appState.clients||[]).filter(c=>!c.deleted).length},
@@ -1312,157 +1240,50 @@ const SyncHub=({appState,onImport,onClearSave})=>{
     {label:'Atividades',value:(appState.tasks||[]).length},
     {label:'Posts',value:(appState.socialPosts||[]).filter(p=>!p.deleted).length},
   ];
-
-  const tabStyle=active=>({padding:'7px 18px',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontWeight:500,fontSize:'.83rem',background:active?'var(--text)':'transparent',color:active?'white':'var(--muted)',transition:'all .15s'});
-
   return(
     <div className="fade-up" style={{maxWidth:760,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28}}>
-        <div>
-          <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
-          <p style={{color:'var(--muted)',fontSize:'.85rem'}}>Sincronize seus dados via GitHub Gist entre computadores.</p>
-        </div>
-        <div style={{display:'flex',gap:4,background:'var(--border)',borderRadius:10,padding:3}}>
-          <button style={tabStyle(tab==='sync')} onClick={()=>{setTab('sync');if(configured)checkRemote();}}>Sincronizar</button>
-          <button style={tabStyle(tab==='config')} onClick={()=>setTab('config')}>Configurar</button>
-          <button style={tabStyle(tab==='manual')} onClick={()=>setTab('manual')}>Manual</button>
-        </div>
-      </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:24}}>
+      <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:8}}>Sincronizar</h1>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:32}}>Dados salvos automaticamente no navegador. Use o backup manual para transferir entre dispositivos ou fazer cópias de segurança.</p>
+      <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImport}/>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:24}}>
         {counts.map(s=>(
-          <div key={s.label} className="card" style={{padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:'.78rem',color:'var(--muted)'}}>{s.label}</span>
-            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500}}>{s.value}</span>
+          <div key={s.label} className="card" style={{padding:'16px 20px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:'.8rem',color:'var(--muted)'}}>{s.label}</span>
+            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:500}}>{s.value}</span>
           </div>
         ))}
       </div>
-
-      {status&&(
-        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':status.type==='err'?'#FDEDED':'#EFF6FF',border:`1px solid ${status.type==='ok'?'#bbf7d0':status.type==='err'?'#FECACA':'#bfdbfe'}`,color:status.type==='ok'?'#276b3e':status.type==='err'?'#9B1C1C':'#1e40af',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':status.type==='err'?'alert-circle':'info'} size={16}/>{status.msg}
-          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:20}}>
+        <div className="card" style={{padding:28}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="download" size={18} style={{color:'white'}}/></div>
+            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Exportar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Baixar backup completo</div></div>
+          </div>
+          <button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={exportData}><Icon name="download" size={14}/> Baixar backup JSON</button>
         </div>
-      )}
-
-      {tab==='sync'&&(
-        <div>
-          {!configured&&(
-            <div className="card" style={{padding:32,marginBottom:20,borderStyle:'dashed',textAlign:'center'}}>
-              <Icon name="github" size={32} style={{color:'var(--muted)',marginBottom:12}}/>
-              <div style={{fontWeight:600,marginBottom:6}}>Gist não configurado</div>
-              <div style={{fontSize:'.83rem',color:'var(--muted)',marginBottom:16}}>Configure seu token e Gist ID para sincronizar entre computadores.</div>
-              <button className="btn btn-dark" onClick={()=>setTab('config')}><Icon name="settings" size={14}/> Ir para Configurações</button>
-            </div>
-          )}
-          {configured&&(
-            <div>
-              {remoteInfo&&(
-                <div className="card" style={{padding:'16px 22px',marginBottom:16,display:'flex',gap:24,alignItems:'center',background:'#F0F9FF',borderColor:'#bae6fd'}}>
-                  <Icon name="cloud" size={20} style={{color:'#0284c7',flexShrink:0}}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:'.78rem',color:'var(--muted)',marginBottom:2}}>Último push no Gist</div>
-                    <div style={{fontWeight:500,fontSize:'.88rem'}}>{remoteInfo.exportedAt}</div>
-                  </div>
-                  <div style={{fontSize:'.78rem',color:'var(--muted)',textAlign:'right'}}>{remoteInfo.projects} projetos · {remoteInfo.clients} clientes</div>
-                </div>
-              )}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
-                <div className="card" style={{padding:28}}>
-                  <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
-                    <div style={{width:40,height:40,borderRadius:10,background:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="upload-cloud" size={18} style={{color:'white'}}/></div>
-                    <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Push</div><div style={{fontSize:'.75rem',color:'var(--muted)'}}>Enviar local → Gist</div></div>
-                  </div>
-                  <p style={{fontSize:'.78rem',color:'var(--muted)',marginBottom:14,lineHeight:1.6}}>Sobrescreve o Gist com os dados atuais deste computador.</p>
-                  <button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={pushToGist} disabled={loading}>
-                    <Icon name={loading?'loader':'upload-cloud'} size={14}/> {loading?'Enviando…':'Push para Gist'}
-                  </button>
-                </div>
-                <div className="card" style={{padding:28}}>
-                  <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
-                    <div style={{width:40,height:40,borderRadius:10,background:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="download-cloud" size={18} style={{color:'#1e40af'}}/></div>
-                    <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Pull</div><div style={{fontSize:'.75rem',color:'var(--muted)'}}>Buscar Gist → local</div></div>
-                  </div>
-                  <p style={{fontSize:'.78rem',color:'var(--muted)',marginBottom:14,lineHeight:1.6}}>Substitui os dados locais pelos dados do Gist.</p>
-                  <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={pullFromGist} disabled={loading}>
-                    <Icon name={loading?'loader':'download-cloud'} size={14}/> {loading?'Buscando…':'Pull do Gist'}
-                  </button>
-                </div>
-              </div>
-              <div className="card" style={{padding:'14px 20px',display:'flex',alignItems:'center',gap:12}}>
-                <Icon name="github" size={15} style={{color:'var(--muted)'}}/>
-                <span style={{fontSize:'.78rem',color:'var(--muted)',fontFamily:'monospace'}}>Gist ID: {gistId}</span>
-                <a href={`https://gist.github.com/${gistId}`} target="_blank" rel="noopener noreferrer" style={{marginLeft:'auto',fontSize:'.75rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4,textDecoration:'none'}}>Ver no GitHub <Icon name="external-link" size={11}/></a>
-              </div>
-            </div>
-          )}
+        <div className="card" style={{padding:28}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+            <div style={{width:40,height:40,borderRadius:10,backgroundColor:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="upload" size={18} style={{color:'#1e40af'}}/></div>
+            <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Importar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Restaurar de backup</div></div>
+          </div>
+          <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={14}/> Carregar arquivo JSON</button>
         </div>
-      )}
-
-      {tab==='config'&&(
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          <div className="card" style={{padding:28}}>
-            <div style={{fontWeight:600,marginBottom:4}}>Token do GitHub</div>
-            <div style={{fontSize:'.8rem',color:'var(--muted)',marginBottom:14,lineHeight:1.6}}>
-              Gere em <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>github.com/settings/tokens</a> com escopo <code style={{background:'var(--border)',padding:'1px 5px',borderRadius:4}}>gist</code> habilitado.
-            </div>
-            <input type="password" className="input-box" value={tokenInput} onChange={e=>setTokenInput(e.target.value)} placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style={{width:'100%',fontFamily:'monospace'}}/>
+      </div>
+      <div className="card" style={{padding:24,marginBottom:20}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:20}}>
+          <div>
+            <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:4}}>Limpar save local</div>
+            <div style={{fontSize:'.8rem',color:'var(--muted)'}}>Remove os dados salvos no navegador e restaura os dados de exemplo.</div>
           </div>
-          <div className="card" style={{padding:28}}>
-            <div style={{fontWeight:600,marginBottom:4}}>Gist ID</div>
-            <div style={{fontSize:'.8rem',color:'var(--muted)',marginBottom:14,lineHeight:1.6}}>Se já tem um Gist do BoardHub, cole o ID aqui. Caso contrário, clique em "Criar Gist".</div>
-            <input className="input-box" value={gistIdInput} onChange={e=>setGistIdInput(e.target.value)} placeholder="abc123def456..." style={{width:'100%',fontFamily:'monospace'}}/>
-          </div>
-          <div style={{display:'flex',gap:10}}>
-            <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={createGist} disabled={loading}>
-              <Icon name="plus-circle" size={14}/> {loading?'Criando…':'Criar novo Gist'}
-            </button>
-            <button className="btn btn-dark" style={{flex:1,justifyContent:'center'}} onClick={()=>{saveConfig(tokenInput,gistIdInput);showStatus('ok','✓ Configuração salva!');setTab('sync');}}>
-              <Icon name="check" size={14}/> Salvar configuração
-            </button>
-          </div>
-          <div className="card" style={{padding:'16px 20px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div>
-              <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:3}}>Limpar configuração</div>
-              <div style={{fontSize:'.78rem',color:'var(--muted)'}}>Remove token e ID salvos neste navegador.</div>
-            </div>
-            <button className="btn btn-danger" style={{flexShrink:0}} onClick={()=>{localStorage.removeItem(GIST_LS_KEY);setToken('');setGistId('');setTokenInput('');setGistIdInput('');showStatus('info','Configuração removida.');}}>
-              <Icon name="trash-2" size={13}/> Limpar
-            </button>
-          </div>
+          <button className="btn btn-danger" style={{flexShrink:0}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
+            <Icon name="trash-2" size={14}/> Limpar
+          </button>
         </div>
-      )}
-
-      {tab==='manual'&&(
-        <div>
-          <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:16}}>
-            <div className="card" style={{padding:28}}>
-              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                <div style={{width:40,height:40,borderRadius:10,backgroundColor:'var(--text)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="download" size={18} style={{color:'white'}}/></div>
-                <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Exportar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Baixar backup JSON</div></div>
-              </div>
-              <button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={exportData}><Icon name="download" size={14}/> Baixar backup</button>
-            </div>
-            <div className="card" style={{padding:28}}>
-              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                <div style={{width:40,height:40,borderRadius:10,backgroundColor:'#EFF6FF',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="upload" size={18} style={{color:'#1e40af'}}/></div>
-                <div><div style={{fontWeight:600,fontSize:'.95rem'}}>Importar dados</div><div style={{fontSize:'.78rem',color:'var(--muted)'}}>Restaurar de arquivo</div></div>
-              </div>
-              <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={14}/> Carregar JSON</button>
-            </div>
-          </div>
-          <div className="card" style={{padding:24,marginBottom:20}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:20}}>
-              <div>
-                <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:4}}>Limpar save local</div>
-                <div style={{fontSize:'.8rem',color:'var(--muted)'}}>Remove os dados salvos no navegador e restaura os dados de exemplo.</div>
-              </div>
-              <button className="btn btn-danger" style={{flexShrink:0}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
-                <Icon name="trash-2" size={14}/> Limpar
-              </button>
-            </div>
-          </div>
+      </div>
+      {importStatus&&(
+        <div style={{padding:'14px 20px',borderRadius:10,background:importStatus.ok?'#E8F5EC':'#FDEDED',border:`1px solid ${importStatus.ok?'#bbf7d0':'#FECACA'}`,color:importStatus.ok?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
+          <Icon name={importStatus.ok?'check-circle':'alert-circle'} size={16}/>{importStatus.msg}
+          <button onClick={()=>setImportStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
         </div>
       )}
     </div>
@@ -1517,6 +1338,7 @@ const App=()=>{
     if(data.tasks)setTasks(data.tasks);
     if(data.socialPosts)setSocialPosts(data.socialPosts);
     if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
+    if(data.dashMentorIds)setDashMentorIds(data.dashMentorIds);
   };
 
   return(
@@ -1524,7 +1346,7 @@ const App=()=>{
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
       <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
       <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
-        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes}/>}
+        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} dashMentorIds={dashMentorIds} setDashMentorIds={setDashMentorIds}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors}/>}
         {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
