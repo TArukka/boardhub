@@ -125,7 +125,20 @@ const Icon=({name,size=16,style={}})=><i data-lucide={name} style={{width:size,h
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
-// Upload to Imgur (anonymous, no auth needed) — returns permanent URL.
+// Strip base64 image data before syncing to Gist — keeps JSON small.
+// Only Imgur-style https URLs are kept; base64 blobs stay local only.
+const isBase64Img=v=>typeof v==='string'&&v.startsWith('data:image');
+const stripBase64=obj=>{
+  if(Array.isArray(obj))return obj.map(stripBase64);
+  if(obj&&typeof obj==='object'){
+    const out={};
+    for(const k of Object.keys(obj))out[k]=stripBase64(obj[k]);
+    return out;
+  }
+  if(isBase64Img(obj))return ''; // drop base64, keep empty string
+  return obj;
+};
+// Upload to Imgur (anonymous) — returns permanent URL.
 // Falls back to base64 if upload fails so the app always works.
 const IMGUR_CLIENT_ID='546c25a59c58ad7'; // public anonymous client id
 const uploadImage=async file=>{
@@ -357,7 +370,7 @@ const NewProjectModal=({onSave,onClose})=>{
   const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const coverRef=useRef();
-  const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await readFile(file));};
+  const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await uploadImage(file));};
   const save=()=>{if(!form.title.trim())return;onSave({...form,id:Date.now(),cover:form.cover||'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'});};
   return(
     <Modal title="Novo Projeto" onClose={onClose} width={520} offsetSidebar>
@@ -487,7 +500,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const addPTask=()=>{if(!newPTask.trim())return;update('projectTasks',[...(local.projectTasks||[]),{id:Date.now(),text:newPTask.trim(),status:'Pendente'}]);setNewPTask('');};
   const cyclePTaskStatus=id=>update('projectTasks',(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t));
   const removePTask=id=>update('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
-  const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;update('cover',await readFile(file));};
+  const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;update('cover',await uploadImage(file));};
   const handleResearchImgUpload=async(noteId,e)=>{
     const files=Array.from(e.target.files);
     const urls=await Promise.all(files.map(uploadImage));
@@ -972,7 +985,7 @@ const MentorDetail=({mentor,onBack,onSave,onDelete})=>{
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const photoRef=useRef();
   const galleryRef=useRef();
-  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await readFile(file));};
+  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
   const handleGallery=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(uploadImage));set('photos',[...(form.photos||[]),...urls].slice(0,4));e.target.value='';};
   const removeGalleryPhoto=idx=>{const p=[...(form.photos||[])];p.splice(idx,1);set('photos',p);};
   return(
@@ -1209,7 +1222,7 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
   const [form,setForm]=useState(client);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const photoRef=useRef();
-  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await readFile(file));};
+  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto',paddingBottom:60}}>
       <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
@@ -1320,7 +1333,7 @@ const SyncHub=({appState,onImport,onClearSave})=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
     setLoading(true);
     try{
-      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
+      const data=JSON.stringify({...stripBase64(appState),_v:'2.0',_exported:new Date().toISOString()},null,2);
       const res=await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content:data}}})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
@@ -1340,7 +1353,14 @@ const SyncHub=({appState,onImport,onClearSave})=>{
       const json=await res.json();
       const file=json.files['boardhub-data.json'];
       if(!file)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
-      const data=JSON.parse(file.content);
+      // GitHub truncates large files — fetch raw content if needed
+      let content=file.content;
+      if(file.truncated){
+        const rawRes=await fetch(file.raw_url,{headers:{Authorization:`token ${token}`}});
+        if(!rawRes.ok)throw new Error(`Erro ao buscar conteúdo raw: ${rawRes.status}`);
+        content=await rawRes.text();
+      }
+      const data=JSON.parse(content);
       onImport(data);
       showStatus('ok',`✓ Dados carregados do Gist! Exportado em: ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`);
     }catch(e){showStatus('err',`Falha ao carregar: ${e.message}`);}
@@ -1351,7 +1371,7 @@ const SyncHub=({appState,onImport,onClearSave})=>{
     if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
     setLoading(true);
     try{
-      const data=JSON.stringify({...appState,_v:'2.0',_exported:new Date().toISOString()},null,2);
+      const data=JSON.stringify({...stripBase64(appState),_v:'2.0',_exported:new Date().toISOString()},null,2);
       const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content:data}}})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
