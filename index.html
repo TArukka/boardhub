@@ -214,15 +214,61 @@ const PomodoroTimer = () => {
   const [isActive, setIsActive] = useState(false);
   const [mode, setMode] = useState('focus'); // 'focus' | 'break'
 
+  // Carrega os dados salvos ou inicia do zero
+  const loadStats = () => {
+    try {
+      const saved = localStorage.getItem('boardhub_pomodoro_stats');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const today = new Date().toDateString();
+        // Se a data salva for hoje, mantém os segundos diários. Se não, zera o diário.
+        if (parsed.lastDate === today) {
+          return parsed;
+        } else {
+          return { ...parsed, dailySeconds: 0, lastDate: today };
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao carregar stats do Pomodoro", e);
+    }
+    return { dailySeconds: 0, historicalSeconds: 0, lastDate: new Date().toDateString() };
+  };
+
+  const [stats, setStats] = useState(loadStats);
+
+  // Salva no localStorage sempre que os status mudarem
+  useEffect(() => {
+    localStorage.setItem('boardhub_pomodoro_stats', JSON.stringify(stats));
+  }, [stats]);
+
   useEffect(() => {
     let interval = null;
     if (isActive && timeLeft > 0) {
       interval = setInterval(() => {
         setTimeLeft((time) => time - 1);
+        
+        // Incrementa os contadores apenas no modo Foco
+        if (mode === 'focus') {
+          setStats((prev) => {
+            const today = new Date().toDateString();
+            // Verifica se o dia virou enquanto o timer estava rodando
+            if (prev.lastDate !== today) {
+              return {
+                dailySeconds: 1,
+                historicalSeconds: prev.historicalSeconds + 1,
+                lastDate: today
+              };
+            }
+            return {
+              ...prev,
+              dailySeconds: prev.dailySeconds + 1,
+              historicalSeconds: prev.historicalSeconds + 1
+            };
+          });
+        }
       }, 1000);
-    } else if (timeLeft === 0) {
+    } else if (timeLeft === 0 && isActive) {
       setIsActive(false);
-      // Opcional: Alerta nativo simples quando o tempo acaba
       if (mode === 'focus') {
         alert("Tempo de foco concluído! Que tal uma pausa?");
       } else {
@@ -251,12 +297,22 @@ const PomodoroTimer = () => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  // Formata os segundos totais em Horas e Minutos para ficar mais limpo
+  const formatStats = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span className="label">Hub Pomodoro</span>
       </div>
       <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        
+        {/* Controles de Foco/Pausa */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button
             className={`btn ${mode === 'focus' ? 'btn-dark' : 'btn-ghost'}`}
@@ -274,10 +330,12 @@ const PomodoroTimer = () => {
           </button>
         </div>
 
+        {/* Relógio Principal */}
         <div style={{ fontFamily: 'Cormorant Garamond,serif', fontSize: '3.5rem', fontWeight: 500, lineHeight: 1, color: 'var(--text)' }}>
           {formatTime(timeLeft)}
         </div>
 
+        {/* Botões de Ação */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-outline" onClick={toggleTimer} style={{ minWidth: 110, justifyContent: 'center' }}>
             <Icon name={isActive ? "pause" : "play"} size={16} />
@@ -287,6 +345,46 @@ const PomodoroTimer = () => {
             <Icon name="rotate-ccw" size={16} />
           </button>
         </div>
+
+        {/* Estatísticas de Tempo */}
+        <div style={{ 
+          marginTop: 8, 
+          display: 'flex', 
+          gap: 12,
+          width: '100%',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'var(--bg)',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flex: 1
+          }}>
+            <span style={{fontSize: '.65rem', textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--muted)', marginBottom: 2}}>Hoje</span>
+            <span style={{fontSize: '.9rem', fontWeight: 600, color: 'var(--text)'}}>
+              {formatStats(stats.dailySeconds)}
+            </span>
+          </div>
+          
+          <div style={{
+            background: 'var(--bg)',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flex: 1
+          }}>
+            <span style={{fontSize: '.65rem', textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--muted)', marginBottom: 2}}>Total Histórico</span>
+            <span style={{fontSize: '.9rem', fontWeight: 600, color: 'var(--text)'}}>
+              {formatStats(stats.historicalSeconds)}
+            </span>
+          </div>
+        </div>
+
       </div>
     </div>
   );
