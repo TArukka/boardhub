@@ -208,6 +208,90 @@ const Sidebar=({activeView,setView,saveFlash})=>{
   );
 };
 
+// ─── POMODORO TIMER ───────────────────────────────────────────────────────────
+const PomodoroTimer = () => {
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [isActive, setIsActive] = useState(false);
+  const [mode, setMode] = useState('focus'); // 'focus' | 'break'
+
+  useEffect(() => {
+    let interval = null;
+    if (isActive && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((time) => time - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      setIsActive(false);
+      // Opcional: Alerta nativo simples quando o tempo acaba
+      if (mode === 'focus') {
+        alert("Tempo de foco concluído! Que tal uma pausa?");
+      } else {
+        alert("Pausa finalizada! Pronto para voltar ao foco?");
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isActive, timeLeft, mode]);
+
+  const toggleTimer = () => setIsActive(!isActive);
+
+  const resetTimer = () => {
+    setIsActive(false);
+    setTimeLeft(mode === 'focus' ? 25 * 60 : 5 * 60);
+  };
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setIsActive(false);
+    setTimeLeft(newMode === 'focus' ? 25 * 60 : 5 * 60);
+  };
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span className="label">Hub Pomodoro</span>
+      </div>
+      <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            className={`btn ${mode === 'focus' ? 'btn-dark' : 'btn-ghost'}`}
+            onClick={() => switchMode('focus')}
+            style={{ padding: '6px 12px', fontSize: '.8rem' }}
+          >
+            <Icon name="brain" size={14} /> Foco
+          </button>
+          <button
+            className={`btn ${mode === 'break' ? 'btn-dark' : 'btn-ghost'}`}
+            onClick={() => switchMode('break')}
+            style={{ padding: '6px 12px', fontSize: '.8rem' }}
+          >
+            <Icon name="coffee" size={14} /> Pausa
+          </button>
+        </div>
+
+        <div style={{ fontFamily: 'Cormorant Garamond,serif', fontSize: '3.5rem', fontWeight: 500, lineHeight: 1, color: 'var(--text)' }}>
+          {formatTime(timeLeft)}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-outline" onClick={toggleTimer} style={{ minWidth: 110, justifyContent: 'center' }}>
+            <Icon name={isActive ? "pause" : "play"} size={16} />
+            {isActive ? "Pausar" : "Iniciar"}
+          </button>
+          <button className="btn btn-ghost" onClick={resetTimer} title="Reiniciar">
+            <Icon name="rotate-ccw" size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+  
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
@@ -292,6 +376,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
 
         {/* RIGHT: activities + recent notes */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
+          <PomodoroTimer />
           {/* Atividades gerais */}
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
