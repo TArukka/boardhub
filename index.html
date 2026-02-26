@@ -52,6 +52,9 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .ptask-Pendente{background:#F0EDE9;color:var(--muted);}.ptask-Fazendo{background:#FEF9E7;color:#92700b;}.ptask-Concluído{background:#E8F5EC;color:#276b3e;}.ptask-Atrasado{background:#FDEDED;color:#9B1C1C;}
 @keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 .save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .25s ease;display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;}
+
+/* Pomodoro stats slide-in panel */
+@keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 </style>
 </head>
 <body>
@@ -208,188 +211,294 @@ const Sidebar=({activeView,setView,saveFlash})=>{
   );
 };
 
-// ─── POMODORO TIMER ───────────────────────────────────────────────────────────
-const PomodoroTimer = () => {
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
-  const [isActive, setIsActive] = useState(false);
-  const [mode, setMode] = useState('focus'); // 'focus' | 'break'
+// ─── POMODORO ─────────────────────────────────────────────────────────────────
+const POMO_LS = 'boardhub_pomo_v3';
 
-  // Carrega os dados salvos ou inicia do zero
-  const loadStats = () => {
-    try {
-      const saved = localStorage.getItem('boardhub_pomodoro_stats');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const today = new Date().toDateString();
-        // Se a data salva for hoje, mantém os segundos diários. Se não, zera o diário.
-        if (parsed.lastDate === today) {
-          return parsed;
-        } else {
-          return { ...parsed, dailySeconds: 0, lastDate: today };
-        }
+const pomoLoad = function() {
+  try {
+    var s = localStorage.getItem(POMO_LS);
+    if (s) {
+      var parsed = JSON.parse(s);
+      // Migrate old format that used dailySeconds/historicalSeconds
+      if (typeof parsed.dailySeconds !== 'undefined') {
+        var today2 = new Date().toISOString().slice(0, 10);
+        var days2 = {};
+        if (parsed.dailySeconds > 0) days2[today2] = parsed.dailySeconds;
+        return { days: days2 };
       }
-    } catch (e) {
-      console.error("Erro ao carregar stats do Pomodoro", e);
+      return parsed;
     }
-    return { dailySeconds: 0, historicalSeconds: 0, lastDate: new Date().toDateString() };
-  };
-
-  const [stats, setStats] = useState(loadStats);
-
-  // Salva no localStorage sempre que os status mudarem
-  useEffect(() => {
-    localStorage.setItem('boardhub_pomodoro_stats', JSON.stringify(stats));
-  }, [stats]);
-
-  useEffect(() => {
-    let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((time) => time - 1);
-        
-        // Incrementa os contadores apenas no modo Foco
-        if (mode === 'focus') {
-          setStats((prev) => {
-            const today = new Date().toDateString();
-            // Verifica se o dia virou enquanto o timer estava rodando
-            if (prev.lastDate !== today) {
-              return {
-                dailySeconds: 1,
-                historicalSeconds: prev.historicalSeconds + 1,
-                lastDate: today
-              };
-            }
-            return {
-              ...prev,
-              dailySeconds: prev.dailySeconds + 1,
-              historicalSeconds: prev.historicalSeconds + 1
-            };
-          });
-        }
-      }, 1000);
-    } else if (timeLeft === 0 && isActive) {
-      setIsActive(false);
-      if (mode === 'focus') {
-        alert("Tempo de foco concluído! Que tal uma pausa?");
-      } else {
-        alert("Pausa finalizada! Pronto para voltar ao foco?");
-      }
+    // Try older key
+    var old = localStorage.getItem('boardhub_pomodoro_stats');
+    if (old) {
+      var p2 = JSON.parse(old);
+      var t2 = new Date().toISOString().slice(0, 10);
+      var d2 = {};
+      if (p2.dailySeconds > 0) d2[t2] = p2.dailySeconds;
+      return { days: d2 };
     }
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft, mode]);
+  } catch(e) {}
+  return { days: {} };
+};
 
-  const toggleTimer = () => setIsActive(!isActive);
+const pomoSave = function(d) {
+  try { localStorage.setItem(POMO_LS, JSON.stringify(d)); } catch(e) {}
+};
 
-  const resetTimer = () => {
-    setIsActive(false);
-    setTimeLeft(mode === 'focus' ? 25 * 60 : 5 * 60);
-  };
+const pomoTodayKey = function() {
+  return new Date().toISOString().slice(0, 10);
+};
 
-  const switchMode = (newMode) => {
-    setMode(newMode);
-    setIsActive(false);
-    setTimeLeft(newMode === 'focus' ? 25 * 60 : 5 * 60);
-  };
+const pomoFmtSecs = function(secs) {
+  var h = Math.floor(secs / 3600);
+  var m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm';
+  return secs + 's';
+};
 
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
+const pomoFmtDay = function(dateStr) {
+  try {
+    var d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+  } catch(e) { return dateStr; }
+};
 
-  // Formata os segundos totais em Horas e Minutos para ficar mais limpo
-  const formatStats = (totalSeconds) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  };
+const pomoFmtMonth = function(mk) {
+  try {
+    var parts = mk.split('-');
+    return new Date(+parts[0], +parts[1]-1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  } catch(e) { return mk; }
+};
+
+// ─── POMODORO STATS PANEL ────────────────────────────────────────────────────
+const PomodoroStatsPanel = function(props) {
+  var onClose = props.onClose;
+  var data = useMemo(function() { return pomoLoad(); }, []);
+  var tabState = useState('days');
+  var tab = tabState[0];
+  var setTab = tabState[1];
+
+  var dayEntries = useMemo(function() {
+    var entries = Object.entries(data.days || {});
+    var filtered = entries.filter(function(e) { return e[0] !== '_total' && e[0].length === 10 && e[1] > 0; });
+    filtered.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+    return filtered.slice(0, 60);
+  }, [data]);
+
+  var monthEntries = useMemo(function() {
+    var months = {};
+    var entries = Object.entries(data.days || {});
+    for (var i = 0; i < entries.length; i++) {
+      var day = entries[i][0];
+      var secs = entries[i][1];
+      if (day === '_total' || day.length !== 10) continue;
+      var mk = day.slice(0, 7);
+      months[mk] = (months[mk] || 0) + secs;
+    }
+    var result = Object.entries(months);
+    result.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+    return result;
+  }, [data]);
+
+  var maxDay = 1;
+  for (var di = 0; di < dayEntries.length; di++) { if (dayEntries[di][1] > maxDay) maxDay = dayEntries[di][1]; }
+
+  var maxMonth = 1;
+  for (var mi2 = 0; mi2 < monthEntries.length; mi2++) { if (monthEntries[mi2][1] > maxMonth) maxMonth = monthEntries[mi2][1]; }
+
+  var totalAll = 0;
+  for (var ti = 0; ti < dayEntries.length; ti++) { totalAll += dayEntries[ti][1]; }
+  var todaySecs = (data.days || {})[pomoTodayKey()] || 0;
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span className="label">Hub Pomodoro</span>
-      </div>
-      <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-        
-        {/* Controles de Foco/Pausa */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className={`btn ${mode === 'focus' ? 'btn-dark' : 'btn-ghost'}`}
-            onClick={() => switchMode('focus')}
-            style={{ padding: '6px 12px', fontSize: '.8rem' }}
-          >
-            <Icon name="brain" size={14} /> Foco
-          </button>
-          <button
-            className={`btn ${mode === 'break' ? 'btn-dark' : 'btn-ghost'}`}
-            onClick={() => switchMode('break')}
-            style={{ padding: '6px 12px', fontSize: '.8rem' }}
-          >
-            <Icon name="coffee" size={14} /> Pausa
-          </button>
-        </div>
+    <div style={{position:'fixed',inset:0,zIndex:300}} onClick={function(e){ if(e.target===e.currentTarget) onClose(); }}>
+      <div style={{position:'absolute',top:0,right:0,width:340,height:'100%',background:'var(--surface)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',boxShadow:'-8px 0 32px rgba(28,25,23,.12)',animation:'slideInStats .25s ease'}}>
 
-        {/* Relógio Principal */}
-        <div style={{ fontFamily: 'Cormorant Garamond,serif', fontSize: '3.5rem', fontWeight: 500, lineHeight: 1, color: 'var(--text)' }}>
-          {formatTime(timeLeft)}
-        </div>
-
-        {/* Botões de Ação */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-outline" onClick={toggleTimer} style={{ minWidth: 110, justifyContent: 'center' }}>
-            <Icon name={isActive ? "pause" : "play"} size={16} />
-            {isActive ? "Pausar" : "Iniciar"}
-          </button>
-          <button className="btn btn-ghost" onClick={resetTimer} title="Reiniciar">
-            <Icon name="rotate-ccw" size={16} />
-          </button>
-        </div>
-
-        {/* Estatísticas de Tempo */}
-        <div style={{ 
-          marginTop: 8, 
-          display: 'flex', 
-          gap: 12,
-          width: '100%',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            background: 'var(--bg)',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            flex: 1
-          }}>
-            <span style={{fontSize: '.65rem', textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--muted)', marginBottom: 2}}>Hoje</span>
-            <span style={{fontSize: '.9rem', fontWeight: 600, color: 'var(--text)'}}>
-              {formatStats(stats.dailySeconds)}
-            </span>
+        <div style={{padding:'22px 20px 14px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <h2 className="serif" style={{fontSize:'1.4rem',fontWeight:400,margin:0}}>Histórico de Foco</h2>
+            <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
           </div>
-          
-          <div style={{
-            background: 'var(--bg)',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            flex: 1
-          }}>
-            <span style={{fontSize: '.65rem', textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--muted)', marginBottom: 2}}>Total Histórico</span>
-            <span style={{fontSize: '.9rem', fontWeight: 600, color: 'var(--text)'}}>
-              {formatStats(stats.historicalSeconds)}
-            </span>
+          <div style={{display:'flex',gap:8}}>
+            <div style={{flex:1,background:'var(--bg)',borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Hoje</div>
+              <div style={{fontSize:'1rem',fontWeight:600}}>{pomoFmtSecs(todaySecs)}</div>
+            </div>
+            <div style={{flex:1,background:'var(--bg)',borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Total</div>
+              <div style={{fontSize:'1rem',fontWeight:600}}>{pomoFmtSecs(totalAll)}</div>
+            </div>
           </div>
+        </div>
+
+        <div style={{display:'flex',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <button onClick={function(){setTab('days');}} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:tab==='days'?'var(--text)':'var(--muted)',borderBottom:tab==='days'?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>Por Dia</button>
+          <button onClick={function(){setTab('months');}} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:tab==='months'?'var(--text)':'var(--muted)',borderBottom:tab==='months'?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>Por Mês</button>
+        </div>
+
+        <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
+          {tab === 'days' && (
+            <div>
+              {dayEntries.length === 0 && (
+                <div style={{textAlign:'center',padding:'40px 0',color:'var(--muted)'}}>
+                  <p style={{fontSize:'.85rem',margin:0}}>Nenhuma sessão registrada ainda.</p>
+                </div>
+              )}
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {dayEntries.map(function(entry) {
+                  var day = entry[0]; var secs = entry[1];
+                  var barW = Math.round(secs/maxDay*100) + '%';
+                  return (
+                    <div key={day}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                        <span style={{fontSize:'.8rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
+                        <span style={{fontSize:'.8rem',fontWeight:600}}>{pomoFmtSecs(secs)}</span>
+                      </div>
+                      <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:barW,background:'var(--text)',borderRadius:3}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {tab === 'months' && (
+            <div>
+              {monthEntries.length === 0 && (
+                <div style={{textAlign:'center',padding:'40px 0',color:'var(--muted)'}}>
+                  <p style={{fontSize:'.85rem',margin:0}}>Nenhuma sessão registrada ainda.</p>
+                </div>
+              )}
+              <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                {monthEntries.map(function(mEntry) {
+                  var mk = mEntry[0]; var secs = mEntry[1];
+                  var barW = Math.round(secs/maxMonth*100) + '%';
+                  var daysInMonth = dayEntries.filter(function(e){ return e[0].slice(0,7)===mk; });
+                  return (
+                    <div key={mk}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                        <span style={{fontSize:'.82rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
+                        <span style={{fontSize:'.82rem',fontWeight:700}}>{pomoFmtSecs(secs)}</span>
+                      </div>
+                      <div style={{height:8,background:'var(--bg)',borderRadius:4,overflow:'hidden',marginBottom:6}}>
+                        <div style={{height:'100%',width:barW,background:'var(--text)',borderRadius:4}}/>
+                      </div>
+                      <div style={{paddingLeft:8}}>
+                        {daysInMonth.map(function(de) {
+                          return (
+                            <div key={de[0]} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
+                              <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtDay(de[0])}</span>
+                              <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtSecs(de[1])}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
     </div>
   );
 };
-  
+
+// ─── POMODORO TIMER ───────────────────────────────────────────────────────────
+const PomodoroTimer = function() {
+  var FOCUS_SECS = 25 * 60;
+  var BREAK_SECS = 5 * 60;
+  var tState = useState(FOCUS_SECS); var timeLeft = tState[0]; var setTimeLeft = tState[1];
+  var aState = useState(false);      var isActive = aState[0]; var setIsActive = aState[1];
+  var mState = useState('focus');    var mode = mState[0];     var setMode = mState[1];
+  var dState = useState(function(){ return pomoLoad(); }); var pomoData = dState[0]; var setPomoData = dState[1];
+  var modeRef = useRef('focus');
+  modeRef.current = mode;
+
+  useEffect(function() { pomoSave(pomoData); }, [pomoData]);
+
+  useEffect(function() {
+    if (!isActive) return;
+    if (timeLeft <= 0) {
+      if (modeRef.current === 'focus') {
+        setMode('break');
+        setTimeLeft(BREAK_SECS);
+        // isActive stays true so break auto-starts
+      } else {
+        setMode('focus');
+        setTimeLeft(FOCUS_SECS);
+        setIsActive(false);
+      }
+      return;
+    }
+    var id = setInterval(function() {
+      setTimeLeft(function(t) { return t <= 1 ? 0 : t - 1; });
+      if (modeRef.current === 'focus') {
+        setPomoData(function(prev) {
+          var key = pomoTodayKey();
+          var newDays = Object.assign({}, prev.days);
+          newDays[key] = (newDays[key] || 0) + 1;
+          return { days: newDays };
+        });
+      }
+    }, 1000);
+    return function() { clearInterval(id); };
+  }, [isActive, timeLeft]);
+
+  var toggle = function() { setIsActive(function(a) { return !a; }); };
+  var reset  = function() { setIsActive(false); setTimeLeft(mode === 'focus' ? FOCUS_SECS : BREAK_SECS); };
+
+  var mins = Math.floor(timeLeft / 60);
+  var secs = timeLeft % 60;
+  var timeStr = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+
+  var pct = mode === 'focus' ? timeLeft / FOCUS_SECS : timeLeft / BREAK_SECS;
+  var r = 46;
+  var circ = 2 * Math.PI * r;
+  var offset = circ * (1 - pct);
+  var isFocus = mode === 'focus';
+  var todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
+
+  return (
+    <div style={{marginBottom:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <span className="label">Pomodoro</span>
+        <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'#E8F5EC',color:isFocus?'var(--muted)':'#276b3e',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
+          <Icon name={isFocus?'brain':'coffee'} size={11}/>
+          {isFocus ? 'Foco' : 'Pausa'}
+        </div>
+      </div>
+      <div className="card" style={{padding:'20px 24px',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+        <div style={{position:'relative',width:110,height:110}}>
+          <svg width="110" height="110" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
+            <circle cx="55" cy="55" r={r} fill="none" stroke="var(--border)" strokeWidth="5"/>
+            <circle cx="55" cy="55" r={r} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="5" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" style={{transition:'stroke-dashoffset 1s linear,stroke .4s'}}/>
+          </svg>
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.75rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <button className="btn btn-outline" onClick={toggle} style={{minWidth:100,justifyContent:'center',padding:'7px 16px'}}>
+            <Icon name={isActive?'pause':'play'} size={15}/>
+            {isActive ? 'Pausar' : (isFocus ? 'Iniciar' : 'Retomar')}
+          </button>
+          <button className="btn btn-ghost" onClick={reset} title="Reiniciar" style={{padding:8}}>
+            <Icon name="rotate-ccw" size={15}/>
+          </button>
+        </div>
+        <div style={{fontSize:'.72rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:5}}>
+          <Icon name="clock" size={11}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todaySecs)}</strong> em foco
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
@@ -1870,10 +1979,19 @@ const App=()=>{
     if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
   };
 
+  var psState = useState(false); var showPomoStats = psState[0]; var setShowPomoStats = psState[1];
   return(
     <div style={{display:'flex',minHeight:'100vh'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
+      {showPomoStats&&<PomodoroStatsPanel onClose={function(){setShowPomoStats(false);}}/>}
       <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
+      <button
+        onClick={function(){setShowPomoStats(function(s){return !s;});}}
+        title="Histórico de foco Pomodoro"
+        style={{position:'fixed',top:16,right:16,zIndex:150,width:36,height:36,borderRadius:'50%',background:'var(--surface)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 8px rgba(28,25,23,.1)',transition:'all .18s'}}
+        onMouseEnter={function(e){e.currentTarget.style.background='var(--text)';e.currentTarget.style.color='white';}}
+        onMouseLeave={function(e){e.currentTarget.style.background='var(--surface)';e.currentTarget.style.color='inherit';}}
+      ><Icon name="timer" size={16}/></button>
       <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
