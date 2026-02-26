@@ -53,6 +53,10 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 @keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 .save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .25s ease;display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;}
 
+/* Gantt styles */
+.gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
+.gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
+
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 </style>
@@ -247,7 +251,7 @@ const Sidebar=({activeView,setView,saveFlash})=>{
     {id:'projects', icon:'folder-open',     label:'Projetos'},
     {id:'gallery',  icon:'image',           label:'Galeria'},
     {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
-    {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
+
     {id:'social',   icon:'share-2',         label:'Social'},
     {id:'clients',  icon:'users',           label:'Clientes'},
     {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
@@ -669,7 +673,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
-  const activeMentors=useMemo(()=>mentors.filter(m=>!m.deleted&&m.active&&m.main).slice(0,3),[mentors]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
   const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
   const h=new Date().getHours();
@@ -678,8 +681,8 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
 
   const stats=[
     {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects'},
-    {label:'Mentores Ativos',value:activeMentors.length,icon:'graduation-cap',view:'mentors'},
-    {label:'Tarefas Pendentes',value:tasks.filter(t=>!t.done).length,icon:'check-square',view:'dashboard'}
+    {label:'Tarefas Abertas',value:active.reduce((s,p)=>(s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length),0),icon:'check-square',view:'projects'},
+    {label:'Atividades Pendentes',value:tasks.filter(t=>!t.done).length,icon:'list-checks',view:'dashboard'}
   ];
   const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
   const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
@@ -805,28 +808,6 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
           </div>
         </div>
       </div>
-
-      {/* BOTTOM: mentors full-width */}
-      {activeMentors.length>0&&(
-        <div style={{marginTop:20}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <span className="label">Mentores Principais</span>
-            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Gerenciar <Icon name="arrow-right" size={12}/></button>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
-            {activeMentors.map(m=>(
-              <div key={m.id} className="card" style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
-                {m.photo?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                  :<div style={{width:32,height:32,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
-                <div style={{minWidth:0}}>
-                  <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                  <div style={{fontSize:'.7rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -1002,9 +983,295 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
   );
 };
 
-// ─── PROJECT DETAIL ───────────────────────────────────────────────────────────
+// ─── ADD MENTOR INLINE ────────────────────────────────────────────────────────
+const AddMentorInline=({onAdd})=>{
+  const [open,setOpen]=useState(false);
+  const [name,setName]=useState('');
+  const [area,setArea]=useState('');
+  if(!open)return(
+    <button onClick={()=>setOpen(true)} className="btn btn-ghost"
+      style={{padding:'4px 10px',fontSize:'.75rem',color:'var(--muted)',border:'1px dashed var(--border)',borderRadius:8,width:'100%',justifyContent:'center',gap:6}}>
+      <Icon name="plus" size={12}/> Adicionar mentor
+    </button>
+  );
+  const save=()=>{
+    if(!name.trim())return;
+    const mentor={id:Date.now(),name:name.trim(),area:area.trim(),medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[],deleted:false};
+    onAdd(mentor);
+    setName('');setArea('');setOpen(false);
+  };
+  return(
+    <div style={{display:'flex',gap:8,alignItems:'center',padding:'8px 0',flexWrap:'wrap'}}>
+      <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&save()} autoFocus
+        placeholder="Nome do mentor..." className="input-box" style={{flex:2,minWidth:120,fontSize:'.8rem',padding:'6px 10px'}}/>
+      <input value={area} onChange={e=>setArea(e.target.value)} onKeyDown={e=>e.key==='Enter'&&save()}
+        placeholder="Área (ex: Narrativa)" className="input-box" style={{flex:2,minWidth:100,fontSize:'.8rem',padding:'6px 10px'}}/>
+      <button onClick={save} className="btn btn-dark" style={{padding:'6px 12px',fontSize:'.78rem'}}><Icon name="check" size={12}/></button>
+      <button onClick={()=>{setOpen(false);setName('');setArea('');}} className="btn btn-ghost" style={{padding:'6px 8px'}}><Icon name="x" size={12}/></button>
+    </div>
+  );
+};
+
+// ─── GANTT TIMELINE ───────────────────────────────────────────────────────────
 const PTASK_STATUSES=['Pendente','Fazendo','Concluído','Atrasado'];
 const PTASK_NEXT={'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
+
+const GANTT_COLORS={
+  'Pendente': {bar:'#EDE8E1',text:'#6B6460',border:'#C8BEB4',dot:'#B5ABA0'},
+  'Fazendo':  {bar:'#FEF3C7',text:'#92700B',border:'#FCD34D',dot:'#F59E0B'},
+  'Concluído':{bar:'#D1FAE5',text:'#065F46',border:'#6EE7B7',dot:'#10B981'},
+  'Atrasado': {bar:'#FEE2E2',text:'#991B1B',border:'#FCA5A5',dot:'#EF4444'},
+};
+
+const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
+const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
+const todayISO=()=>new Date().toISOString().slice(0,10);
+const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
+
+const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
+  const today=todayISO();
+  const [selectedId,setSelectedId]=useState(null);
+  const [editDraft,setEditDraft]=useState(null);
+  const [newTaskName,setNewTaskName]=useState('');
+  const dragRef=useRef(null);
+  const [, forceUpdate]=useState(0);
+
+  // ── Compute chart bounds ──────────────────────────────────────────────────
+  let chartStart=projectStart||today;
+  let chartEnd=projectEnd||addDays(today,45);
+  tasks.forEach(t=>{
+    if(t.startDate&&t.startDate<chartStart)chartStart=t.startDate;
+    if(t.dueDate&&t.dueDate>chartEnd)chartEnd=t.dueDate;
+  });
+  chartStart=addDays(chartStart,-5);
+  chartEnd=addDays(chartEnd,12);
+  const totalDays=Math.max(1,daysBetween(chartStart,chartEnd));
+  const DAY_W=36;
+  const ROW_H=46;
+  const HEADER_H=52;
+  const LEFT_W=220;
+
+  // ── Month + week header data ──────────────────────────────────────────────
+  const months=[];
+  let cur=new Date(chartStart+'T12:00:00');
+  const endDt=new Date(chartEnd+'T12:00:00');
+  while(cur<=endDt){
+    const mStart=cur.toISOString().slice(0,10);
+    const label=cur.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.',' ');
+    const next=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+    const mEnd=next>endDt?chartEnd:next.toISOString().slice(0,10);
+    months.push({label,days:daysBetween(mStart,mEnd)});
+    cur=next;
+  }
+
+  const weekMarkers=[];
+  for(let i=0;i<=totalDays;i+=7){
+    const d=addDays(chartStart,i);
+    const dt=new Date(d+'T12:00:00');
+    weekMarkers.push({offset:i*DAY_W,label:dt.getDate()+'/'+(dt.getMonth()+1)});
+  }
+
+  const todayOffset=daysBetween(chartStart,today)*DAY_W;
+  const gridW=totalDays*DAY_W;
+
+  // ── Bar geometry ───────────────────────────────────────────────────────────
+  const barGeom=t=>{
+    const s=t.startDate||(projectStart||today);
+    const e=t.dueDate||(projectEnd||addDays(today,7));
+    const left=Math.max(0,daysBetween(chartStart,s))*DAY_W;
+    const width=Math.max(DAY_W,(daysBetween(s,e)+1)*DAY_W);
+    return{left,width};
+  };
+
+  // ── Drag ──────────────────────────────────────────────────────────────────
+  const startDrag=(e,taskId,type)=>{
+    e.preventDefault();e.stopPropagation();
+    const t=tasks.find(x=>x.id===taskId);if(!t)return;
+    const origStart=t.startDate||(projectStart||today);
+    const origEnd=t.dueDate||(projectEnd||addDays(today,7));
+    dragRef.current={taskId,type,startX:e.clientX,origStart,origEnd};
+    const onMove=me=>{
+      if(!dragRef.current)return;
+      const dx=me.clientX-dragRef.current.startX;
+      const delta=Math.round(dx/DAY_W);
+      const{taskId,type,origStart,origEnd}=dragRef.current;
+      let ns,ne;
+      if(type==='move'){ns=addDays(origStart,delta);ne=addDays(origEnd,delta);}
+      else if(type==='left'){ns=addDays(origStart,delta);ne=origEnd;if(ns>=ne)ns=addDays(ne,-1);}
+      else{ns=origStart;ne=addDays(origEnd,delta);if(ne<=ns)ne=addDays(ns,1);}
+      onUpdateTasks(tasks.map(x=>x.id===taskId?{...x,startDate:ns,dueDate:ne}:x));
+    };
+    const onUp=()=>{dragRef.current=null;window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);};
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  };
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+  const selectTask=t=>{setSelectedId(t.id);setEditDraft({...t,startDate:t.startDate||(projectStart||today),dueDate:t.dueDate||(projectEnd||addDays(today,7)),notes:t.notes||''});};
+  const saveEdit=()=>{if(!editDraft)return;onUpdateTasks(tasks.map(t=>t.id===editDraft.id?{...editDraft}:t));setSelectedId(null);setEditDraft(null);};
+  const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));setSelectedId(null);setEditDraft(null);};
+  const cycleStatus=id=>{const upd=tasks.map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);onUpdateTasks(upd);if(editDraft&&editDraft.id===id)setEditDraft(d=>({...d,status:PTASK_NEXT[d.status]||'Pendente'}));};
+  const addTask=()=>{
+    if(!newTaskName.trim())return;
+    const id=Date.now();
+    const s=projectStart||today;
+    const e=projectEnd||addDays(today,7);
+    onUpdateTasks([...tasks,{id,text:newTaskName.trim(),status:'Pendente',startDate:s,dueDate:e,notes:''}]);
+    setNewTaskName('');
+  };
+
+  return(
+    <div className="card" style={{padding:0,overflow:'hidden',marginBottom:20}}>
+      {/* Top bar */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 20px',borderBottom:'1px solid var(--border)',background:'var(--surface)'}}>
+        <div>
+          <span className="label">Timeline do Projeto</span>
+          <span style={{fontSize:'.72rem',color:'var(--muted)',marginLeft:8}}>Arraste para reagendar · clique para editar</span>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <input value={newTaskName} onChange={e=>setNewTaskName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
+            placeholder="Nome da tarefa..."
+            style={{border:'1px solid var(--border)',borderRadius:7,padding:'6px 11px',fontSize:'.8rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:190,transition:'border-color .2s'}}
+            onFocus={e=>e.target.style.borderColor='var(--text)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
+          <button onClick={addTask} className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}}><Icon name="plus" size={13}/> Adicionar</button>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{display:'flex',position:'relative'}}>
+        {/* Left panel */}
+        <div style={{width:LEFT_W,flexShrink:0,borderRight:'1px solid var(--border)',zIndex:2,background:'var(--surface)'}}>
+          <div style={{height:HEADER_H,borderBottom:'1px solid var(--border)',background:'var(--bg)',display:'flex',alignItems:'flex-end',padding:'0 14px 10px'}}>
+            <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:'var(--muted)'}}>Tarefa</span>
+          </div>
+          {tasks.length===0&&(
+            <div style={{padding:'28px 16px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem'}}>
+              <Icon name="calendar-plus" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+              Adicione tarefas para começar.
+            </div>
+          )}
+          {tasks.map(t=>{
+            const colors=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];
+            const isSelected=selectedId===t.id;
+            return(
+              <div key={t.id} onClick={()=>isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t)}
+                style={{height:ROW_H,display:'flex',alignItems:'center',gap:8,padding:'0 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',
+                  background:isSelected?'rgba(28,25,23,.05)':'transparent',transition:'background .15s'}}>
+                <button onClick={e=>{e.stopPropagation();cycleStatus(t.id);}} style={{width:12,height:12,borderRadius:'50%',background:colors.dot,border:'none',cursor:'pointer',flexShrink:0,padding:0,transition:'transform .15s'}}
+                  title={`Status: ${t.status}`} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.4)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
+                <span style={{fontSize:'.83rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                  textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Scrollable chart */}
+        <div style={{flex:1,overflowX:'auto',overflowY:'hidden',position:'relative'}}>
+          <div style={{width:gridW,position:'relative',minWidth:'100%'}}>
+            {/* Month row */}
+            <div style={{height:HEADER_H/2,display:'flex',borderBottom:'1px solid var(--border)',background:'var(--bg)'}}>
+              {months.map((m,i)=>(
+                <div key={i} style={{width:m.days*DAY_W,flexShrink:0,borderRight:'1px solid var(--border)',display:'flex',alignItems:'center',padding:'0 10px',
+                  fontSize:'.68rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>
+                  {m.label}
+                </div>
+              ))}
+            </div>
+            {/* Week sub-header */}
+            <div style={{height:HEADER_H/2,background:'var(--bg)',borderBottom:'2px solid var(--border)',position:'relative'}}>
+              {weekMarkers.map((mk,i)=>(
+                <div key={i} style={{position:'absolute',left:mk.offset,height:'100%',display:'flex',alignItems:'center',paddingLeft:5,
+                  fontSize:'.62rem',color:'var(--muted)',borderLeft:'1px solid var(--border)'}}>
+                  {mk.label}
+                </div>
+              ))}
+            </div>
+
+            {/* Task rows */}
+            {tasks.map((t,i)=>{
+              const{left,width}=barGeom(t);
+              const colors=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];
+              const isSelected=selectedId===t.id;
+              return(
+                <div key={t.id} style={{height:ROW_H,position:'relative',borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'rgba(28,25,23,.015)'}}>
+                  {weekMarkers.map((mk,j)=>(
+                    <div key={j} style={{position:'absolute',left:mk.offset,top:0,bottom:0,borderLeft:'1px dashed var(--border)',opacity:.6,pointerEvents:'none'}}/>
+                  ))}
+                  {/* Bar */}
+                  <div
+                    onMouseDown={e=>startDrag(e,t.id,'move')}
+                    onClick={e=>{e.stopPropagation();isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t);}}
+                    title={`${t.text}\n${fmtShort(t.startDate)} → ${fmtShort(t.dueDate)}`}
+                    style={{
+                      position:'absolute',left,width,height:28,top:(ROW_H-28)/2,
+                      background:colors.bar,border:`1.5px solid ${isSelected?'var(--text)':colors.border}`,borderRadius:7,
+                      cursor:'grab',display:'flex',alignItems:'center',
+                      boxShadow:isSelected?'0 0 0 2px var(--text)':'0 1px 4px rgba(28,25,23,.09)',
+                      userSelect:'none',transition:'box-shadow .15s,border-color .15s',
+                    }}>
+                    {/* Left resize */}
+                    <div onMouseDown={e=>startDrag(e,t.id,'left')} style={{width:10,height:'100%',cursor:'ew-resize',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'6px 0 0 6px',zIndex:1}}
+                      title="Arrastar início"><span style={{fontSize:9,color:colors.text,opacity:.5,lineHeight:1}}>⠿</span></div>
+                    <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'.68rem',fontWeight:600,color:colors.text,userSelect:'none'}}>{width>60?t.text:''}</div>
+                    {/* Right resize */}
+                    <div onMouseDown={e=>startDrag(e,t.id,'right')} style={{width:10,height:'100%',cursor:'ew-resize',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'0 6px 6px 0',zIndex:1}}
+                      title="Arrastar prazo"><span style={{fontSize:9,color:colors.text,opacity:.5,lineHeight:1}}>⠿</span></div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Today line */}
+            {todayOffset>=0&&todayOffset<=gridW&&(
+              <div style={{position:'absolute',left:todayOffset,top:0,bottom:0,width:2,background:'#EF4444',pointerEvents:'none',zIndex:10}}>
+                <div style={{position:'absolute',top:HEADER_H-18,left:'50%',transform:'translateX(-50%)',background:'#EF4444',color:'white',
+                  fontSize:'.52rem',fontWeight:800,padding:'2px 5px',borderRadius:3,whiteSpace:'nowrap',letterSpacing:'.06em'}}>HOJE</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Edit drawer */}
+      {editDraft&&(
+        <div style={{borderTop:'2px solid var(--text)',padding:'20px 24px',background:'var(--surface)',display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-end',animation:'fadeUp .2s ease'}}>
+          <div style={{flex:2,minWidth:160}}>
+            <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Tarefa</label>
+            <input value={editDraft.text} onChange={e=>setEditDraft({...editDraft,text:e.target.value})} className="input-box" style={{width:'100%'}} autoFocus
+              onKeyDown={e=>e.key==='Enter'&&saveEdit()}/>
+          </div>
+          <div style={{minWidth:130}}>
+            <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Início</label>
+            <input type="date" value={editDraft.startDate||''} onChange={e=>setEditDraft({...editDraft,startDate:e.target.value})} className="input-box"/>
+          </div>
+          <div style={{minWidth:130}}>
+            <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Prazo</label>
+            <input type="date" value={editDraft.dueDate||''} onChange={e=>setEditDraft({...editDraft,dueDate:e.target.value})} className="input-box"/>
+          </div>
+          <div style={{minWidth:130}}>
+            <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Status</label>
+            <select value={editDraft.status} onChange={e=>setEditDraft({...editDraft,status:e.target.value})}
+              style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
+              {PTASK_STATUSES.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{flex:3,minWidth:160}}>
+            <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Notas</label>
+            <input value={editDraft.notes||''} onChange={e=>setEditDraft({...editDraft,notes:e.target.value})} className="input-box" placeholder="Notas rápidas sobre a tarefa..." style={{width:'100%'}}/>
+          </div>
+          <div style={{display:'flex',gap:8,flexShrink:0,alignSelf:'flex-end'}}>
+            <button onClick={deleteTask} className="btn btn-danger" style={{padding:'8px 12px'}} title="Excluir tarefa"><Icon name="trash-2" size={14}/></button>
+            <button onClick={()=>{setSelectedId(null);setEditDraft(null);}} className="btn btn-outline" style={{padding:'8px 14px'}}>Cancelar</button>
+            <button onClick={saveEdit} className="btn btn-dark" style={{padding:'8px 16px'}}><Icon name="check" size={14}/> Salvar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── PROJECT DETAIL ───────────────────────────────────────────────────────────
 
 // Auto-mark tasks as Atrasado if past their dueDate and not Concluído
 const applyAutoLate=tasks=>{
@@ -1018,12 +1285,9 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
+const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor})=>{
   const [local,setLocal]=useState(()=>({...project,projectTasks:applyAutoLate(project.projectTasks)}));
   const [tab,setTab]=useState('Visão Geral');
-  const [newEvtTitle,setNewEvtTitle]=useState('');
-  const [newEvtDate,setNewEvtDate]=useState('');
-  const [editEvt,setEditEvt]=useState(null);
   const coverRef=useRef();
 
   useEffect(()=>{
@@ -1049,64 +1313,13 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const upd=(field,value)=>update.current(field,value);
   const updMany=patch=>updateMany.current(patch);
 
-  // Timeline events
-  const addEvent=()=>{
-    if(!newEvtTitle||!newEvtDate)return;
-    const evtId=Date.now();
-    const taskId=evtId+1;
-    // Try to parse newEvtDate as YYYY-MM-DD for dueDate
-    const dueDate=newEvtDate.match(/^\d{4}-\d{2}-\d{2}$/)?newEvtDate:'';
-    const newTask={id:taskId,text:newEvtTitle,status:'Pendente',fromTimeline:true,dueDate};
-    const newEvt={id:evtId,title:newEvtTitle,date:newEvtDate,taskId};
-    updMany({
-      timelineEvents:[...(local.timelineEvents||[]),newEvt],
-      projectTasks:applyAutoLate([...(local.projectTasks||[]),newTask])
-    });
-    setNewEvtTitle('');setNewEvtDate('');
-  };
-  const saveEditEvt=()=>{
-    if(!editEvt)return;
-    upd('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));
-    setEditEvt(null);
-  };
-  const deleteEditEvt=()=>{
-    const evt=editEvt;
-    const newEvts=local.timelineEvents.filter(e=>e.id!==evt.id);
-    const newTasks=evt.taskId?(local.projectTasks||[]).filter(t=>t.id!==evt.taskId):(local.projectTasks||[]);
-    updMany({timelineEvents:newEvts,projectTasks:newTasks});
-    setEditEvt(null);
-  };
 
-  // Mentors — fixed: no async state update inside setState
+  // Mentors
   const toggleMentor=id=>{
     const m=local.mentors||[];
     const next=m.includes(id)?m.filter(x=>x!==id):[...m,id];
     upd('mentors',next);
   };
-
-  // Tasks
-  const [newPTask,setNewPTask]=useState('');
-  const [newPTaskDue,setNewPTaskDue]=useState('');
-  const addPTask=()=>{
-    if(!newPTask.trim())return;
-    const id=Date.now();
-    const newTask={id,text:newPTask.trim(),status:'Pendente',dueDate:newPTaskDue||''};
-    // If dueDate given, also add a timeline event for reverse sync
-    const newTasks=applyAutoLate([...(local.projectTasks||[]),newTask]);
-    if(newPTaskDue){
-      const evtId=id+1;
-      const newEvt={id:evtId,title:newPTask.trim(),date:newPTaskDue,taskId:id};
-      updMany({projectTasks:newTasks,timelineEvents:[...(local.timelineEvents||[]),newEvt]});
-    } else {
-      upd('projectTasks',newTasks);
-    }
-    setNewPTask('');setNewPTaskDue('');
-  };
-  const cyclePTaskStatus=id=>{
-    const updated=(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);
-    upd('projectTasks',updated);
-  };
-  const removePTask=id=>upd('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
 
   const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;upd('cover',await uploadImage(file));};
   const handleResearchImgUpload=async(noteId,e)=>{
@@ -1126,7 +1339,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
   const deleteResearch=id=>{upd('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
   const researchImgRef=useRef();
   const linkedMentors=useMemo(()=>globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id)),[globalMentors,local.mentors]);
-  const openTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]).filter(t=>t.status!=='Concluído'),[local.projectTasks]);
 
   // Mini-projects (Animatics)
   const [activeMiniId,setActiveMiniId]=useState(()=>(project.miniProjects||[])[0]?.id||null);
@@ -1151,23 +1363,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto',paddingBottom:60}}>
       <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
       <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
-
-      {/* Timeline event edit modal */}
-      {editEvt&&(
-        <Modal title="Editar Evento" onClose={()=>setEditEvt(null)} width={380} offsetSidebar>
-          <div style={{display:'flex',flexDirection:'column',gap:14}}>
-            <Field label="Data"><input className="input-box" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})} placeholder="Ex: 15/Nov ou 2024-11-15"/></Field>
-            <Field label="Título do Evento"><input className="input-box" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} onKeyDown={e=>e.key==='Enter'&&saveEditEvt()} placeholder="Nome do evento" autoFocus/></Field>
-            <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
-              <button className="btn btn-danger" onClick={deleteEditEvt}><Icon name="trash-2" size={13}/> Remover</button>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn btn-outline" onClick={()=>setEditEvt(null)}>Cancelar</button>
-                <button className="btn btn-dark" onClick={saveEditEvt}><Icon name="check" size={13}/> Salvar</button>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {/* Cover */}
       <div className="cover-wrap" style={{height:260,borderRadius:16,overflow:'hidden',marginBottom:28}}>
@@ -1197,45 +1392,17 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
         </div>
       </div>
 
-      {/* Timeline */}
-      <div className="card" style={{padding:'22px 24px',marginBottom:20}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-          <div>
-            <span className="label">Timeline do Projeto</span>
-            <span style={{fontSize:'.72rem',color:'var(--muted)',marginLeft:10}}>Clique em um evento para editar</span>
-          </div>
-          <div style={{display:'flex',gap:6}}>
-            <input value={newEvtDate} onChange={e=>setNewEvtDate(e.target.value)} placeholder="Data (AAAA-MM-DD)" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:140}}/>
-            <input value={newEvtTitle} onChange={e=>setNewEvtTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addEvent()} placeholder="Evento" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:130}}/>
-            <button onClick={addEvent} className="btn btn-dark" style={{padding:'5px 12px'}}><Icon name="plus" size={12}/></button>
-          </div>
-        </div>
-        <div style={{overflowX:'auto',paddingBottom:8}}>
-          {(local.timelineEvents||[]).length===0
-            ?<div style={{color:'var(--muted)',fontSize:'.82rem'}}>Nenhum evento. Use o formato AAAA-MM-DD para vincular prazo à tarefa automaticamente.</div>
-            :(
-              <div style={{display:'flex',alignItems:'flex-start',position:'relative',paddingTop:4,whiteSpace:'nowrap'}}>
-                <div style={{position:'absolute',top:8,left:0,right:0,height:1,background:'var(--border)'}}/>
-                {(local.timelineEvents||[]).map(evt=>(
-                  <div key={evt.id} onClick={()=>setEditEvt({...evt})} title="Clique para editar"
-                    style={{flexShrink:0,width:140,position:'relative',paddingRight:12,cursor:'pointer',whiteSpace:'normal'}}
-                    onMouseEnter={e=>{e.currentTarget.querySelector('.evt-node').style.background='#276b3e';e.currentTarget.querySelector('.evt-node').style.boxShadow='0 0 0 1px #276b3e';}}
-                    onMouseLeave={e=>{e.currentTarget.querySelector('.evt-node').style.background='var(--text)';e.currentTarget.querySelector('.evt-node').style.boxShadow='0 0 0 1px var(--text)';}}>
-                    <div className="evt-node" style={{width:10,height:10,borderRadius:'50%',background:'var(--text)',border:'3px solid var(--bg)',boxShadow:'0 0 0 1px var(--text)',marginBottom:12,transition:'background .15s,box-shadow .15s'}}/>
-                    <div style={{fontSize:'.7rem',fontWeight:600,color:'var(--muted)',marginBottom:3}}>{evt.date}</div>
-                    <div style={{fontSize:'.82rem',fontWeight:600,lineHeight:1.3}}>{evt.title}</div>
-                    {evt.taskId&&<div style={{fontSize:'.65rem',color:'#276b3e',marginTop:3,display:'flex',alignItems:'center',gap:3}}><Icon name="check-square" size={10}/>tarefa vinculada</div>}
-                  </div>
-                ))}
-              </div>
-            )
-          }
-        </div>
-      </div>
+      {/* Gantt Timeline */}
+      <GanttTimeline
+        tasks={applyAutoLate(local.projectTasks||[])}
+        onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+        projectStart={local.startDate}
+        projectEnd={local.deadline}
+      />
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
-        {['Visão Geral','Tarefas','Animatics','Mentores','Pesquisa'].map(t=>(
+        {['Visão Geral','Animatics','Pesquisa'].map(t=>(
           <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent'}}>{t}</button>
         ))}
       </div>
@@ -1248,22 +1415,55 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
               <textarea style={{background:'transparent',outline:'none',resize:'none',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',height:200,border:'none',width:'100%'}}
                 value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
-            {openTasks.length>0&&(
-              <div className="card" style={{padding:'20px 24px'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                  <span className="label">Tarefas em Aberto</span>
-                  <button onClick={()=>setTab('Tarefas')} className="btn btn-ghost" style={{padding:'3px 8px',fontSize:'.75rem'}}>Ver todas <Icon name="arrow-right" size={11}/></button>
-                </div>
-                {openTasks.slice(0,5).map(t=>(
-                  <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
-                    <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
-                    <span style={{fontSize:'.84rem',flex:1}}>{t.text}</span>
-                    {t.dueDate&&<span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0}}>{t.dueDate}</span>}
-                  </div>
-                ))}
-                {openTasks.length>5&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:8}}>+{openTasks.length-5} mais</div>}
+            {/* Mentors picker */}
+            <div className="card" style={{padding:'20px 24px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <span className="label">Referências & Mentores</span>
+                <button onClick={()=>onAddMentor&&onAddMentor()} style={{display:'none'}}/>
               </div>
-            )}
+              {globalMentors.filter(m=>!m.deleted).length===0
+                ?<p style={{fontSize:'.82rem',color:'var(--muted)',margin:'0 0 12px'}}>Nenhum mentor ainda. Adicione um abaixo.</p>
+                :(
+                  <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
+                    {globalMentors.filter(m=>!m.deleted).map(m=>{
+                      const on=(local.mentors||[]).includes(m.id);
+                      return(
+                        <button key={m.id} onClick={()=>toggleMentor(m.id)}
+                          style={{display:'flex',alignItems:'center',gap:7,padding:'6px 12px 6px 8px',borderRadius:20,
+                            border:`1.5px solid ${on?'var(--text)':'var(--border)'}`,
+                            background:on?'var(--text)':'transparent',
+                            color:on?'white':'var(--muted)',
+                            fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                          <div style={{width:22,height:22,borderRadius:'50%',background:on?'rgba(255,255,255,.2)':'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500}}>
+                            {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                          </div>
+                          {m.name}
+                          {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
+              }
+              {/* Inline add mentor */}
+              <AddMentorInline onAdd={mentor=>{onAddGlobalMentor(mentor);toggleMentor(mentor.id);}}/>
+              {/* Show linked mentor notes inline */}
+              {linkedMentors.length>0&&(
+                <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8}}>
+                  {linkedMentors.map(m=>(
+                    <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                      <div style={{width:28,height:28,borderRadius:'50%',background:'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,marginTop:1}}>
+                        {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:'.82rem'}}>{m.name} <span style={{fontWeight:400,color:'var(--muted)',fontSize:'.74rem'}}>· {m.area}</span></div>
+                        {m.notes&&<div style={{fontSize:'.78rem',color:'var(--muted)',marginTop:2,lineHeight:1.5,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="card" style={{padding:28}}>
             <span className="label" style={{display:'block',marginBottom:16}}>Datas</span>
@@ -1274,44 +1474,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
                 <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:600,color:'#9B1C1C',width:'100%',paddingBottom:4}}/></div>
             </div>
           </div>
-        </div>
-      )}
-
-      {tab==='Tarefas'&&(
-        <div className="card" style={{padding:36}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-            <span className="label">Tarefas do Projeto</span>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {PTASK_STATUSES.map(s=><span key={s} className={`ptask-pill ptask-${s}`} style={{cursor:'default'}}>{s}: {applyAutoLate(local.projectTasks||[]).filter(t=>t.status===s).length}</span>)}
-            </div>
-          </div>
-          {/* Add task row with optional due date */}
-          <div style={{display:'flex',gap:8,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
-            <input value={newPTask} onChange={e=>setNewPTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addPTask()} placeholder="Adicionar nova tarefa..." className="input-box" style={{flex:1}}/>
-            <input type="date" value={newPTaskDue} onChange={e=>setNewPTaskDue(e.target.value)} className="input-box" style={{width:150}} title="Prazo (opcional — cria evento na timeline)"/>
-            <button onClick={addPTask} className="btn btn-dark"><Icon name="plus" size={14}/> Adicionar</button>
-          </div>
-          <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:16,display:'flex',alignItems:'center',gap:5}}>
-            <Icon name="info" size={11}/> Adicionar um prazo cria automaticamente um evento na timeline. Tarefas atrasadas ficam marcadas como Atrasado.
-          </div>
-          {applyAutoLate(local.projectTasks||[]).length===0&&(
-            <div style={{textAlign:'center',padding:'24px 0',color:'var(--muted)',fontSize:'.85rem'}}><Icon name="check-square" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Nenhuma tarefa.</div>
-          )}
-          {applyAutoLate(local.projectTasks||[]).map(t=>(
-            <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
-              <button onClick={()=>cyclePTaskStatus(t.id)} className={`ptask-pill ptask-${t.status}`} style={{flexShrink:0,minWidth:80,justifyContent:'center',display:'inline-flex'}}>
-                {t.status==='Concluído'&&<Icon name="check" size={10}/>}
-                {t.status==='Fazendo'&&<Icon name="clock" size={10}/>}
-                {t.status==='Atrasado'&&<Icon name="alert-circle" size={10}/>}
-                {t.status==='Pendente'&&<Icon name="circle" size={10}/>}
-                {t.status}
-              </button>
-              <span style={{flex:1,fontSize:'.88rem',textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
-              {t.dueDate&&<span style={{fontSize:'.72rem',color:t.status==='Atrasado'?'#9B1C1C':'var(--muted)',flexShrink:0,fontWeight:t.status==='Atrasado'?600:400}}>{t.dueDate}</span>}
-              {t.fromTimeline&&<span title="Criado via timeline" style={{fontSize:'.6rem',color:'#276b3e',flexShrink:0,display:'flex',alignItems:'center',gap:2}}><Icon name="git-branch" size={10}/>timeline</span>}
-              <button onClick={()=>removePTask(t.id)} className="btn btn-ghost" style={{padding:4}}><Icon name="trash-2" size={13}/></button>
-            </div>
-          ))}
         </div>
       )}
 
@@ -1378,38 +1540,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {tab==='Mentores'&&(
-        <div style={{display:'flex',flexDirection:'column',gap:20}}>
-          <div className="card" style={{padding:24}}>
-            <span className="label" style={{display:'block',marginBottom:10}}>Vincular mentores a este projeto</span>
-            <p style={{fontSize:'.82rem',color:'var(--muted)',marginBottom:14}}>Selecione os artistas cujos ensinamentos estão sendo aplicados.</p>
-            {globalMentors.filter(m=>!m.deleted).length===0?<p style={{fontSize:'.82rem',color:'var(--muted)'}}>Cadastre mentores primeiro.</p>:(
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-                {globalMentors.filter(m=>!m.deleted).map(m=>{const on=(local.mentors||[]).includes(m.id);return(
-                  <button key={m.id} onClick={()=>toggleMentor(m.id)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
-                    {on&&<Icon name="check" size={12}/>}{m.name}
-                  </button>
-                );})}
-              </div>
-            )}
-          </div>
-          {linkedMentors.length>0&&(
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:12}}>
-              {linkedMentors.map(m=>(
-                <div key={m.id} className="card" style={{padding:20}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
-                    {m.photo?<img src={m.photo} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover'}}/>
-                      :<div style={{width:36,height:36,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500}}>{m.name.charAt(0)}</div>}
-                    <div><div style={{fontWeight:600,fontSize:'.88rem'}}>{m.name}</div><div style={{fontSize:'.72rem',color:'var(--muted)'}}>{m.area} · {m.medium}</div></div>
-                  </div>
-                  {m.notes&&<p style={{fontSize:'.8rem',color:'var(--muted)',lineHeight:1.6,margin:0,borderTop:'1px solid var(--border)',paddingTop:12}}>{m.notes}</p>}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -1702,168 +1832,6 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
             ))}
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── MENTOR DETAIL PAGE ───────────────────────────────────────────────────────
-const MentorDetail=({mentor,onBack,onSave,onDelete})=>{
-  const [form,setForm]=useState(mentor);
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const photoRef=useRef();
-  const galleryRef=useRef();
-  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
-  const handleGallery=async e=>{const files=Array.from(e.target.files);const urls=await Promise.all(files.map(uploadImage));set('photos',[...(form.photos||[]),...urls].slice(0,4));e.target.value='';};
-  const removeGalleryPhoto=idx=>{const p=[...(form.photos||[])];p.splice(idx,1);set('photos',p);};
-  return(
-    <div className="fade-up" style={{maxWidth:680,margin:'0 auto',paddingBottom:60}}>
-      <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
-      <input ref={galleryRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleGallery}/>
-      <button className="btn btn-outline" onClick={onBack} style={{marginBottom:28}}><Icon name="arrow-left" size={13}/> Voltar</button>
-      <div className="card" style={{padding:32,marginBottom:20}}>
-        {/* Header */}
-        <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
-          <div onClick={()=>photoRef.current.click()} style={{width:80,height:80,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
-            onMouseEnter={e=>e.currentTarget.querySelector('.ch').style.opacity=1} onMouseLeave={e=>e.currentTarget.querySelector('.ch').style.opacity=0}>
-            {form.photo
-              ?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,color:'var(--muted)'}}>{form.name.charAt(0)||'?'}</span>}
-            <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
-          </div>
-          <div style={{flex:1,display:'flex',flexDirection:'column',gap:12}}>
-            <Field label="Nome do Artista / Referência"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontSize:'1rem',fontWeight:600}} placeholder="Ex: Hayao Miyazaki"/></Field>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <Field label="Área de Influência"><input className="input-box" value={form.area} onChange={e=>set('area',e.target.value)} placeholder="Ex: Narrativa Visual"/></Field>
-              <Field label="Meio / Formato"><input className="input-box" value={form.medium} onChange={e=>set('medium',e.target.value)} placeholder="Ex: Animação, HQ"/></Field>
-            </div>
-          </div>
-        </div>
-        {/* Status */}
-        <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div onClick={()=>set('active',!form.active)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.active?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
-              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.active?'translateX(16px)':'translateX(0)'}}/>
-            </div>
-            <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor ativo</span>
-            <span className={`tag ${form.active?'tag-green':'tag-gray'}`} style={{marginLeft:'auto'}}>{form.active?'Ativo':'Inativo'}</span>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div onClick={()=>set('main',!form.main)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:form.main?'#276b3e':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
-              <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:form.main?'translateX(16px)':'translateX(0)'}}/>
-            </div>
-            <span style={{fontSize:'.83rem',color:'var(--muted)'}}>Mentor principal <span style={{fontSize:'.75rem'}}>(aparece no dashboard — máx. 3)</span></span>
-            {form.main&&<span className="tag tag-green" style={{marginLeft:'auto'}}>Principal</span>}
-          </div>
-        </div>
-        {/* Notes */}
-        <Field label="Notas & Ensinamentos">
-          <textarea className="input-box" rows={5} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="O que você aprende estudando este artista?" style={{resize:'vertical',lineHeight:1.7,minHeight:120}}/>
-        </Field>
-        {/* Gallery */}
-        <div style={{marginTop:20}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <span className="label">Galeria de Referências (até 4)</span>
-            {(form.photos||[]).length<4&&<button type="button" onClick={()=>galleryRef.current.click()} className="btn btn-ghost" style={{padding:'3px 10px',fontSize:'.75rem'}}><Icon name="plus" size={12}/> Adicionar</button>}
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
-            {(form.photos||[]).map((img,i)=>(
-              <div key={i} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',backgroundColor:'var(--bg)'}}>
-                <img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-                <button onClick={()=>removeGalleryPhoto(i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
-              </div>
-            ))}
-            {Array.from({length:4-(form.photos||[]).length}).map((_,i)=>(
-              <div key={i} onClick={()=>galleryRef.current.click()} style={{aspectRatio:'1',borderRadius:10,border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'var(--muted)',transition:'border-color .15s'}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}><Icon name="image-plus" size={20} style={{opacity:.35}}/></div>
-            ))}
-          </div>
-        </div>
-        {/* Links */}
-        <div style={{marginTop:20}}>
-          <Field label="Links / Referências"><input className="input-box" value={form.links} onChange={e=>set('links',e.target.value)} placeholder="https://..."/></Field>
-        </div>
-      </div>
-      <div style={{display:'flex',justifyContent:'space-between'}}>
-        <button className="btn btn-danger" onClick={onDelete}><Icon name="trash-2" size={14}/> Mover para Lixeira</button>
-        <button className="btn btn-dark" onClick={()=>onSave(form)}><Icon name="check" size={14}/> Salvar</button>
-      </div>
-    </div>
-  );
-};
-
-const Mentors=({mentors,setMentors})=>{
-  const [selected,setSelected]=useState(null);
-  const [trash,setTrash]=useState(false);
-  const save=form=>{setMentors(p=>p.map(m=>m.id===form.id?form:m));setSelected(form);};
-  const softDelete=()=>{setMentors(p=>p.map(m=>m.id===selected.id?{...m,deleted:true}:m));setSelected(null);};
-  const restore=id=>setMentors(p=>p.map(m=>m.id===id?{...m,deleted:false}:m));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setMentors(p=>p.filter(m=>m.id!==id));}}
-  const add=()=>{const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[],deleted:false};setMentors(p=>[n,...p]);setSelected(n);};
-  const visible=mentors.filter(m=>trash?m.deleted:!m.deleted);
-
-  if(selected&&!trash)return<MentorDetail mentor={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
-
-  return(
-    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-        <div>
-          <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores de Arte</h1>
-          <p style={{color:'var(--muted)',fontSize:'.85rem'}}>Artistas & referências que moldam sua linguagem visual</p>
-        </div>
-        <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&mentors.filter(m=>m.deleted).length>0&&` (${mentors.filter(m=>m.deleted).length})`}
-          </button>
-          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="plus" size={14}/> Adicionar</button>}
-        </div>
-      </div>
-      {trash&&<TrashBanner label="Mentores" onExit={()=>setTrash(false)}/>}
-      {visible.length===0&&(
-        <div className="card" style={{padding:56,textAlign:'center'}}>
-          <Icon name="graduation-cap" size={32} style={{display:'block',margin:'0 auto 16px',opacity:.3}}/>
-          <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:20}}>{trash?'Lixeira vazia.':'Nenhum mentor cadastrado.'}</p>
-          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="plus" size={14}/> Primeiro mentor</button>}
-        </div>
-      )}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:16}}>
-        {visible.map(m=>(
-          <div key={m.id} className={`card ${!trash?'card-click':''}`} onClick={()=>!trash&&setSelected(m)} style={{padding:24,cursor:trash?'default':'pointer'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                {m.photo?<img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                  :<div style={{width:44,height:44,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.3rem',fontWeight:500,flexShrink:0}}>{m.name.charAt(0)}</div>}
-                <div><div style={{fontWeight:600,fontSize:'.92rem'}}>{m.name}</div><div style={{fontSize:'.75rem',color:'var(--muted)'}}>{m.medium}</div></div>
-              </div>
-              <div style={{display:'flex',gap:2}} onClick={e=>e.stopPropagation()}>
-                {!trash?(
-                  <><button className="btn btn-ghost" style={{padding:5}} onClick={()=>setSelected(m)}><Icon name="pencil" size={14}/></button>
-                  <button className="btn btn-ghost" style={{padding:5}} onClick={()=>setMentors(p=>p.map(x=>x.id===m.id?{...x,deleted:true}:x))}><Icon name="trash-2" size={14}/></button></>
-                ):(
-                  <><button className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}} onClick={()=>restore(m.id)}><Icon name="refresh-cw" size={12}/></button>
-                  <button className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}} onClick={()=>hardDelete(m.id)}><Icon name="trash-2" size={12}/></button></>
-                )}
-              </div>
-            </div>
-            {!trash&&<>
-              <div style={{display:'flex',gap:6,marginBottom:m.notes||m.links?14:0}}>
-                <span className={`tag ${m.active?'tag-green':'tag-gray'}`}>{m.active?'Ativo':'Inativo'}</span>
-                {m.main&&<span className="tag" style={{background:'#d1fae5',color:'#065f46'}}>⭐ Principal</span>}
-                {m.area&&<span className="tag tag-blue">{m.area}</span>}
-              </div>
-              {m.notes&&<p style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.7,margin:0,borderTop:'1px solid var(--border)',paddingTop:14}}>{m.notes}</p>}
-              {(m.photos||[]).length>0&&(
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6,borderTop:'1px solid var(--border)',paddingTop:14,marginTop:m.notes?14:0}}>
-                  {(m.photos||[]).map((img,i)=>(<div key={i} style={{aspectRatio:'1',borderRadius:6,overflow:'hidden'}}><img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/></div>))}
-                </div>
-              )}
-              {m.links&&<a href={m.links} target="_blank" rel="noreferrer" style={{display:'flex',alignItems:'center',gap:6,fontSize:'.78rem',color:'var(--muted)',textDecoration:'none',borderTop:'1px solid var(--border)',paddingTop:12,marginTop:12}}
-                onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
-                <Icon name="external-link" size={12}/>{m.links}
-              </a>}
-            </>}
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -2405,10 +2373,10 @@ const App=()=>{
       <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
-        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors}/>}
+        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}}/>}
         {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
         {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks}/>}
-        {view==='mentors'        && <Mentors mentors={mentors} setMentors={setMentors}/>}
+        {view==='mentors'        && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData}/>}
         {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts}/>}
         {view==='clients'        && <Clients clients={clients} setClients={setClients}/>}
         {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave}/>}
