@@ -65,7 +65,16 @@ const { useState, useEffect, useRef, useMemo } = React;
 // ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
 const LS_KEY = 'boardhub_v2';
 const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
-const lsSave = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} };
+const lsSave = s => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
+  catch(e) {
+    // Quota exceeded — try stripping any accidental base64 that slipped through
+    try {
+      const stripped = JSON.parse(JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
+      localStorage.setItem(LS_KEY, JSON.stringify(stripped));
+    } catch { /* silent — idb:// refs and https:// URLs never cause quota issues */ }
+  }
+};
 const persisted = lsLoad();
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
@@ -126,35 +135,87 @@ const Icon=({name,size=16,style={}})=><i data-lucide={name} style={{width:size,h
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
-// Strip base64 image data before syncing to Gist — keeps JSON small.
-// Only Imgur-style https URLs are kept; base64 blobs stay local only.
-const isBase64Img=v=>typeof v==='string'&&v.startsWith('data:image');
-const stripBase64=obj=>{
-  if(Array.isArray(obj))return obj.map(stripBase64);
-  if(obj&&typeof obj==='object'){
-    const out={};
-    for(const k of Object.keys(obj))out[k]=stripBase64(obj[k]);
-    return out;
-  }
-  if(isBase64Img(obj))return ''; // drop base64, keep empty string
-  return obj;
+// ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
+// Images are stored as Blobs in IndexedDB (no 5 MB quota like localStorage).
+// The app state only holds a lightweight reference: "idb://<key>".
+// At render time, useIdbUrl() resolves these references to object URLs.
+const IDB_NAME='boardhub_images';
+const IDB_STORE='images';
+let _idb=null;
+const openIdb=()=>new Promise((res,rej)=>{
+  if(_idb)return res(_idb);
+  const req=indexedDB.open(IDB_NAME,1);
+  req.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);
+  req.onsuccess=e=>{_idb=e.target.result;res(_idb);};
+  req.onerror=e=>rej(e.target.error);
+});
+const idbPut=(key,blob)=>openIdb().then(db=>new Promise((res,rej)=>{
+  const tx=db.transaction(IDB_STORE,'readwrite');
+  tx.objectStore(IDB_STORE).put(blob,key);
+  tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);
+}));
+const idbGet=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
+  const req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key);
+  req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e.target.error);
+}));
+const idbDel=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
+  const tx=db.transaction(IDB_STORE,'readwrite');
+  tx.objectStore(IDB_STORE).delete(key);
+  tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);
+}));
+
+// Hook: given an image src (may be idb://key, https://, or data:), returns a displayable URL.
+const _objUrlCache={};
+const useIdbUrl=(src)=>{
+  const [url,setUrl]=React.useState(()=>src&&!src.startsWith('idb://')?src:'');
+  React.useEffect(()=>{
+    if(!src){setUrl('');return;}
+    if(!src.startsWith('idb://')){setUrl(src);return;}
+    const key=src.slice(6);
+    if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
+    idbGet(key).then(blob=>{
+      if(!blob){setUrl('');return;}
+      const u=URL.createObjectURL(blob);
+      _objUrlCache[key]=u;
+      setUrl(u);
+    }).catch(()=>setUrl(''));
+  },[src]);
+  return url;
 };
-// Upload to Imgur (anonymous) — returns permanent URL.
-// Falls back to base64 if upload fails so the app always works.
-const IMGUR_CLIENT_ID='546c25a59c58ad7'; // public anonymous client id
+
+// Img component that auto-resolves idb:// references
+const Img=({src,...props})=>{
+  const url=useIdbUrl(src);
+  if(!url)return null;
+  return <img src={url} {...props}/>;
+};
+
+// Upload: try Imgur first (works when online), otherwise store in IndexedDB.
+const IMGUR_CLIENT_ID='546c25a59c58ad7';
 const uploadImage=async file=>{
+  // 1. Try Imgur
   try{
     const b64=await readFile(file);
     const body=new FormData();
     body.append('image',b64.split(',')[1]);
     body.append('type','base64');
-    const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body});
+    const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:AbortSignal.timeout(8000)});
     const json=await res.json();
-    if(json.success)return json.data.link;
-    return b64; // fallback
-  }catch{
-    return readFile(file); // fallback to base64
-  }
+    if(json.success)return json.data.link; // https:// URL — stored in state as-is
+  }catch{/* offline or quota exceeded — fall through */}
+  // 2. Store blob in IndexedDB, keep only a tiny key in state
+  const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  await idbPut(key,file);
+  return 'idb://'+key;
+};
+
+// Strip idb:// and base64 refs before Gist sync (they are local-only)
+const isLocalImg=v=>typeof v==='string'&&(v.startsWith('data:image')||v.startsWith('idb://'));
+const stripBase64=obj=>{
+  if(Array.isArray(obj))return obj.map(stripBase64);
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=stripBase64(obj[k]);return out;}
+  if(isLocalImg(obj))return '';
+  return obj;
 };
 
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
@@ -272,44 +333,32 @@ const pomoFmtMonth = function(mk) {
 };
 
 // ─── POMODORO STATS PANEL ────────────────────────────────────────────────────
-const PomodoroStatsPanel = function(props) {
-  var onClose = props.onClose;
-  var data = useMemo(function() { return pomoLoad(); }, []);
-  var tabState = useState('days');
-  var tab = tabState[0];
-  var setTab = tabState[1];
+const PomodoroStatsPanel = ({ onClose, data }) => {
+  const [tab, setTab] = useState('days');
 
-  var dayEntries = useMemo(function() {
-    var entries = Object.entries(data.days || {});
-    var filtered = entries.filter(function(e) { return e[0] !== '_total' && e[0].length === 10 && e[1] > 0; });
-    filtered.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+  const dayEntries = useMemo(() => {
+    const entries = Object.entries(data.days || {});
+    const filtered = entries.filter(e => e[0] !== '_total' && e[0].length === 10 && e[1] > 0);
+    filtered.sort((a, b) => b[0].localeCompare(a[0]));
     return filtered.slice(0, 60);
   }, [data]);
 
-  var monthEntries = useMemo(function() {
-    var months = {};
-    var entries = Object.entries(data.days || {});
-    for (var i = 0; i < entries.length; i++) {
-      var day = entries[i][0];
-      var secs = entries[i][1];
+  const monthEntries = useMemo(() => {
+    const months = {};
+    for (const [day, secs] of Object.entries(data.days || {})) {
       if (day === '_total' || day.length !== 10) continue;
-      var mk = day.slice(0, 7);
+      const mk = day.slice(0, 7);
       months[mk] = (months[mk] || 0) + secs;
     }
-    var result = Object.entries(months);
-    result.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+    const result = Object.entries(months);
+    result.sort((a, b) => b[0].localeCompare(a[0]));
     return result;
   }, [data]);
 
-  var maxDay = 1;
-  for (var di = 0; di < dayEntries.length; di++) { if (dayEntries[di][1] > maxDay) maxDay = dayEntries[di][1]; }
-
-  var maxMonth = 1;
-  for (var mi2 = 0; mi2 < monthEntries.length; mi2++) { if (monthEntries[mi2][1] > maxMonth) maxMonth = monthEntries[mi2][1]; }
-
-  var totalAll = 0;
-  for (var ti = 0; ti < dayEntries.length; ti++) { totalAll += dayEntries[ti][1]; }
-  var todaySecs = (data.days || {})[pomoTodayKey()] || 0;
+  const maxDay = dayEntries.reduce((m, e) => Math.max(m, e[1]), 1);
+  const maxMonth = monthEntries.reduce((m, e) => Math.max(m, e[1]), 1);
+  const totalAll = dayEntries.reduce((sum, e) => sum + e[1], 0);
+  const todaySecs = (data.days || {})[pomoTodayKey()] || 0;
 
   return (
     <div style={{position:'fixed',inset:0,zIndex:300}} onClick={function(e){ if(e.target===e.currentTarget) onClose(); }}>
@@ -346,9 +395,8 @@ const PomodoroStatsPanel = function(props) {
                 </div>
               )}
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {dayEntries.map(function(entry) {
-                  var day = entry[0]; var secs = entry[1];
-                  var barW = Math.round(secs/maxDay*100) + '%';
+                {dayEntries.map(([day, secs]) => {
+                  const barW = Math.round(secs/maxDay*100) + '%';
                   return (
                     <div key={day}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
@@ -372,10 +420,9 @@ const PomodoroStatsPanel = function(props) {
                 </div>
               )}
               <div style={{display:'flex',flexDirection:'column',gap:16}}>
-                {monthEntries.map(function(mEntry) {
-                  var mk = mEntry[0]; var secs = mEntry[1];
-                  var barW = Math.round(secs/maxMonth*100) + '%';
-                  var daysInMonth = dayEntries.filter(function(e){ return e[0].slice(0,7)===mk; });
+                {monthEntries.map(([mk, secs]) => {
+                  const barW = Math.round(secs/maxMonth*100) + '%';
+                  const daysInMonth = dayEntries.filter(e => e[0].slice(0,7)===mk);
                   return (
                     <div key={mk}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
@@ -386,14 +433,12 @@ const PomodoroStatsPanel = function(props) {
                         <div style={{height:'100%',width:barW,background:'var(--text)',borderRadius:4}}/>
                       </div>
                       <div style={{paddingLeft:8}}>
-                        {daysInMonth.map(function(de) {
-                          return (
-                            <div key={de[0]} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
-                              <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtDay(de[0])}</span>
-                              <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtSecs(de[1])}</span>
-                            </div>
-                          );
-                        })}
+                        {daysInMonth.map(([d, ds]) => (
+                          <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
+                            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtDay(d)}</span>
+                            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtSecs(ds)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );
@@ -408,99 +453,221 @@ const PomodoroStatsPanel = function(props) {
   );
 };
 
-// ─── POMODORO TIMER ───────────────────────────────────────────────────────────
-const PomodoroTimer = function() {
-  var FOCUS_SECS = 25 * 60;
-  var BREAK_SECS = 5 * 60;
-  var tState = useState(FOCUS_SECS); var timeLeft = tState[0]; var setTimeLeft = tState[1];
-  var aState = useState(false);      var isActive = aState[0]; var setIsActive = aState[1];
-  var mState = useState('focus');    var mode = mState[0];     var setMode = mState[1];
-  var dState = useState(function(){ return pomoLoad(); }); var pomoData = dState[0]; var setPomoData = dState[1];
-  var modeRef = useRef('focus');
+// ─── POMODORO TIMER (with built-in stats panel) ───────────────────────────────
+const PomodoroTimer = ({ pomoData, setPomoData }) => {
+  const FOCUS_SECS = 25 * 60;
+  const BREAK_SECS = 5 * 60;
+  const [timeLeft, setTimeLeft] = useState(FOCUS_SECS);
+  const [isActive, setIsActive] = useState(false);
+  const [mode, setMode] = useState('focus');
+  const [showStats, setShowStats] = useState(false);
+  const modeRef = useRef('focus');
+  const timeLeftRef = useRef(FOCUS_SECS);
   modeRef.current = mode;
+  timeLeftRef.current = timeLeft;
 
-  useEffect(function() { pomoSave(pomoData); }, [pomoData]);
+  const requestNotifPermission = () => {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  };
+  const fireNotification = (title, body) => {
+    if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body });
+  };
 
-  useEffect(function() {
+  useEffect(() => {
     if (!isActive) return;
-    if (timeLeft <= 0) {
-      if (modeRef.current === 'focus') {
-        setMode('break');
-        setTimeLeft(BREAK_SECS);
-        // isActive stays true so break auto-starts
-      } else {
-        setMode('focus');
-        setTimeLeft(FOCUS_SECS);
-        setIsActive(false);
+    const id = setInterval(() => {
+      const current = timeLeftRef.current;
+      if (current <= 1) {
+        clearInterval(id);
+        setTimeLeft(0);
+        if (modeRef.current === 'focus') {
+          fireNotification('Pomodoro', 'Sessão de foco encerrada! Hora de pausar. ☕');
+          setMode('break');
+          setTimeLeft(BREAK_SECS);
+        } else {
+          fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar? 🧠');
+          setMode('focus');
+          setTimeLeft(FOCUS_SECS);
+          setIsActive(false);
+        }
+        return;
       }
-      return;
-    }
-    var id = setInterval(function() {
-      setTimeLeft(function(t) { return t <= 1 ? 0 : t - 1; });
+      setTimeLeft(t => t - 1);
       if (modeRef.current === 'focus') {
-        setPomoData(function(prev) {
-          var key = pomoTodayKey();
-          var newDays = Object.assign({}, prev.days);
+        setPomoData(prev => {
+          const key = pomoTodayKey();
+          const newDays = { ...prev.days };
           newDays[key] = (newDays[key] || 0) + 1;
           return { days: newDays };
         });
       }
     }, 1000);
-    return function() { clearInterval(id); };
-  }, [isActive, timeLeft]);
+    return () => clearInterval(id);
+  }, [isActive]);
 
-  var toggle = function() { setIsActive(function(a) { return !a; }); };
-  var reset  = function() { setIsActive(false); setTimeLeft(mode === 'focus' ? FOCUS_SECS : BREAK_SECS); };
+  const toggle = () => { requestNotifPermission(); setIsActive(a => !a); };
+  const reset  = () => { setIsActive(false); setTimeLeft(mode === 'focus' ? FOCUS_SECS : BREAK_SECS); };
 
-  var mins = Math.floor(timeLeft / 60);
-  var secs = timeLeft % 60;
-  var timeStr = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+  const mins = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  const timeStr = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+  const pct = mode === 'focus' ? timeLeft / FOCUS_SECS : timeLeft / BREAK_SECS;
+  const r = 46;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - pct);
+  const isFocus = mode === 'focus';
+  const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
 
-  var pct = mode === 'focus' ? timeLeft / FOCUS_SECS : timeLeft / BREAK_SECS;
-  var r = 46;
-  var circ = 2 * Math.PI * r;
-  var offset = circ * (1 - pct);
-  var isFocus = mode === 'focus';
-  var todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
+  // ── Stats data ──
+  const dayEntries = useMemo(() => {
+    const entries = Object.entries(pomoData.days || {});
+    const filtered = entries.filter(e => e[0] !== '_total' && e[0].length === 10 && e[1] > 0);
+    filtered.sort((a, b) => b[0].localeCompare(a[0]));
+    return filtered.slice(0, 60);
+  }, [pomoData]);
+
+  const monthEntries = useMemo(() => {
+    const months = {};
+    for (const [day, s] of Object.entries(pomoData.days || {})) {
+      if (day === '_total' || day.length !== 10) continue;
+      const mk = day.slice(0, 7);
+      months[mk] = (months[mk] || 0) + s;
+    }
+    const result = Object.entries(months);
+    result.sort((a, b) => b[0].localeCompare(a[0]));
+    return result;
+  }, [pomoData]);
+
+  const [statsTab, setStatsTab] = useState('days');
+  const maxDay   = dayEntries.reduce((m, e) => Math.max(m, e[1]), 1);
+  const maxMonth = monthEntries.reduce((m, e) => Math.max(m, e[1]), 1);
+  const totalAll = dayEntries.reduce((sum, e) => sum + e[1], 0);
 
   return (
     <div style={{marginBottom:20}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <span className="label">Pomodoro</span>
-        <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'#E8F5EC',color:isFocus?'var(--muted)':'#276b3e',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
-          <Icon name={isFocus?'brain':'coffee'} size={11}/>
-          {isFocus ? 'Foco' : 'Pausa'}
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'#E8F5EC',color:isFocus?'var(--muted)':'#276b3e',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
+            <Icon name={isFocus?'brain':'coffee'} size={11}/>
+            {isFocus ? 'Foco' : 'Pausa'}
+          </div>
+          <button
+            className="btn btn-ghost"
+            onClick={()=>setShowStats(s=>!s)}
+            title="Histórico de foco"
+            style={{padding:'4px 8px',borderRadius:6,background:showStats?'var(--text)':'transparent',color:showStats?'white':'var(--muted)'}}
+          >
+            <Icon name="timer" size={14}/>
+          </button>
         </div>
       </div>
-      <div className="card" style={{padding:'20px 24px',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
-        <div style={{position:'relative',width:110,height:110}}>
-          <svg width="110" height="110" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
-            <circle cx="55" cy="55" r={r} fill="none" stroke="var(--border)" strokeWidth="5"/>
-            <circle cx="55" cy="55" r={r} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="5" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" style={{transition:'stroke-dashoffset 1s linear,stroke .4s'}}/>
-          </svg>
-          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.75rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
+
+      {/* Timer card */}
+      {!showStats && (
+        <div className="card" style={{padding:'20px 24px',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+          <div style={{position:'relative',width:110,height:110}}>
+            <svg width="110" height="110" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
+              <circle cx="55" cy="55" r={r} fill="none" stroke="var(--border)" strokeWidth="5"/>
+              <circle cx="55" cy="55" r={r} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="5" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" style={{transition:'stroke-dashoffset 1s linear,stroke .4s'}}/>
+            </svg>
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.75rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button className="btn btn-outline" onClick={toggle} style={{minWidth:100,justifyContent:'center',padding:'7px 16px'}}>
+              <Icon name={isActive?'pause':'play'} size={15}/>
+              {isActive ? 'Pausar' : (isFocus ? 'Iniciar' : 'Retomar')}
+            </button>
+            <button className="btn btn-ghost" onClick={reset} title="Reiniciar" style={{padding:8}}>
+              <Icon name="rotate-ccw" size={15}/>
+            </button>
+          </div>
+          <div style={{fontSize:'.72rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:5}}>
+            <Icon name="clock" size={11}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todaySecs)}</strong> em foco
           </div>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <button className="btn btn-outline" onClick={toggle} style={{minWidth:100,justifyContent:'center',padding:'7px 16px'}}>
-            <Icon name={isActive?'pause':'play'} size={15}/>
-            {isActive ? 'Pausar' : (isFocus ? 'Iniciar' : 'Retomar')}
-          </button>
-          <button className="btn btn-ghost" onClick={reset} title="Reiniciar" style={{padding:8}}>
-            <Icon name="rotate-ccw" size={15}/>
-          </button>
+      )}
+
+      {/* Stats panel — replaces timer card inline */}
+      {showStats && (
+        <div className="card" style={{padding:0,overflow:'hidden'}}>
+          {/* Summary row */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid var(--border)'}}>
+            <div style={{padding:'12px 16px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
+              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Hoje</div>
+              <div style={{fontSize:'1rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todaySecs)}</div>
+            </div>
+            <div style={{padding:'12px 16px',textAlign:'center'}}>
+              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Total</div>
+              <div style={{fontSize:'1rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(totalAll)}</div>
+            </div>
+          </div>
+          {/* Tabs */}
+          <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
+            {['days','months'].map(t=>(
+              <button key={t} onClick={()=>setStatsTab(t)} style={{flex:1,padding:'8px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:500,color:statsTab===t?'var(--text)':'var(--muted)',borderBottom:statsTab===t?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>
+                {t==='days'?'Por Dia':'Por Mês'}
+              </button>
+            ))}
+          </div>
+          {/* Content */}
+          <div style={{maxHeight:260,overflowY:'auto',padding:'14px 16px'}}>
+            {statsTab === 'days' && (
+              dayEntries.length === 0
+                ? <p style={{fontSize:'.82rem',color:'var(--muted)',textAlign:'center',padding:'20px 0',margin:0}}>Nenhuma sessão registrada ainda.</p>
+                : <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {dayEntries.map(([day, s]) => (
+                      <div key={day}>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                          <span style={{fontSize:'.78rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
+                          <span style={{fontSize:'.78rem',fontWeight:600}}>{pomoFmtSecs(s)}</span>
+                        </div>
+                        <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+                          <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+            )}
+            {statsTab === 'months' && (
+              monthEntries.length === 0
+                ? <p style={{fontSize:'.82rem',color:'var(--muted)',textAlign:'center',padding:'20px 0',margin:0}}>Nenhuma sessão registrada ainda.</p>
+                : <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                    {monthEntries.map(([mk, s]) => {
+                      const daysInMonth = dayEntries.filter(e => e[0].slice(0,7)===mk);
+                      return (
+                        <div key={mk}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                            <span style={{fontSize:'.8rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
+                            <span style={{fontSize:'.8rem',fontWeight:700}}>{pomoFmtSecs(s)}</span>
+                          </div>
+                          <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
+                            <div style={{height:'100%',width:Math.round(s/maxMonth*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                          </div>
+                          <div style={{paddingLeft:6}}>
+                            {daysInMonth.map(([d, ds]) => (
+                              <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
+                                <span style={{fontSize:'.7rem',color:'var(--muted)'}}>{pomoFmtDay(d)}</span>
+                                <span style={{fontSize:'.7rem',color:'var(--muted)'}}>{pomoFmtSecs(ds)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+            )}
+          </div>
         </div>
-        <div style={{fontSize:'.72rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:5}}>
-          <Icon name="clock" size={11}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todaySecs)}</strong> em foco
-        </div>
-      </div>
+      )}
     </div>
   );
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
+const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const activeMentors=useMemo(()=>mentors.filter(m=>!m.deleted&&m.active&&m.main).slice(0,3),[mentors]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
@@ -563,19 +730,29 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
               ))}
             </div>
           </div>
-          {/* Tarefas de projetos */}
-          {allPTasks.length>0&&(
+          {/* Tarefas de projetos — agrupadas por projeto */}
+          {active.some(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído'))&&(
             <div>
               <div style={{marginBottom:12}}><span className="label">Tarefas Abertas dos Projetos</span></div>
-              <div className="card" style={{padding:'12px 16px'}}>
-                {allPTasks.slice(0,6).map(t=>(
-                  <div key={`${t.id}-${t.projectTitle}`} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
-                    <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
-                    <span style={{flex:1,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</span>
-                    <span style={{fontSize:'.7rem',color:'var(--muted)',flexShrink:0,maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{t.projectTitle}</span>
-                  </div>
-                ))}
-                {allPTasks.length>6&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:8}}>+{allPTasks.length-6} mais</div>}
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {active.filter(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído')).map(p=>{
+                  const openTasks=(p.projectTasks||[]).filter(t=>t.status!=='Concluído');
+                  return(
+                    <div key={p.id} className="card" style={{padding:'10px 14px'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>
+                        <div style={{width:22,height:22,borderRadius:5,flexShrink:0,backgroundImage:`url(${p.cover})`,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                        <span style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{p.title}</span>
+                        <span style={{fontSize:'.65rem',color:'var(--muted)',flexShrink:0}}>{openTasks.length} tarefa{openTasks.length!==1?'s':''}</span>
+                      </div>
+                      {openTasks.map(t=>(
+                        <div key={t.id} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0'}}>
+                          <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.58rem'}}>{t.status}</span>
+                          <span style={{flex:1,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>{t.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -583,7 +760,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
 
         {/* RIGHT: activities + recent notes */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
-          <PomodoroTimer />
+          <PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} />
           {/* Atividades gerais */}
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -636,7 +813,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes})=>{
             <span className="label">Mentores Principais</span>
             <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Gerenciar <Icon name="arrow-right" size={12}/></button>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
             {activeMentors.map(m=>(
               <div key={m.id} className="card" style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
                 {m.photo?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
@@ -737,7 +914,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
               </label>
             </div>
           )}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:16}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
             {visible.map(p=>(
               <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
                 onClick={()=>!trash&&onSelect(p)}>
@@ -829,94 +1006,157 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
 const PTASK_STATUSES=['Pendente','Fazendo','Concluído','Atrasado'];
 const PTASK_NEXT={'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
 
+// Auto-mark tasks as Atrasado if past their dueDate and not Concluído
+const applyAutoLate=tasks=>{
+  const today=new Date();today.setHours(0,0,0,0);
+  return (tasks||[]).map(t=>{
+    if(t.status==='Concluído')return t;
+    if(!t.dueDate)return t;
+    const due=new Date(t.dueDate);due.setHours(0,0,0,0);
+    if(due<today&&t.status!=='Atrasado')return{...t,status:'Atrasado'};
+    return t;
+  });
+};
+
 const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
-  const [local,setLocal]=useState(project);
+  const [local,setLocal]=useState(()=>({...project,projectTasks:applyAutoLate(project.projectTasks)}));
   const [tab,setTab]=useState('Visão Geral');
   const [newEvtTitle,setNewEvtTitle]=useState('');
   const [newEvtDate,setNewEvtDate]=useState('');
-  const [editEvt,setEditEvt]=useState(null); // event being edited
+  const [editEvt,setEditEvt]=useState(null);
   const coverRef=useRef();
 
-  // Sync local state if the project prop changes from outside (e.g. after navigation)
-  useEffect(()=>{setLocal(project);},[project.id]);
+  useEffect(()=>{
+    const updated={...project,projectTasks:applyAutoLate(project.projectTasks)};
+    setLocal(updated);
+  },[project.id]);
 
-  const update=(field,value)=>{
-    setLocal(prev=>{
-      const u={...prev,[field]:value};
-      setTimeout(()=>onUpdate(u),0);
-      return u;
-    });
+  // Safe update: no setTimeout inside setState
+  const update=useRef(null);
+  update.current=(field,value)=>{
+    const u={...local,[field]:value};
+    setLocal(u);
+    onUpdate(u);
   };
-  const updateMany=patch=>{
-    setLocal(prev=>{
-      const u={...prev,...patch};
-      setTimeout(()=>onUpdate(u),0);
-      return u;
-    });
+  const updateMany=useRef(null);
+  updateMany.current=patch=>{
+    const u={...local,...patch};
+    setLocal(u);
+    onUpdate(u);
   };
+
+  // Wrappers so we can call them without stale closure
+  const upd=(field,value)=>update.current(field,value);
+  const updMany=patch=>updateMany.current(patch);
+
+  // Timeline events
   const addEvent=()=>{
     if(!newEvtTitle||!newEvtDate)return;
     const evtId=Date.now();
     const taskId=evtId+1;
-    const newTask={id:taskId,text:`[${newEvtDate}] ${newEvtTitle}`,status:'Pendente',fromTimeline:true};
+    // Try to parse newEvtDate as YYYY-MM-DD for dueDate
+    const dueDate=newEvtDate.match(/^\d{4}-\d{2}-\d{2}$/)?newEvtDate:'';
+    const newTask={id:taskId,text:newEvtTitle,status:'Pendente',fromTimeline:true,dueDate};
     const newEvt={id:evtId,title:newEvtTitle,date:newEvtDate,taskId};
-    updateMany({
+    updMany({
       timelineEvents:[...(local.timelineEvents||[]),newEvt],
-      projectTasks:[...(local.projectTasks||[]),newTask]
+      projectTasks:applyAutoLate([...(local.projectTasks||[]),newTask])
     });
     setNewEvtTitle('');setNewEvtDate('');
   };
-  const saveEditEvt=()=>{if(!editEvt)return;update('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));setEditEvt(null);};
+  const saveEditEvt=()=>{
+    if(!editEvt)return;
+    upd('timelineEvents',local.timelineEvents.map(e=>e.id===editEvt.id?editEvt:e));
+    setEditEvt(null);
+  };
   const deleteEditEvt=()=>{
-    // Also remove the linked task if it was auto-created from this timeline event
     const evt=editEvt;
     const newEvts=local.timelineEvents.filter(e=>e.id!==evt.id);
     const newTasks=evt.taskId?(local.projectTasks||[]).filter(t=>t.id!==evt.taskId):(local.projectTasks||[]);
-    updateMany({timelineEvents:newEvts,projectTasks:newTasks});
+    updMany({timelineEvents:newEvts,projectTasks:newTasks});
     setEditEvt(null);
   };
+
+  // Mentors — fixed: no async state update inside setState
   const toggleMentor=id=>{
-    setLocal(prev=>{
-      const m=prev.mentors||[];
-      const next=m.includes(id)?m.filter(x=>x!==id):[...m,id];
-      const u={...prev,mentors:next};
-      setTimeout(()=>onUpdate(u),0);
-      return u;
-    });
+    const m=local.mentors||[];
+    const next=m.includes(id)?m.filter(x=>x!==id):[...m,id];
+    upd('mentors',next);
   };
+
+  // Tasks
   const [newPTask,setNewPTask]=useState('');
-  const addPTask=()=>{if(!newPTask.trim())return;update('projectTasks',[...(local.projectTasks||[]),{id:Date.now(),text:newPTask.trim(),status:'Pendente'}]);setNewPTask('');};
-  const cyclePTaskStatus=id=>update('projectTasks',(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t));
-  const removePTask=id=>update('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
-  const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;update('cover',await uploadImage(file));};
+  const [newPTaskDue,setNewPTaskDue]=useState('');
+  const addPTask=()=>{
+    if(!newPTask.trim())return;
+    const id=Date.now();
+    const newTask={id,text:newPTask.trim(),status:'Pendente',dueDate:newPTaskDue||''};
+    // If dueDate given, also add a timeline event for reverse sync
+    const newTasks=applyAutoLate([...(local.projectTasks||[]),newTask]);
+    if(newPTaskDue){
+      const evtId=id+1;
+      const newEvt={id:evtId,title:newPTask.trim(),date:newPTaskDue,taskId:id};
+      updMany({projectTasks:newTasks,timelineEvents:[...(local.timelineEvents||[]),newEvt]});
+    } else {
+      upd('projectTasks',newTasks);
+    }
+    setNewPTask('');setNewPTaskDue('');
+  };
+  const cyclePTaskStatus=id=>{
+    const updated=(local.projectTasks||[]).map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);
+    upd('projectTasks',updated);
+  };
+  const removePTask=id=>upd('projectTasks',(local.projectTasks||[]).filter(t=>t.id!==id));
+
+  const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;upd('cover',await uploadImage(file));};
   const handleResearchImgUpload=async(noteId,e)=>{
     const files=Array.from(e.target.files);
     const urls=await Promise.all(files.map(uploadImage));
     const rn=(local.researchNotes||[]).map(n=>n.id===noteId?{...n,images:[...(n.images||[]),...urls]}:n);
-    update('researchNotes',rn);e.target.value='';
+    upd('researchNotes',rn);e.target.value='';
   };
   const removeResearchImg=(noteId,idx)=>{
     const rn=(local.researchNotes||[]).map(n=>{if(n.id!==noteId)return n;const imgs=[...(n.images||[])];imgs.splice(idx,1);return{...n,images:imgs};});
-    update('researchNotes',rn);
+    upd('researchNotes',rn);
   };
   const [activeResearchId,setActiveResearchId]=useState(()=>(project.researchNotes||[])[0]?.id||null);
   const activeResearch=(local.researchNotes||[]).find(n=>n.id===activeResearchId)||null;
-  const addResearchNote=()=>{const n={id:Date.now(),title:'Nova Pesquisa',content:'',url:'',images:[],date:new Date().toLocaleDateString('pt-BR')};update('researchNotes',[...(local.researchNotes||[]),n]);setActiveResearchId(n.id);};
-  const updateResearch=(field,val)=>{const rn=(local.researchNotes||[]).map(n=>n.id===activeResearchId?{...n,[field]:val}:n);update('researchNotes',rn);};
-  const deleteResearch=id=>{update('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
+  const addResearchNote=()=>{const n={id:Date.now(),title:'Nova Pesquisa',content:'',url:'',images:[],date:new Date().toLocaleDateString('pt-BR')};upd('researchNotes',[...(local.researchNotes||[]),n]);setActiveResearchId(n.id);};
+  const updateResearch=(field,val)=>{const rn=(local.researchNotes||[]).map(n=>n.id===activeResearchId?{...n,[field]:val}:n);upd('researchNotes',rn);};
+  const deleteResearch=id=>{upd('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
   const researchImgRef=useRef();
   const linkedMentors=useMemo(()=>globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id)),[globalMentors,local.mentors]);
-  const openTasks=useMemo(()=>(local.projectTasks||[]).filter(t=>t.status!=='Concluído'),[local.projectTasks]);
+  const openTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]).filter(t=>t.status!=='Concluído'),[local.projectTasks]);
+
+  // Mini-projects (Animatics)
+  const [activeMiniId,setActiveMiniId]=useState(()=>(project.miniProjects||[])[0]?.id||null);
+  const activeMini=(local.miniProjects||[]).find(m=>m.id===activeMiniId)||null;
+  const addMini=()=>{
+    const n={id:Date.now(),title:'Novo Animatic',status:'Em Andamento',notes:'',frames:[],createdAt:new Date().toLocaleDateString('pt-BR')};
+    upd('miniProjects',[...(local.miniProjects||[]),n]);
+    setActiveMiniId(n.id);
+  };
+  const updateMini=(field,val)=>{upd('miniProjects',(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,[field]:val}:m));};
+  const deleteMini=id=>{upd('miniProjects',(local.miniProjects||[]).filter(m=>m.id!==id));setActiveMiniId((local.miniProjects||[]).find(m=>m.id!==id)?.id||null);};
+  const miniImgRef=useRef();
+  const handleMiniImgs=async e=>{
+    const files=Array.from(e.target.files);
+    const urls=await Promise.all(files.map(uploadImage));
+    updateMini('frames',[...((local.miniProjects||[]).find(m=>m.id===activeMiniId)?.frames||[]),...urls]);
+    e.target.value='';
+  };
+  const MINI_STATUSES=['Em Andamento','Revisão','Aprovado','Arquivado'];
 
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto',paddingBottom:60}}>
       <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
+      <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
 
       {/* Timeline event edit modal */}
       {editEvt&&(
         <Modal title="Editar Evento" onClose={()=>setEditEvt(null)} width={380} offsetSidebar>
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
-            <Field label="Data"><input className="input-box" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})} placeholder="Ex: 15/Nov"/></Field>
+            <Field label="Data"><input className="input-box" value={editEvt.date} onChange={e=>setEditEvt({...editEvt,date:e.target.value})} placeholder="Ex: 15/Nov ou 2024-11-15"/></Field>
             <Field label="Título do Evento"><input className="input-box" value={editEvt.title} onChange={e=>setEditEvt({...editEvt,title:e.target.value})} onKeyDown={e=>e.key==='Enter'&&saveEditEvt()} placeholder="Nome do evento" autoFocus/></Field>
             <div style={{display:'flex',justifyContent:'space-between',marginTop:8}}>
               <button className="btn btn-danger" onClick={deleteEditEvt}><Icon name="trash-2" size={13}/> Remover</button>
@@ -950,7 +1190,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
               <h1 className="serif" style={{fontSize:'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em'}}>{local.title}</h1>
               <p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>
             </div>
-            <select value={local.status} onChange={e=>{e.stopPropagation();update('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all'}}>
+            <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all'}}>
               <option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option>
             </select>
           </div>
@@ -965,18 +1205,18 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
             <span style={{fontSize:'.72rem',color:'var(--muted)',marginLeft:10}}>Clique em um evento para editar</span>
           </div>
           <div style={{display:'flex',gap:6}}>
-            <input value={newEvtDate} onChange={e=>setNewEvtDate(e.target.value)} placeholder="Data (10/Nov)" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:110}}/>
+            <input value={newEvtDate} onChange={e=>setNewEvtDate(e.target.value)} placeholder="Data (AAAA-MM-DD)" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:140}}/>
             <input value={newEvtTitle} onChange={e=>setNewEvtTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addEvent()} placeholder="Evento" style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:130}}/>
             <button onClick={addEvent} className="btn btn-dark" style={{padding:'5px 12px'}}><Icon name="plus" size={12}/></button>
           </div>
         </div>
         <div style={{overflowX:'auto',paddingBottom:8}}>
-          {local.timelineEvents.length===0
-            ?<div style={{color:'var(--muted)',fontSize:'.82rem'}}>Nenhum evento. Adicione acima.</div>
+          {(local.timelineEvents||[]).length===0
+            ?<div style={{color:'var(--muted)',fontSize:'.82rem'}}>Nenhum evento. Use o formato AAAA-MM-DD para vincular prazo à tarefa automaticamente.</div>
             :(
               <div style={{display:'flex',alignItems:'flex-start',position:'relative',paddingTop:4,whiteSpace:'nowrap'}}>
                 <div style={{position:'absolute',top:8,left:0,right:0,height:1,background:'var(--border)'}}/>
-                {local.timelineEvents.map(evt=>(
+                {(local.timelineEvents||[]).map(evt=>(
                   <div key={evt.id} onClick={()=>setEditEvt({...evt})} title="Clique para editar"
                     style={{flexShrink:0,width:140,position:'relative',paddingRight:12,cursor:'pointer',whiteSpace:'normal'}}
                     onMouseEnter={e=>{e.currentTarget.querySelector('.evt-node').style.background='#276b3e';e.currentTarget.querySelector('.evt-node').style.boxShadow='0 0 0 1px #276b3e';}}
@@ -995,7 +1235,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
-        {['Visão Geral','Tarefas','Mentores','Pesquisa'].map(t=>(
+        {['Visão Geral','Tarefas','Animatics','Mentores','Pesquisa'].map(t=>(
           <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent'}}>{t}</button>
         ))}
       </div>
@@ -1006,7 +1246,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
             <div className="card" style={{padding:32}}>
               <span className="label" style={{display:'block',marginBottom:14}}>Notas & Direção de Arte</span>
               <textarea style={{background:'transparent',outline:'none',resize:'none',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',height:200,border:'none',width:'100%'}}
-                value={local.notes} onChange={e=>update('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
+                value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
             {openTasks.length>0&&(
               <div className="card" style={{padding:'20px 24px'}}>
@@ -1018,6 +1258,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
                   <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
                     <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
                     <span style={{fontSize:'.84rem',flex:1}}>{t.text}</span>
+                    {t.dueDate&&<span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0}}>{t.dueDate}</span>}
                   </div>
                 ))}
                 {openTasks.length>5&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:8}}>+{openTasks.length-5} mais</div>}
@@ -1028,9 +1269,9 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
             <span className="label" style={{display:'block',marginBottom:16}}>Datas</span>
             <div style={{display:'flex',flexDirection:'column',gap:20}}>
               <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Início</label>
-                <input type="date" value={local.startDate} onChange={e=>update('startDate',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:500,width:'100%',paddingBottom:4}}/></div>
+                <input type="date" value={local.startDate} onChange={e=>upd('startDate',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:500,width:'100%',paddingBottom:4}}/></div>
               <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Deadline</label>
-                <input type="date" value={local.deadline} onChange={e=>update('deadline',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:600,color:'#9B1C1C',width:'100%',paddingBottom:4}}/></div>
+                <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:600,color:'#9B1C1C',width:'100%',paddingBottom:4}}/></div>
             </div>
           </div>
         </div>
@@ -1040,29 +1281,103 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
         <div className="card" style={{padding:36}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
             <span className="label">Tarefas do Projeto</span>
-            <div style={{display:'flex',gap:6}}>
-              {PTASK_STATUSES.map(s=><span key={s} className={`ptask-pill ptask-${s}`} style={{cursor:'default'}}>{s}: {(local.projectTasks||[]).filter(t=>t.status===s).length}</span>)}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {PTASK_STATUSES.map(s=><span key={s} className={`ptask-pill ptask-${s}`} style={{cursor:'default'}}>{s}: {applyAutoLate(local.projectTasks||[]).filter(t=>t.status===s).length}</span>)}
             </div>
           </div>
+          {/* Add task row with optional due date */}
           <div style={{display:'flex',gap:8,marginBottom:20,paddingBottom:20,borderBottom:'1px solid var(--border)'}}>
             <input value={newPTask} onChange={e=>setNewPTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addPTask()} placeholder="Adicionar nova tarefa..." className="input-box" style={{flex:1}}/>
+            <input type="date" value={newPTaskDue} onChange={e=>setNewPTaskDue(e.target.value)} className="input-box" style={{width:150}} title="Prazo (opcional — cria evento na timeline)"/>
             <button onClick={addPTask} className="btn btn-dark"><Icon name="plus" size={14}/> Adicionar</button>
           </div>
-          {(local.projectTasks||[]).length===0&&(
+          <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:16,display:'flex',alignItems:'center',gap:5}}>
+            <Icon name="info" size={11}/> Adicionar um prazo cria automaticamente um evento na timeline. Tarefas atrasadas ficam marcadas como Atrasado.
+          </div>
+          {applyAutoLate(local.projectTasks||[]).length===0&&(
             <div style={{textAlign:'center',padding:'24px 0',color:'var(--muted)',fontSize:'.85rem'}}><Icon name="check-square" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Nenhuma tarefa.</div>
           )}
-          {(local.projectTasks||[]).map(t=>(
+          {applyAutoLate(local.projectTasks||[]).map(t=>(
             <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
               <button onClick={()=>cyclePTaskStatus(t.id)} className={`ptask-pill ptask-${t.status}`} style={{flexShrink:0,minWidth:80,justifyContent:'center',display:'inline-flex'}}>
-                {t.status==='Concluído'&&<Icon name="check" size={10}/>}{t.status==='Fazendo'&&<Icon name="clock" size={10}/>}
-                {t.status==='Atrasado'&&<Icon name="alert-circle" size={10}/>}{t.status==='Pendente'&&<Icon name="circle" size={10}/>}
+                {t.status==='Concluído'&&<Icon name="check" size={10}/>}
+                {t.status==='Fazendo'&&<Icon name="clock" size={10}/>}
+                {t.status==='Atrasado'&&<Icon name="alert-circle" size={10}/>}
+                {t.status==='Pendente'&&<Icon name="circle" size={10}/>}
                 {t.status}
               </button>
               <span style={{flex:1,fontSize:'.88rem',textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
+              {t.dueDate&&<span style={{fontSize:'.72rem',color:t.status==='Atrasado'?'#9B1C1C':'var(--muted)',flexShrink:0,fontWeight:t.status==='Atrasado'?600:400}}>{t.dueDate}</span>}
+              {t.fromTimeline&&<span title="Criado via timeline" style={{fontSize:'.6rem',color:'#276b3e',flexShrink:0,display:'flex',alignItems:'center',gap:2}}><Icon name="git-branch" size={10}/>timeline</span>}
               <button onClick={()=>removePTask(t.id)} className="btn btn-ghost" style={{padding:4}}><Icon name="trash-2" size={13}/></button>
             </div>
           ))}
-          <p style={{fontSize:'.75rem',color:'var(--muted)',marginTop:16,marginBottom:0}}>Clique no status para alternar: Pendente → Fazendo → Concluído → Atrasado</p>
+        </div>
+      )}
+
+      {tab==='Animatics'&&(
+        <div style={{display:'flex',gap:16,minHeight:480}}>
+          {/* Left: list */}
+          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
+            {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
+            {(local.miniProjects||[]).map(m=>(
+              <div key={m.id} onClick={()=>setActiveMiniId(m.id)}
+                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeMiniId===m.id?'var(--text)':'transparent'}`,background:activeMiniId===m.id?'var(--surface)':'transparent',transition:'all .15s'}}
+                onMouseEnter={e=>{if(activeMiniId!==m.id)e.currentTarget.style.background='var(--surface)';}}
+                onMouseLeave={e=>{if(activeMiniId!==m.id)e.currentTarget.style.background='transparent';}}>
+                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.title}</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:3}}>
+                  <span style={{fontSize:'.65rem',color:'var(--muted)'}}>{m.createdAt}</span>
+                  <span className={`ptask-pill ptask-${m.status==='Aprovado'?'Concluído':m.status==='Revisão'?'Fazendo':m.status==='Arquivado'?'Atrasado':'Pendente'}`} style={{cursor:'default',fontSize:'.55rem',padding:'1px 5px'}}>{m.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Right: editor */}
+          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+            {activeMini?(
+              <>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+                  <input value={activeMini.title} onChange={e=>updateMini('title',e.target.value)}
+                    style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
+                    placeholder="Título do animatic"/>
+                  <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
+                    <select value={activeMini.status} onChange={e=>updateMini('status',e.target.value)}
+                      style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
+                      {MINI_STATUSES.map(s=><option key={s}>{s}</option>)}
+                    </select>
+                    <button onClick={()=>deleteMini(activeMini.id)} className="btn btn-ghost" style={{padding:6}}
+                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                      <Icon name="trash-2" size={16}/>
+                    </button>
+                  </div>
+                </div>
+                <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)}
+                  placeholder="Notas, intenções, referências para este animatic..."
+                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:100,marginBottom:16}}/>
+                {/* Frames grid 3 columns */}
+                {(activeMini.frames||[]).length>0&&(
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                    {(activeMini.frames||[]).map((img,i)=>(
+                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
+                        <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                        <button onClick={()=>{const f=[...(activeMini.frames||[])];f.splice(i,1);updateMini('frames',f);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="btn btn-outline" style={{alignSelf:'flex-start',padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>miniImgRef.current.click()}>
+                  <Icon name="image-plus" size={13}/> Adicionar frames
+                </button>
+              </>
+            ):(
+              <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+                <Icon name="film" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                <p style={{fontSize:'.85rem'}}>Selecione ou crie um animatic</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1074,7 +1389,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
             {globalMentors.filter(m=>!m.deleted).length===0?<p style={{fontSize:'.82rem',color:'var(--muted)'}}>Cadastre mentores primeiro.</p>:(
               <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                 {globalMentors.filter(m=>!m.deleted).map(m=>{const on=(local.mentors||[]).includes(m.id);return(
-                  <button key={m.id} onClick={e=>{e.stopPropagation();e.preventDefault();toggleMentor(m.id);}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                  <button key={m.id} onClick={()=>toggleMentor(m.id)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:20,border:`1px solid ${on?'var(--text)':'var(--border)'}`,background:on?'var(--text)':'transparent',color:on?'white':'var(--muted)',fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
                     {on&&<Icon name="check" size={12}/>}{m.name}
                   </button>
                 );})}
@@ -1100,7 +1415,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
 
       {tab==='Pesquisa'&&(
         <div style={{display:'flex',gap:16,minHeight:480}}>
-          {/* Left: list of research notes */}
           <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
             {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
@@ -1114,7 +1428,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
               </div>
             ))}
           </div>
-          {/* Right: editor */}
           <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
             {activeResearch?(
               <>
@@ -1128,7 +1441,6 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
                     <Icon name="trash-2" size={16}/>
                   </button>
                 </div>
-                {/* URL field */}
                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'7px 12px'}}>
                   <Icon name="link" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                   <input value={activeResearch.url||''} onChange={e=>updateResearch('url',e.target.value)}
@@ -1136,16 +1448,15 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
                     style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
                   {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
                 </div>
-                {/* Text */}
                 <textarea value={activeResearch.content} onChange={e=>updateResearch('content',e.target.value)}
                   placeholder="Notas, análises, referências..."
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
-                {/* Images */}
+                {/* Images — 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
-                  <div style={{display:'flex',flexWrap:'wrap',gap:10,marginBottom:14}}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i)=>(
-                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',flexShrink:0}}>
-                        <img src={img} style={{display:'block',maxWidth:220,maxHeight:180,objectFit:'contain',background:'var(--bg)'}}/>
+                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'4/3',background:'var(--bg)'}}>
+                        <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         <button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
                     ))}
@@ -1170,9 +1481,13 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors})=>{
 
 // ─── GALLERY ─────────────────────────────────────────────────────────────────
 const Gallery=({posts,setPosts})=>{
-  const folders=['movie-studies','sketchbooks','gestures'];
-  const folderLabels={'movie-studies':'Estudos de Filme','sketchbooks':'Sketchbooks','gestures':'Gestuais'};
-  const [activeFolder,setActiveFolder]=useState('movie-studies');
+  const FOLDERS=[
+    {id:'work',        label:'Work'},
+    {id:'movie-studies',label:'Movie Studies'},
+    {id:'sketchbooks', label:'Sketchbook'},
+    {id:'gestures',    label:'Gesture'},
+  ];
+  const [activeFolder,setActiveFolder]=useState('work');
   const [selected,setSelected]=useState(null);
   const [lightbox,setLightbox]=useState(null);
   const [trash,setTrash]=useState(false);
@@ -1201,7 +1516,7 @@ const Gallery=({posts,setPosts})=>{
 
   if(lightbox)return(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
-      <img src={lightbox} onClick={e=>e.stopPropagation()} alt=""/>
+      <Img src={lightbox} onClick={e=>e.stopPropagation()} alt="" style={{maxWidth:'90vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8}}/>
       <button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)'}}><Icon name="x" size={20}/></button>
     </div>
   );
@@ -1215,13 +1530,25 @@ const Gallery=({posts,setPosts})=>{
       </div>
       <div className="card" style={{padding:32}}>
         <input value={selected.title} onChange={e=>upd('title',e.target.value)}
-          style={{fontSize:'2rem',fontWeight:400,background:'transparent',outline:'none',border:'none',borderBottom:'1px solid var(--border)',width:'100%',marginBottom:24,paddingBottom:8,color:'var(--text)',fontFamily:'Cormorant Garamond,serif'}}/>
+          style={{fontSize:'2rem',fontWeight:400,background:'transparent',outline:'none',border:'none',borderBottom:'1px solid var(--border)',width:'100%',marginBottom:16,paddingBottom:8,color:'var(--text)',fontFamily:'Cormorant Garamond,serif'}}/>
+        {/* Folder selector */}
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20}}>
+          <span className="label" style={{flexShrink:0}}>Pasta</span>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {FOLDERS.map(f=>(
+              <button key={f.id} onClick={()=>upd('folder',f.id)}
+                style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--text)':'var(--border)'}`,background:selected.folder===f.id?'var(--text)':'transparent',color:selected.folder===f.id?'white':'var(--muted)',fontSize:'.75rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
         <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
           {selected.images.map((img,i)=>(
             <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',flexShrink:0,cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <img src={img} style={{display:'block',maxWidth:300,maxHeight:260,objectFit:'contain',background:'var(--bg)',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.02)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+              <Img src={img} style={{display:'block',maxWidth:300,maxHeight:260,objectFit:'contain',background:'var(--bg)',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.02)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
             </div>
           ))}
@@ -1248,7 +1575,7 @@ const Gallery=({posts,setPosts})=>{
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
       {!trash&&(
         <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
-          {folders.map(f=><button key={f} onClick={()=>setActiveFolder(f)} className="tab-btn" style={{color:activeFolder===f?'var(--text)':'var(--muted)',borderBottom:activeFolder===f?'2px solid var(--text)':'2px solid transparent'}}>{folderLabels[f]}</button>)}
+          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent'}}>{f.label}</button>)}
         </div>
       )}
       {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
@@ -1260,7 +1587,7 @@ const Gallery=({posts,setPosts})=>{
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
                 <div style={{aspectRatio:'4/5',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                   {post.images.length>0
-                    ?<img src={post.images[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+                    ?<Img src={post.images[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
                     :<Icon name="image" size={28} style={{opacity:.2}}/>}
                 </div>
                 <div style={{padding:'12px 14px'}}>
@@ -1268,7 +1595,7 @@ const Gallery=({posts,setPosts})=>{
                   <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:trash?8:0}}>{post.date}</div>
                   {trash&&(
                     <div style={{display:'flex',gap:5}}>
-                      <button onClick={e=>{e.stopPropagation();restore(post.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="refresh-cw" size={10}/> Restaurar</button>
+                      <button onClick={e=>{e.stopPropagation();restore(post.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="undo-2" size={10}/> Restaurar</button>
                       <button onClick={e=>{e.stopPropagation();hardDelete(post.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="trash-2" size={10}/> Excluir</button>
                     </div>
                   )}
@@ -1335,8 +1662,8 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
               <div style={{display:'flex',gap:4,flexShrink:0}}>
                 {folder==='notes'&&<button onClick={noteToTask} disabled={isAlreadyTask} title={isAlreadyTask?"Já na lista":"Adicionar à lista"} className="btn btn-ghost" style={{padding:6,opacity:isAlreadyTask?.4:1}}><Icon name="check-square" size={16}/></button>}
                 <button onClick={()=>toggleTrash(active.id)} className="btn btn-ghost" style={{padding:6}}
-                  onMouseEnter={e=>e.currentTarget.style.color=folder==='notes'?'#DC2626':'var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
-                  <Icon name={folder==='notes'?'trash-2':'refresh-cw'} size={17}/>
+                  onMouseEnter={e=>e.currentTarget.style.color=folder==='notes'?'#DC2626':'#276b3e'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                  <Icon name={folder==='notes'?'trash-2':'undo-2'} size={17}/>
                 </button>
                 {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost" style={{padding:6}} title="Excluir permanentemente"
                   onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash" size={17}/></button>}
@@ -1543,26 +1870,76 @@ const Mentors=({mentors,setMentors})=>{
 };
 
 // ─── SOCIAL ───────────────────────────────────────────────────────────────────
+const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
+
 const Social=({posts,setPosts})=>{
   const [text,setText]=useState('');
+  const [platform,setPlatform]=useState('Instagram');
   const [editId,setEditId]=useState(null);
   const [trash,setTrash]=useState(false);
+  const [templates,setTemplates]=useState(()=>{
+    try{const s=localStorage.getItem('boardhub_social_templates');return s?JSON.parse(s):socialTemplates;}catch{return socialTemplates;}
+  });
+  const [editingTpl,setEditingTpl]=useState(null); // {index,label,text} or {index:-1,...} for new
+  const saveTemplates=t=>{setTemplates(t);try{localStorage.setItem('boardhub_social_templates',JSON.stringify(t));}catch{}};
+
   const activePosts=posts.filter(p=>!p.deleted);
   const trashedPosts=posts.filter(p=>p.deleted);
+
   const savePost=()=>{
     if(!text.trim())return;
-    if(editId){setPosts(p=>p.map(x=>x.id===editId?{...x,text}:x));setEditId(null);}
-    else setPosts(p=>[{id:Date.now(),text,date:new Date().toLocaleDateString('pt-BR'),platform:'Instagram',deleted:false},...p]);
-    setText('');
+    if(editId){setPosts(p=>p.map(x=>x.id===editId?{...x,text,platform}:x));setEditId(null);}
+    else setPosts(p=>[{id:Date.now(),text,date:new Date().toLocaleDateString('pt-BR'),platform,deleted:false},...p]);
+    setText('');setPlatform('Instagram');
   };
-  const startEdit=p=>{setText(p.text);setEditId(p.id);setTrash(false);};
-  const cancelEdit=()=>{setText('');setEditId(null);};
+  const startEdit=p=>{setText(p.text);setPlatform(p.platform||'Instagram');setEditId(p.id);setTrash(false);};
+  const cancelEdit=()=>{setText('');setEditId(null);setPlatform('Instagram');};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
+  const changePostPlatform=(id,pl)=>setPosts(p=>p.map(x=>x.id===id?{...x,platform:pl}:x));
   const displayed=trash?trashedPosts:activePosts;
+
+  // Template modal
+  const openNewTpl=()=>setEditingTpl({index:-1,label:'',text:''});
+  const openEditTpl=(i)=>setEditingTpl({index:i,...templates[i]});
+  const saveTpl=()=>{
+    if(!editingTpl.label.trim())return;
+    const next=[...templates];
+    if(editingTpl.index===-1)next.push({label:editingTpl.label,text:editingTpl.text});
+    else next[editingTpl.index]={label:editingTpl.label,text:editingTpl.text};
+    saveTemplates(next);setEditingTpl(null);
+  };
+  const deleteTpl=i=>{const next=templates.filter((_,idx)=>idx!==i);saveTemplates(next);};
+
+  const platformColor=pl=>({Instagram:'#833AB4',LinkedIn:'#0A66C2','Twitter/X':'#000000',TikTok:'#010101',YouTube:'#FF0000',Behance:'#053EFF'}[pl]||'var(--text)');
+
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      {/* Template edit modal */}
+      {editingTpl&&(
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setEditingTpl(null)}>
+          <div className="modal" style={{maxWidth:480}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+              <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>{editingTpl.index===-1?'Novo Template':'Editar Template'}</h2>
+              <button className="btn btn-ghost" onClick={()=>setEditingTpl(null)} style={{padding:6}}><Icon name="x" size={18}/></button>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              <Field label="Nome do template">
+                <input className="input-box" value={editingTpl.label} onChange={e=>setEditingTpl(t=>({...t,label:e.target.value}))} placeholder="Ex: Bastidores"/>
+              </Field>
+              <Field label="Texto">
+                <textarea className="input-box" rows={6} value={editingTpl.text} onChange={e=>setEditingTpl(t=>({...t,text:e.target.value}))} placeholder="Escreva o template..." style={{resize:'vertical',lineHeight:1.7}}/>
+              </Field>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+                <button className="btn btn-outline" onClick={()=>setEditingTpl(null)}>Cancelar</button>
+                <button className="btn btn-dark" onClick={saveTpl} disabled={!editingTpl.label.trim()}><Icon name="check" size={14}/> Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
         <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
         <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
@@ -1572,26 +1949,50 @@ const Social=({posts,setPosts})=>{
       {trash&&<TrashBanner label="Social Media" onExit={()=>setTrash(false)}/>}
       {!trash&&(
         <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:20,marginBottom:32}}>
+          {/* Composer */}
           <div className="card" style={{padding:24,display:'flex',flexDirection:'column'}}>
             {editId&&<div style={{fontSize:'.75rem',color:'#92700b',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
               <Icon name="pencil" size={11}/> Editando post — <button onClick={cancelEdit} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontFamily:'Figtree,sans-serif',fontSize:'.75rem',padding:0}}>cancelar</button>
             </div>}
-            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:220,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)'}}/>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8}}>
-              <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{text.length} caracteres</span>
-              <button className="btn btn-dark" onClick={savePost} disabled={!text.trim()} style={{opacity:text.trim()?1:.5}}><Icon name={editId?'check':'save'} size={13}/> {editId?'Atualizar':'Salvar Post'}</button>
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:180,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)'}}/>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
+              {/* Platform selector */}
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span className="label" style={{flexShrink:0}}>Plataforma</span>
+                {SOCIAL_PLATFORMS.map(pl=>(
+                  <button key={pl} onClick={()=>setPlatform(pl)}
+                    style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.72rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
+                    {pl}
+                  </button>
+                ))}
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{text.length} caracteres</span>
+                <button className="btn btn-dark" onClick={savePost} disabled={!text.trim()} style={{opacity:text.trim()?1:.5}}><Icon name={editId?'check':'save'} size={13}/> {editId?'Atualizar':'Salvar Post'}</button>
+              </div>
             </div>
           </div>
+          {/* Templates */}
           <div>
-            <span className="label" style={{display:'block',marginBottom:12}}>Templates</span>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+              <span className="label">Templates</span>
+              <button className="btn btn-ghost" style={{padding:'3px 8px',fontSize:'.72rem',gap:4}} onClick={openNewTpl}><Icon name="plus" size={12}/> Novo</button>
+            </div>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {socialTemplates.map((t,i)=>(
-                <button key={i} onClick={()=>setText(t.text)} style={{textAlign:'left',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px',cursor:'pointer',transition:'border-color .15s',fontFamily:'Figtree,sans-serif'}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-                  <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:4}}>{t.label}</div>
-                  <div style={{fontSize:'.75rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</div>
-                </button>
+              {templates.map((t,i)=>(
+                <div key={i} style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',transition:'border-color .15s',position:'relative'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-2)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                    <button onClick={()=>setText(t.text)} style={{fontWeight:600,fontSize:'.82rem',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',color:'var(--text)',padding:0,textAlign:'left'}}>{t.label}</button>
+                    <div style={{display:'flex',gap:2,flexShrink:0}}>
+                      <button className="btn btn-ghost" style={{padding:'2px 5px'}} onClick={()=>openEditTpl(i)} title="Editar"><Icon name="pencil" size={12}/></button>
+                      <button className="btn btn-ghost" style={{padding:'2px 5px'}} onClick={()=>deleteTpl(i)} title="Excluir" onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="x" size={12}/></button>
+                    </div>
+                  </div>
+                  <div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}} onClick={()=>setText(t.text)}>{t.text}</div>
+                </div>
               ))}
+              {templates.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',textAlign:'center',padding:'20px 0'}}>Nenhum template ainda.</div>}
             </div>
           </div>
         </div>
@@ -1604,8 +2005,20 @@ const Social=({posts,setPosts})=>{
               <div key={p.id} className="card" style={{padding:'18px 22px',display:'flex',gap:16,alignItems:'flex-start'}}>
                 <div style={{flex:1}}>
                   <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap'}}>{p.text}</p>
-                  <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center'}}>
-                    <span className="tag tag-blue">{p.platform}</span>
+                  <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    {/* Platform badge — clickable when not in trash */}
+                    {!trash?(
+                      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                        {SOCIAL_PLATFORMS.map(pl=>(
+                          <button key={pl} onClick={()=>changePostPlatform(p.id,pl)}
+                            style={{padding:'2px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s'}}>
+                            {pl}
+                          </button>
+                        ))}
+                      </div>
+                    ):(
+                      <span style={{fontSize:'.75rem',fontWeight:600,padding:'2px 9px',borderRadius:20,background:'var(--bg)',color:'var(--muted)',border:'1px solid var(--border)'}}>{p.platform||'Instagram'}</span>
+                    )}
                     <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.date}</span>
                   </div>
                 </div>
@@ -1614,7 +2027,7 @@ const Social=({posts,setPosts})=>{
                     <><button className="btn btn-ghost" style={{padding:5}} onClick={()=>startEdit(p)}><Icon name="pencil" size={14}/></button>
                     <button className="btn btn-ghost" style={{padding:5}} onClick={()=>softDelete(p.id)}><Icon name="trash-2" size={14}/></button></>
                   ):(
-                    <><button className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>restore(p.id)}><Icon name="refresh-cw" size={12}/> Restaurar</button>
+                    <><button className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>restore(p.id)}><Icon name="undo-2" size={12}/> Restaurar</button>
                     <button className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>hardDelete(p.id)}><Icon name="trash-2" size={12}/> Excluir</button></>
                   )}
                 </div>
@@ -1944,6 +2357,10 @@ const App=()=>{
   const [tasks,setTasks]=useState(()=>persisted?.tasks||SEED.tasks);
   const [socialPosts,setSocialPosts]=useState(()=>persisted?.socialPosts||SEED.socialPosts);
   const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
+  const [pomoData,setPomoData]=useState(()=>pomoLoad());
+
+  // Persist pomoData whenever it changes
+  useEffect(()=>{ pomoSave(pomoData); },[pomoData]);
 
   // Auto-save to localStorage on any state change
   useEffect(()=>{
@@ -1965,10 +2382,11 @@ const App=()=>{
   const clearSave=()=>{
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);
+    setPomoData({days:{}});
     navigate('dashboard');
   };
 
-  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
   const handleImport=data=>{
     if(data.projects)setProjects(data.projects);
     if(data.clients)setClients(data.clients);
@@ -1977,23 +2395,15 @@ const App=()=>{
     if(data.tasks)setTasks(data.tasks);
     if(data.socialPosts)setSocialPosts(data.socialPosts);
     if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
+    if(data.pomoData)setPomoData(data.pomoData);
   };
 
-  var psState = useState(false); var showPomoStats = psState[0]; var setShowPomoStats = psState[1];
   return(
     <div style={{display:'flex',minHeight:'100vh'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
-      {showPomoStats&&<PomodoroStatsPanel onClose={function(){setShowPomoStats(false);}}/>}
       <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
-      <button
-        onClick={function(){setShowPomoStats(function(s){return !s;});}}
-        title="Histórico de foco Pomodoro"
-        style={{position:'fixed',top:16,right:16,zIndex:150,width:36,height:36,borderRadius:'50%',background:'var(--surface)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 8px rgba(28,25,23,.1)',transition:'all .18s'}}
-        onMouseEnter={function(e){e.currentTarget.style.background='var(--text)';e.currentTarget.style.color='white';}}
-        onMouseLeave={function(e){e.currentTarget.style.background='var(--surface)';e.currentTarget.style.color='inherit';}}
-      ><Icon name="timer" size={16}/></button>
       <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
-        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes}/>}
+        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors}/>}
         {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
