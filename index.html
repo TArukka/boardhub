@@ -35,8 +35,8 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .fade-up{animation:fadeUp .35s ease both;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
-.overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
-.overlay-offset{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;padding-left:calc(220px + 20px);}
+.overlay{position:fixed;inset:0;background:rgba(28,25,23,.55);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
+.overlay-offset{position:fixed;inset:0;background:rgba(28,25,23,.55);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;padding-left:calc(220px + 20px);}
 .modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:32px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:90vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
@@ -596,73 +596,74 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
       {/* Stats panel — replaces timer card inline */}
       {showStats && (
-        <div className="card" style={{padding:0,overflow:'hidden'}}>
-          {/* Summary row */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid var(--border)'}}>
-            <div style={{padding:'12px 16px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
-              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Hoje</div>
-              <div style={{fontSize:'1rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todaySecs)}</div>
+        <div style={{position:'fixed',inset:0,background:'rgba(28,25,23,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20,animation:'overlayIn .2s ease'}} onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
+          <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+              <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
+              <button className="btn btn-ghost" onClick={()=>setShowStats(false)} style={{padding:6}}><Icon name="x" size={18}/></button>
             </div>
-            <div style={{padding:'12px 16px',textAlign:'center'}}>
-              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Total</div>
-              <div style={{fontSize:'1rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(totalAll)}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+              <div style={{padding:'14px 20px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
+                <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Hoje</div>
+                <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todaySecs)}</div>
+              </div>
+              <div style={{padding:'14px 20px',textAlign:'center'}}>
+                <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Total</div>
+                <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(totalAll)}</div>
+              </div>
             </div>
-          </div>
-          {/* Tabs */}
-          <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
-            {['days','months'].map(t=>(
-              <button key={t} onClick={()=>setStatsTab(t)} style={{flex:1,padding:'8px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:500,color:statsTab===t?'var(--text)':'var(--muted)',borderBottom:statsTab===t?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>
-                {t==='days'?'Por Dia':'Por Mês'}
-              </button>
-            ))}
-          </div>
-          {/* Content */}
-          <div style={{maxHeight:260,overflowY:'auto',padding:'14px 16px'}}>
-            {statsTab === 'days' && (
-              dayEntries.length === 0
-                ? <p style={{fontSize:'.82rem',color:'var(--muted)',textAlign:'center',padding:'20px 0',margin:0}}>Nenhuma sessão registrada ainda.</p>
-                : <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                    {dayEntries.map(([day, s]) => (
-                      <div key={day}>
-                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                          <span style={{fontSize:'.78rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
-                          <span style={{fontSize:'.78rem',fontWeight:600}}>{pomoFmtSecs(s)}</span>
+            <div style={{display:'flex',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+              {['days','months'].map(t=>(
+                <button key={t} onClick={()=>setStatsTab(t)} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:statsTab===t?'var(--text)':'var(--muted)',borderBottom:statsTab===t?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>
+                  {t==='days'?'Por Dia':'Por Mes'}
+                </button>
+              ))}
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'16px 24px'}}>
+              {statsTab==='days'&&(dayEntries.length===0
+                ?<p style={{fontSize:'.85rem',color:'var(--muted)',textAlign:'center',padding:'32px 0',margin:0}}>Nenhuma sessao registrada.</p>
+                :<div style={{display:'flex',flexDirection:'column',gap:12}}>
+                  {dayEntries.map(([day,s])=>(
+                    <div key={day}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                        <span style={{fontSize:'.82rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
+                        <span style={{fontSize:'.82rem',fontWeight:600}}>{pomoFmtSecs(s)}</span>
+                      </div>
+                      <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {statsTab==='months'&&(monthEntries.length===0
+                ?<p style={{fontSize:'.85rem',color:'var(--muted)',textAlign:'center',padding:'32px 0',margin:0}}>Nenhuma sessao registrada.</p>
+                :<div style={{display:'flex',flexDirection:'column',gap:16}}>
+                  {monthEntries.map(([mk,s])=>{
+                    const daysInMonth=dayEntries.filter(e=>e[0].slice(0,7)===mk);
+                    return(
+                      <div key={mk}>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                          <span style={{fontSize:'.85rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
+                          <span style={{fontSize:'.85rem',fontWeight:700}}>{pomoFmtSecs(s)}</span>
                         </div>
-                        <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
-                          <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                        <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',marginBottom:6}}>
+                          <div style={{height:'100%',width:Math.round(s/maxMonth*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                        </div>
+                        <div style={{paddingLeft:8}}>
+                          {daysInMonth.map(([d,ds])=>(
+                            <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
+                              <span style={{fontSize:'.74rem',color:'var(--muted)'}}>{pomoFmtDay(d)}</span>
+                              <span style={{fontSize:'.74rem',color:'var(--muted)'}}>{pomoFmtSecs(ds)}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
-            )}
-            {statsTab === 'months' && (
-              monthEntries.length === 0
-                ? <p style={{fontSize:'.82rem',color:'var(--muted)',textAlign:'center',padding:'20px 0',margin:0}}>Nenhuma sessão registrada ainda.</p>
-                : <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                    {monthEntries.map(([mk, s]) => {
-                      const daysInMonth = dayEntries.filter(e => e[0].slice(0,7)===mk);
-                      return (
-                        <div key={mk}>
-                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                            <span style={{fontSize:'.8rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
-                            <span style={{fontSize:'.8rem',fontWeight:700}}>{pomoFmtSecs(s)}</span>
-                          </div>
-                          <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',marginBottom:5}}>
-                            <div style={{height:'100%',width:Math.round(s/maxMonth*100)+'%',background:'var(--text)',borderRadius:3}}/>
-                          </div>
-                          <div style={{paddingLeft:6}}>
-                            {daysInMonth.map(([d, ds]) => (
-                              <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
-                                <span style={{fontSize:'.7rem',color:'var(--muted)'}}>{pomoFmtDay(d)}</span>
-                                <span style={{fontSize:'.7rem',color:'var(--muted)'}}>{pomoFmtSecs(ds)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -706,7 +707,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
           </div>
         ))}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
           {/* Projetos ativos */}
@@ -808,6 +809,42 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
           </div>
         </div>
       </div>
+      {mentors.filter(m=>!m.deleted&&m.main).length>0&&(
+        <div style={{marginTop:32}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <span className="label" style={{display:'flex',alignItems:'center',gap:6}}><Icon name="star" size={11}/> Mentores Principais</span>
+            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat('+mentors.filter(m=>!m.deleted&&m.main).length+',1fr)',gap:14}}>
+            {mentors.filter(m=>!m.deleted&&m.main).map(m=>{
+              const photos=(m.photos||[]).filter(Boolean);
+              return(
+                <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setView('mentors')}>
+                  {photos.length>0
+                    ?<div style={{height:80,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
+                        {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:80,objectFit:'cover',display:'block'}}/>)}
+                      </div>
+                    :<div style={{height:80,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.4rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
+                      </div>
+                  }
+                  <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+                    {m.photo
+                      ?<img src={m.photo} style={{width:30,height:30,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                      :<div style={{width:30,height:30,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.9rem'}}>{(m.name||'?').charAt(0)}</div>
+                    }
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                      {m.area&&<div style={{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>}
+                    </div>
+                    <Icon name="star" size={11} style={{color:'#92700b',marginLeft:'auto',flexShrink:0}}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1342,14 +1379,31 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
 
   // Mini-projects (Animatics)
   const [activeMiniId,setActiveMiniId]=useState(()=>(project.miniProjects||[])[0]?.id||null);
+  const [expandedMiniIds,setExpandedMiniIds]=useState(()=>new Set([(project.miniProjects||[])[0]?.id].filter(Boolean)));
   const activeMini=(local.miniProjects||[]).find(m=>m.id===activeMiniId)||null;
   const addMini=()=>{
-    const n={id:Date.now(),title:'Novo Animatic',status:'Em Andamento',notes:'',frames:[],createdAt:new Date().toLocaleDateString('pt-BR')};
+    const n={id:Date.now(),title:'Novo Animatic',status:'Em Andamento',notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};
     upd('miniProjects',[...(local.miniProjects||[]),n]);
     setActiveMiniId(n.id);
   };
   const updateMini=(field,val)=>{upd('miniProjects',(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,[field]:val}:m));};
   const deleteMini=id=>{upd('miniProjects',(local.miniProjects||[]).filter(m=>m.id!==id));setActiveMiniId((local.miniProjects||[]).find(m=>m.id!==id)?.id||null);};
+  const [activeInnerNoteId,setActiveInnerNoteId]=useState(null);
+  const addInnerNote=()=>{
+    const n={id:Date.now(),title:'Nova nota',content:'',createdAt:new Date().toLocaleDateString('pt-BR')};
+    const updated=(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,innerNotes:[...(m.innerNotes||[]),n]}:m);
+    upd('miniProjects',updated);
+    setActiveInnerNoteId(n.id);
+  };
+  const updateInnerNote=(field,val)=>{
+    const updated=(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,innerNotes:(m.innerNotes||[]).map(n=>n.id===activeInnerNoteId?{...n,[field]:val}:n)}:m);
+    upd('miniProjects',updated);
+  };
+  const deleteInnerNote=id=>{
+    const updated=(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,innerNotes:(m.innerNotes||[]).filter(n=>n.id!==id)}:m);
+    upd('miniProjects',updated);
+    if(activeInnerNoteId===id)setActiveInnerNoteId(null);
+  };
   const miniImgRef=useRef();
   const handleMiniImgs=async e=>{
     const files=Array.from(e.target.files);
@@ -1438,7 +1492,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                             {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                           </div>
                           {m.name}
-                          {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
+                          {on&&<Icon name="x" size={11} style={{opacity:.8}}/>}
                         </button>
                       );
                     })}
@@ -1465,13 +1519,35 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
               )}
             </div>
           </div>
-          <div className="card" style={{padding:28}}>
-            <span className="label" style={{display:'block',marginBottom:16}}>Datas</span>
-            <div style={{display:'flex',flexDirection:'column',gap:20}}>
-              <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Início</label>
-                <input type="date" value={local.startDate} onChange={e=>upd('startDate',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:500,width:'100%',paddingBottom:4}}/></div>
-              <div><label style={{fontSize:'.72rem',color:'var(--muted)',display:'block',marginBottom:6}}>Deadline</label>
-                <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} className="input-bare" style={{fontSize:'.85rem',fontWeight:600,color:'#9B1C1C',width:'100%',paddingBottom:4}}/></div>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div className="card" style={{padding:24}}>
+              <span className="label" style={{display:'block',marginBottom:16}}>Datas</span>
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                <div>
+                  <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Inicio</div>
+                  <label style={{display:'block',position:'relative',cursor:'pointer'}}>
+                    <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
+                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.05rem',fontWeight:500,color:local.startDate?'var(--text)':'var(--muted)'}}>
+                        {local.startDate?new Date(local.startDate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'Selecionar data'}
+                      </span>
+                      <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                    </div>
+                    <input type="date" value={local.startDate} onChange={e=>upd('startDate',e.target.value)} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                  </label>
+                </div>
+                <div>
+                  <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Deadline</div>
+                  <label style={{display:'block',position:'relative',cursor:'pointer'}}>
+                    <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
+                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.05rem',fontWeight:600,color:local.deadline?'var(--text)':'var(--muted)'}}>
+                        {local.deadline?new Date(local.deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'Selecionar data'}
+                      </span>
+                      <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                    </div>
+                    <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1479,27 +1555,69 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
 
       {tab==='Animatics'&&(
         <div style={{display:'flex',gap:16,minHeight:480}}>
-          {/* Left: list */}
-          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
+          {/* Left: animatics with expandable notes */}
+          <div style={{width:210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
+            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
-            {(local.miniProjects||[]).map(m=>(
-              <div key={m.id} onClick={()=>setActiveMiniId(m.id)}
-                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeMiniId===m.id?'var(--text)':'transparent'}`,background:activeMiniId===m.id?'var(--surface)':'transparent',transition:'all .15s'}}
-                onMouseEnter={e=>{if(activeMiniId!==m.id)e.currentTarget.style.background='var(--surface)';}}
-                onMouseLeave={e=>{if(activeMiniId!==m.id)e.currentTarget.style.background='transparent';}}>
-                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.title}</div>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:3}}>
-                  <span style={{fontSize:'.65rem',color:'var(--muted)'}}>{m.createdAt}</span>
-                  <span className={`ptask-pill ptask-${m.status==='Aprovado'?'Concluído':m.status==='Revisão'?'Fazendo':m.status==='Arquivado'?'Atrasado':'Pendente'}`} style={{cursor:'default',fontSize:'.55rem',padding:'1px 5px'}}>{m.status}</span>
+            {(local.miniProjects||[]).map(m=>{
+              const expanded=expandedMiniIds.has(m.id);
+              const isMiniActive=activeMiniId===m.id&&!activeInnerNoteId;
+              const toggleExpand=e=>{e.stopPropagation();const s=new Set(expandedMiniIds);expanded?s.delete(m.id):s.add(m.id);setExpandedMiniIds(s);};
+              return(
+                <div key={m.id}>
+                  {/* Animatic row */}
+                  <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
+                      border:`1px solid ${isMiniActive?'var(--text)':'transparent'}`,
+                      background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}
+                    onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
+                    onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
+                    <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
+                      <Icon name="chevron-right" size={13}/>
+                    </button>
+                    <Icon name="folder" size={13} style={{flexShrink:0,color:isMiniActive?'white':'var(--muted)'}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isMiniActive?'white':'var(--text)'}}>{m.title}</div>
+                    </div>
+                    <span style={{fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',padding:'1px 5px',borderRadius:3,flexShrink:0,
+                      background:isMiniActive?'rgba(255,255,255,.2)':'var(--bg)',color:isMiniActive?'rgba(255,255,255,.8)':'var(--muted)'}}>{m.status==='Em Andamento'?'Ativo':m.status==='Aprovado'?'OK':m.status==='Revisão'?'Rev':m.status}</span>
+                  </div>
+                  {/* Expanded inner notes */}
+                  {expanded&&(
+                    <div style={{paddingLeft:20,display:'flex',flexDirection:'column',gap:2,marginTop:2,marginBottom:2}}>
+                      {(m.innerNotes||[]).map(n=>{
+                        const isNoteActive=activeInnerNoteId===n.id&&activeMiniId===m.id;
+                        return(
+                          <div key={n.id} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
+                            style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6,cursor:'pointer',
+                              border:`1px solid ${isNoteActive?'var(--text)':'transparent'}`,
+                              background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}
+                            onMouseEnter={e=>{if(!isNoteActive)e.currentTarget.style.background='var(--surface)';}}
+                            onMouseLeave={e=>{if(!isNoteActive)e.currentTarget.style.background='transparent';}}>
+                            <Icon name="file-text" size={11} style={{flexShrink:0,color:'var(--muted)'}}/>
+                            <span style={{fontSize:'.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:isNoteActive?'var(--text)':'var(--muted)'}}>{n.title||'Sem título'}</span>
+                          </div>
+                        );
+                      })}
+                      <button onClick={e=>{e.stopPropagation();setActiveMiniId(m.id);addInnerNote();if(!expandedMiniIds.has(m.id)){const s=new Set(expandedMiniIds);s.add(m.id);setExpandedMiniIds(s);}}}
+                        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:6,border:'1px dashed var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.74rem',color:'var(--muted)',transition:'all .15s',marginTop:2}}
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--text)';e.currentTarget.style.color='var(--text)';}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--muted)';}}>
+                        <Icon name="plus" size={10}/> Nova nota
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {/* Right: editor */}
+
+          {/* Right: editor panel */}
           <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
-            {activeMini?(
+            {activeMini&&!activeInnerNoteId&&(
+              /* Animatic editor: title, status, description, frames */
               <>
+                <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
                   <input value={activeMini.title} onChange={e=>updateMini('title',e.target.value)}
                     style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
@@ -1517,8 +1635,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 </div>
                 <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)}
                   placeholder="Notas, intenções, referências para este animatic..."
-                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:100,marginBottom:16}}/>
-                {/* Frames grid 3 columns */}
+                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i)=>(
@@ -1533,9 +1650,59 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   <Icon name="image-plus" size={13}/> Adicionar frames
                 </button>
               </>
-            ):(
+            )}
+            {activeMini&&activeInnerNoteId&&(()=>{
+              const innerNotes=activeMini.innerNotes||[];
+              const note=innerNotes.find(n=>n.id===activeInnerNoteId)||null;
+              if(!note)return null;
+              return(
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+                    <input value={note.title} onChange={e=>updateInnerNote('title',e.target.value)}
+                      style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
+                      placeholder="Título da nota"/>
+                    <button onClick={()=>deleteInnerNote(note.id)} className="btn btn-ghost" style={{padding:6,flexShrink:0}}
+                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                      <Icon name="trash-2" size={16}/>
+                    </button>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'7px 12px'}}>
+                    <Icon name="link" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                    <input value={note.url||''} onChange={e=>updateInnerNote('url',e.target.value)}
+                      placeholder="Link de referência (https://...)"
+                      style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
+                    {note.url&&<a href={note.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+                  </div>
+                  <textarea value={note.content||''} onChange={e=>updateInnerNote('content',e.target.value)}
+                    placeholder="Notas, análises, referências..."
+                    style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
+                  {(note.images||[]).length>0&&(
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                      {(note.images||[]).map((img,i)=>(
+                        <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
+                          <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                          <button onClick={()=>{const imgs=[...(note.images||[])];imgs.splice(i,1);updateInnerNote('images',imgs);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label style={{alignSelf:'flex-start'}}>
+                    <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>document.getElementById('inner-note-img-'+activeInnerNoteId)?.click()}>
+                      <Icon name="image-plus" size={13}/> Adicionar imagens
+                    </button>
+                    <input id={'inner-note-img-'+activeInnerNoteId} type="file" accept="image/*" multiple style={{display:'none'}} onChange={async e=>{
+                      const files=Array.from(e.target.files);
+                      const urls=await Promise.all(files.map(uploadImage));
+                      updateInnerNote('images',[...(note.images||[]),...urls]);
+                      e.target.value='';
+                    }}/>
+                  </label>
+                </>
+              );
+            })()}
+            {!activeMini&&(
               <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
-                <Icon name="film" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                <Icon name="folder" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
                 <p style={{fontSize:'.85rem'}}>Selecione ou crie um animatic</p>
               </div>
             )}
@@ -1585,7 +1752,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 {(activeResearch.images||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i)=>(
-                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'4/3',background:'var(--bg)'}}>
+                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         <button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
@@ -1675,14 +1842,14 @@ const Gallery=({posts,setPosts})=>{
         </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
-        <div style={{display:'flex',flexWrap:'wrap',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
           {selected.images.map((img,i)=>(
-            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',flexShrink:0,cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <Img src={img} style={{display:'block',maxWidth:300,maxHeight:260,objectFit:'contain',background:'var(--bg)',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.02)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
+              <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
             </div>
           ))}
-          <div className="upload-zone" style={{width:120,height:120,minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
+          <div className="upload-zone" style={{aspectRatio:'16/9',minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
             <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploading?'Enviando…':'Adicionar'}</span>
           </div>
         </div>
@@ -2310,6 +2477,198 @@ const SyncHub=({appState,onImport,onClearSave})=>{
   );
 };
 
+// ─── MENTORS HUB ─────────────────────────────────────────────────────────────
+const MentorModal=({mentor,onClose,onSave,onDelete})=>{
+  const [form,setForm]=useState({...mentor});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const photoRef=useRef();
+  const imgRefs=[useRef(),useRef(),useRef(),useRef()];
+
+  const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
+  const handleRefImg=async(idx,e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const url=await uploadImage(file);
+    const imgs=[...(form.photos||[null,null,null,null])];
+    imgs[idx]=url;set('photos',imgs);
+  };
+  const removeRefImg=idx=>{
+    const imgs=[...(form.photos||[null,null,null,null])];
+    imgs[idx]=null;set('photos',imgs);
+  };
+  const photos=form.photos||[null,null,null,null];
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(28,25,23,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal" style={{maxWidth:580}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
+          <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{form.name||'Mentor'}</h2>
+          <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
+        </div>
+        <div style={{display:'flex',gap:16,alignItems:'flex-start',marginBottom:20}}>
+          <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
+          <div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
+            onMouseEnter={e=>e.currentTarget.querySelector('.mh').style.opacity=1}
+            onMouseLeave={e=>e.currentTarget.querySelector('.mh').style.opacity=0}>
+            {form.photo
+              ?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{(form.name||'?').charAt(0)}</span>}
+            <div className="mh" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={16} style={{color:'white'}}/></div>
+          </div>
+          <div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Field label="Nome"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontWeight:600}}/></Field>
+            <Field label="Area"><input className="input-box" value={form.area||''} onChange={e=>set('area',e.target.value)} placeholder="Ex: Narrativa Visual"/></Field>
+            <Field label="Meio"><input className="input-box" value={form.medium||''} onChange={e=>set('medium',e.target.value)} placeholder="Ex: Animacao, HQ..."/></Field>
+            <Field label="Status">
+              <select className="input-box" value={form.active?'Ativo':'Inativo'} onChange={e=>set('active',e.target.value==='Ativo')} style={{cursor:'pointer'}}>
+                <option>Ativo</option><option>Inativo</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+        <div style={{marginBottom:20}}>
+          <button onClick={()=>set('main',!form.main)}
+            style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 16px',borderRadius:10,border:'1.5px solid '+(form.main?'#92700b':'var(--border)'),background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--muted)',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:600,transition:'all .15s'}}>
+            <Icon name="star" size={14}/>
+            {form.main?'Mentor Principal (ativo)':'Marcar como Principal'}
+          </button>
+          <p style={{fontSize:'.72rem',color:'var(--muted)',margin:'6px 0 0 2px'}}>Ate 3 mentores principais aparecem na pagina inicial.</p>
+        </div>
+        <Field label="Notas e Estudos">
+          <textarea className="input-box" rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)}
+            placeholder="Insights, tecnicas, o que aprender..." style={{resize:'vertical',lineHeight:1.7,marginBottom:16}}/>
+        </Field>
+        <Field label="Links de Referencia">
+          <input className="input-box" value={form.links||''} onChange={e=>set('links',e.target.value)}
+            placeholder="https://... (separe com virgula)" style={{marginBottom:16}}/>
+        </Field>
+        <div style={{marginBottom:20}}>
+          <span className="label" style={{display:'block',marginBottom:10}}>Imagens de Referencia</span>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+            {[0,1,2,3].map(idx=>(
+              <div key={idx} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',cursor:'pointer'}}
+                onClick={()=>!photos[idx]&&imgRefs[idx].current.click()}>
+                <input ref={imgRefs[idx]} type="file" accept="image/*" style={{display:'none'}} onChange={e=>handleRefImg(idx,e)}/>
+                {photos[idx]
+                  ?<>
+                    <img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                    <button onClick={e=>{e.stopPropagation();removeRefImg(idx);}}
+                      style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,.55)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'white'}}>
+                      <Icon name="x" size={10}/>
+                    </button>
+                  </>
+                  :<div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,color:'var(--muted)',fontSize:'.65rem',textAlign:'center',padding:4}}>
+                    <Icon name="image-plus" size={18}/><span>Adicionar</span>
+                  </div>
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',paddingTop:4,borderTop:'1px solid var(--border)'}}>
+          <button className="btn btn-danger" onClick={onDelete}><Icon name="trash-2" size={14}/> Excluir</button>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-dark" onClick={()=>onSave(form)}><Icon name="check" size={14}/> Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MentorsHub=({mentors,setMentors})=>{
+  const [selected,setSelected]=useState(null);
+  const [search,setSearch]=useState('');
+
+  const visible=mentors.filter(m=>!m.deleted&&(
+    !search||m.name.toLowerCase().includes(search.toLowerCase())||
+    (m.area||'').toLowerCase().includes(search.toLowerCase())
+  ));
+
+  const add=()=>{
+    const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
+    setMentors(p=>[n,...p]);
+    setSelected(n);
+  };
+
+  const save=form=>{
+    if(form.main){
+      const mainCount=mentors.filter(m=>!m.deleted&&m.main&&m.id!==form.id).length;
+      if(mainCount>=3){alert('Voce ja tem 3 mentores principais.');return;}
+    }
+    setMentors(p=>p.map(m=>m.id===form.id?form:m));
+    setSelected(null);
+  };
+
+  const del=()=>{
+    if(!window.confirm('Excluir mentor permanentemente?'))return;
+    setMentors(p=>p.filter(m=>m.id!==selected.id));
+    setSelected(null);
+  };
+
+  const selectedFresh=selected?mentors.find(m=>m.id===selected.id)||null:null;
+
+  return(
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+      {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28}}>
+        <div>
+          <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
+          <p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>
+        </div>
+        <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
+      </div>
+      {mentors.filter(m=>!m.deleted).length>0&&(
+        <div style={{position:'relative',marginBottom:24}}>
+          <Icon name="search" size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--muted)',pointerEvents:'none'}}/>
+          <input className="input-box" value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Buscar mentores..." style={{paddingLeft:36}}/>
+        </div>
+      )}
+      {visible.length===0&&(
+        <div style={{textAlign:'center',padding:'60px 0',color:'var(--muted)'}}>
+          <Icon name="book-open" size={36} style={{marginBottom:12,opacity:.3}}/>
+          <p style={{fontSize:'.9rem',margin:0}}>{search?'Nenhum mentor encontrado.':'Adicione seu primeiro mentor acima.'}</p>
+        </div>
+      )}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+        {visible.map(m=>{
+          const photos=(m.photos||[]).filter(Boolean);
+          return(
+            <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
+              {photos.length>0
+                ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
+                    {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
+                  </div>
+                :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
+                  </div>
+              }
+              <div style={{padding:'14px 16px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                  {m.photo
+                    ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
+                    :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
+                  }
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                    {m.area&&<div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' - '+m.medium:''}</div>}
+                  </div>
+                </div>
+                {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
+                <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
+                  <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                  {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
   const [view,setView]=useState('dashboard');
@@ -2376,7 +2735,7 @@ const App=()=>{
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}}/>}
         {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
         {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks}/>}
-        {view==='mentors'        && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData}/>}
+        {view==='mentors'       && <MentorsHub mentors={mentors} setMentors={setMentors}/>}
         {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts}/>}
         {view==='clients'        && <Clients clients={clients} setClients={setClients}/>}
         {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave}/>}
