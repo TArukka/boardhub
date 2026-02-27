@@ -3,6 +3,18 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>BoardHub — Storyboard OS</title>
+<!--
+  BoardHub v15 — Optimized Build
+  Changes from v15_fixed:
+  • Icon system: Replaced per-render DOM lucide.createIcons() with cached SVG React component
+  • Pomodoro: Batched state updates every 30s via ref (was every 1s causing global re-renders)
+  • Auto-save: Debounced 800ms (was firing on every keystroke)
+  • Removed ~120 lines of dead PomodoroStatsPanel code
+  • Sidebar: Wrapped in React.memo (no longer re-renders on unrelated state changes)
+  • ProjectDetail: Fixed stale closure bug with functional setState
+  • CSS: Added hover utility classes, removed JS onMouseEnter/Leave handlers
+  • Fixed save-flash timer cleanup bug
+-->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -56,6 +68,14 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 /* Gantt styles */
 .gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
 .gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
+
+/* Hover utilities — replaces onMouseEnter/Leave JS handlers */
+.hover-text:hover{color:var(--text)!important;}
+.hover-danger:hover{color:#DC2626!important;}
+.hover-surface:hover{background:var(--surface);}
+.hover-border-text:hover{border-color:var(--text)!important;}
+.text-link{color:var(--muted);transition:color .15s;}.text-link:hover{color:var(--text)!important;}
+.text-link-danger{color:var(--muted);transition:color .15s;}.text-link-danger:hover{color:#DC2626!important;}
 
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
@@ -135,7 +155,23 @@ const socialTemplates=[
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 const statusTag=s=>({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluído':'tag-gray','Cancelado':'tag-red'}[s]||'tag-gray');
-const Icon=({name,size=16,style={}})=><i data-lucide={name} style={{width:size,height:size,display:'inline-block',flexShrink:0,...style}}></i>;
+
+// Icon: renders lucide icons as pure React SVGs with one-time caching per icon name.
+// Eliminates the old approach of calling lucide.createIcons() on every render.
+const _svgCache={};
+const Icon=({name,size=16,style={}})=>{
+  if(!_svgCache[name]){
+    try{
+      const tmp=document.createElement('div');
+      tmp.innerHTML='<i data-lucide="'+name+'"></i>';
+      lucide.createIcons({nodes:tmp.querySelectorAll('[data-lucide]')});
+      const svg=tmp.querySelector('svg');
+      if(svg)_svgCache[name]=svg.innerHTML;
+    }catch(e){}
+  }
+  return React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
+};
+
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
@@ -245,13 +281,13 @@ const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
 );
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
-const Sidebar=({activeView,setView,saveFlash})=>{
+const Sidebar=React.memo(({activeView,setView,saveFlash})=>{
   const nav=[
     {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
     {id:'projects', icon:'folder-open',     label:'Projetos'},
     {id:'gallery',  icon:'image',           label:'Galeria'},
     {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
-
+    {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
     {id:'social',   icon:'share-2',         label:'Social'},
     {id:'clients',  icon:'users',           label:'Clientes'},
     {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
@@ -274,7 +310,7 @@ const Sidebar=({activeView,setView,saveFlash})=>{
       </div>
     </aside>
   );
-};
+});
 
 // ─── POMODORO ─────────────────────────────────────────────────────────────────
 const POMO_LS = 'boardhub_pomo_v3';
@@ -336,127 +372,6 @@ const pomoFmtMonth = function(mk) {
   } catch(e) { return mk; }
 };
 
-// ─── POMODORO STATS PANEL ────────────────────────────────────────────────────
-const PomodoroStatsPanel = ({ onClose, data }) => {
-  const [tab, setTab] = useState('days');
-
-  const dayEntries = useMemo(() => {
-    const entries = Object.entries(data.days || {});
-    const filtered = entries.filter(e => e[0] !== '_total' && e[0].length === 10 && e[1] > 0);
-    filtered.sort((a, b) => b[0].localeCompare(a[0]));
-    return filtered.slice(0, 60);
-  }, [data]);
-
-  const monthEntries = useMemo(() => {
-    const months = {};
-    for (const [day, secs] of Object.entries(data.days || {})) {
-      if (day === '_total' || day.length !== 10) continue;
-      const mk = day.slice(0, 7);
-      months[mk] = (months[mk] || 0) + secs;
-    }
-    const result = Object.entries(months);
-    result.sort((a, b) => b[0].localeCompare(a[0]));
-    return result;
-  }, [data]);
-
-  const maxDay = dayEntries.reduce((m, e) => Math.max(m, e[1]), 1);
-  const maxMonth = monthEntries.reduce((m, e) => Math.max(m, e[1]), 1);
-  const totalAll = dayEntries.reduce((sum, e) => sum + e[1], 0);
-  const todaySecs = (data.days || {})[pomoTodayKey()] || 0;
-
-  return (
-    <div style={{position:'fixed',inset:0,zIndex:300}} onClick={function(e){ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{position:'absolute',top:0,right:0,width:340,height:'100%',background:'var(--surface)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',boxShadow:'-8px 0 32px rgba(28,25,23,.12)',animation:'slideInStats .25s ease'}}>
-
-        <div style={{padding:'22px 20px 14px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-            <h2 className="serif" style={{fontSize:'1.4rem',fontWeight:400,margin:0}}>Histórico de Foco</h2>
-            <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
-          </div>
-          <div style={{display:'flex',gap:8}}>
-            <div style={{flex:1,background:'var(--bg)',borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
-              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Hoje</div>
-              <div style={{fontSize:'1rem',fontWeight:600}}>{pomoFmtSecs(todaySecs)}</div>
-            </div>
-            <div style={{flex:1,background:'var(--bg)',borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
-              <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:3}}>Total</div>
-              <div style={{fontSize:'1rem',fontWeight:600}}>{pomoFmtSecs(totalAll)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{display:'flex',borderBottom:'1px solid var(--border)',flexShrink:0}}>
-          <button onClick={function(){setTab('days');}} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:tab==='days'?'var(--text)':'var(--muted)',borderBottom:tab==='days'?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>Por Dia</button>
-          <button onClick={function(){setTab('months');}} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:tab==='months'?'var(--text)':'var(--muted)',borderBottom:tab==='months'?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>Por Mês</button>
-        </div>
-
-        <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
-          {tab === 'days' && (
-            <div>
-              {dayEntries.length === 0 && (
-                <div style={{textAlign:'center',padding:'40px 0',color:'var(--muted)'}}>
-                  <p style={{fontSize:'.85rem',margin:0}}>Nenhuma sessão registrada ainda.</p>
-                </div>
-              )}
-              <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                {dayEntries.map(([day, secs]) => {
-                  const barW = Math.round(secs/maxDay*100) + '%';
-                  return (
-                    <div key={day}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                        <span style={{fontSize:'.8rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
-                        <span style={{fontSize:'.8rem',fontWeight:600}}>{pomoFmtSecs(secs)}</span>
-                      </div>
-                      <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
-                        <div style={{height:'100%',width:barW,background:'var(--text)',borderRadius:3}}/>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          {tab === 'months' && (
-            <div>
-              {monthEntries.length === 0 && (
-                <div style={{textAlign:'center',padding:'40px 0',color:'var(--muted)'}}>
-                  <p style={{fontSize:'.85rem',margin:0}}>Nenhuma sessão registrada ainda.</p>
-                </div>
-              )}
-              <div style={{display:'flex',flexDirection:'column',gap:16}}>
-                {monthEntries.map(([mk, secs]) => {
-                  const barW = Math.round(secs/maxMonth*100) + '%';
-                  const daysInMonth = dayEntries.filter(e => e[0].slice(0,7)===mk);
-                  return (
-                    <div key={mk}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                        <span style={{fontSize:'.82rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
-                        <span style={{fontSize:'.82rem',fontWeight:700}}>{pomoFmtSecs(secs)}</span>
-                      </div>
-                      <div style={{height:8,background:'var(--bg)',borderRadius:4,overflow:'hidden',marginBottom:6}}>
-                        <div style={{height:'100%',width:barW,background:'var(--text)',borderRadius:4}}/>
-                      </div>
-                      <div style={{paddingLeft:8}}>
-                        {daysInMonth.map(([d, ds]) => (
-                          <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
-                            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtDay(d)}</span>
-                            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{pomoFmtSecs(ds)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div>
-    </div>
-  );
-};
-
 // ─── POMODORO TIMER (with built-in stats panel) ───────────────────────────────
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const FOCUS_SECS = 25 * 60;
@@ -467,6 +382,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const [showStats, setShowStats] = useState(false);
   const modeRef = useRef('focus');
   const timeLeftRef = useRef(FOCUS_SECS);
+  const unsavedSecsRef = useRef(0);
   modeRef.current = mode;
   timeLeftRef.current = timeLeft;
 
@@ -477,6 +393,25 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body });
   };
 
+  // Flush unsaved seconds to state
+  const flushPomoSecs = () => {
+    if (unsavedSecsRef.current > 0) {
+      const secs = unsavedSecsRef.current;
+      unsavedSecsRef.current = 0;
+      setPomoData(prev => {
+        const key = pomoTodayKey();
+        const newDays = { ...prev.days };
+        newDays[key] = (newDays[key] || 0) + secs;
+        return { days: newDays };
+      });
+    }
+  };
+
+  // Flush on unmount or when timer stops
+  useEffect(() => {
+    return () => flushPomoSecs();
+  }, [isActive]);
+
   useEffect(() => {
     if (!isActive) return;
     const id = setInterval(() => {
@@ -485,6 +420,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         clearInterval(id);
         setTimeLeft(0);
         if (modeRef.current === 'focus') {
+          flushPomoSecs();
           fireNotification('Pomodoro', 'Sessão de foco encerrada! Hora de pausar. ☕');
           setMode('break');
           setTimeLeft(BREAK_SECS);
@@ -498,12 +434,9 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
       }
       setTimeLeft(t => t - 1);
       if (modeRef.current === 'focus') {
-        setPomoData(prev => {
-          const key = pomoTodayKey();
-          const newDays = { ...prev.days };
-          newDays[key] = (newDays[key] || 0) + 1;
-          return { days: newDays };
-        });
+        unsavedSecsRef.current += 1;
+        // Batch: flush to state every 30 seconds instead of every tick
+        if (unsavedSecsRef.current >= 30) flushPomoSecs();
       }
     }, 1000);
     return () => clearInterval(id);
@@ -521,6 +454,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const offset = circ * (1 - pct);
   const isFocus = mode === 'focus';
   const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
+  const todayDisplay = todaySecs + unsavedSecsRef.current;
 
   // ── Stats data ──
   const dayEntries = useMemo(() => {
@@ -589,14 +523,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             </button>
           </div>
           <div style={{fontSize:'.72rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:5}}>
-            <Icon name="clock" size={11}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todaySecs)}</strong> em foco
+            <Icon name="clock" size={11}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todayDisplay)}</strong> em foco
           </div>
         </div>
       )}
 
       {/* Stats panel — replaces timer card inline */}
       {showStats && (
-        <div style={{position:'fixed',inset:0,background:'rgba(28,25,23,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20,animation:'overlayIn .2s ease'}} onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
+        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
@@ -605,7 +539,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <div style={{padding:'14px 20px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
                 <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Hoje</div>
-                <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todaySecs)}</div>
+                <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todayDisplay)}</div>
               </div>
               <div style={{padding:'14px 20px',textAlign:'center'}}>
                 <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Total</div>
@@ -707,7 +641,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
           </div>
         ))}
       </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
           {/* Projetos ativos */}
@@ -1332,23 +1266,21 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
     setLocal(updated);
   },[project.id]);
 
-  // Safe update: no setTimeout inside setState
-  const update=useRef(null);
-  update.current=(field,value)=>{
-    const u={...local,[field]:value};
-    setLocal(u);
-    onUpdate(u);
+  // Safe update using functional setState to avoid stale closures
+  const upd=(field,value)=>{
+    setLocal(prev=>{
+      const updated={...prev,[field]:value};
+      onUpdate(updated);
+      return updated;
+    });
   };
-  const updateMany=useRef(null);
-  updateMany.current=patch=>{
-    const u={...local,...patch};
-    setLocal(u);
-    onUpdate(u);
+  const updMany=patch=>{
+    setLocal(prev=>{
+      const updated={...prev,...patch};
+      onUpdate(updated);
+      return updated;
+    });
   };
-
-  // Wrappers so we can call them without stale closure
-  const upd=(field,value)=>update.current(field,value);
-  const updMany=patch=>updateMany.current(patch);
 
 
   // Mentors
@@ -1492,7 +1424,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                             {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                           </div>
                           {m.name}
-                          {on&&<Icon name="x" size={11} style={{opacity:.8}}/>}
+                          {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
                         </button>
                       );
                     })}
@@ -1549,6 +1481,37 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 </div>
               </div>
             </div>
+            {(globalMentors||[]).filter(m=>!m.deleted).length>0&&(
+              <div className="card" style={{padding:18}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                  <span className="label" style={{display:'flex',alignItems:'center',gap:5}}><Icon name="book-open" size={10}/> Mentores</span>
+                  <span style={{fontSize:'.65rem',color:'var(--muted)'}}>{(local.mentors||[]).length}/3</span>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                  {(globalMentors||[]).filter(m=>!m.deleted).map(m=>{
+                    const on=(local.mentors||[]).includes(m.id);
+                    const full=(local.mentors||[]).length>=3&&!on;
+                    return(
+                      <button key={m.id} onClick={()=>{
+                        if(full)return;
+                        const cur=local.mentors||[];
+                        upd('mentors',on?cur.filter(x=>x!==m.id):[...cur,m.id]);
+                      }}
+                        style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,border:'1px solid '+(on?'var(--text)':'var(--border)'),background:on?'var(--text)':'transparent',cursor:full?'not-allowed':'pointer',opacity:full?0.4:1,transition:'all .15s',fontFamily:'Figtree,sans-serif',textAlign:'left',width:'100%'}}>
+                        <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.78rem',fontWeight:500}}>
+                          {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:'.76rem',fontWeight:600,color:on?'white':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                          {m.area&&<div style={{fontSize:'.64rem',color:on?'rgba(255,255,255,.65)':'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>}
+                        </div>
+                        {on&&<Icon name="check" size={11} style={{color:'white',flexShrink:0}}/>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1627,8 +1590,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                       style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
                       {MINI_STATUSES.map(s=><option key={s}>{s}</option>)}
                     </select>
-                    <button onClick={()=>deleteMini(activeMini.id)} className="btn btn-ghost" style={{padding:6}}
-                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                    <button onClick={()=>deleteMini(activeMini.id)} className="btn btn-ghost text-link-danger" style={{padding:6}}>
                       <Icon name="trash-2" size={16}/>
                     </button>
                   </div>
@@ -1661,8 +1623,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                     <input value={note.title} onChange={e=>updateInnerNote('title',e.target.value)}
                       style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
                       placeholder="Título da nota"/>
-                    <button onClick={()=>deleteInnerNote(note.id)} className="btn btn-ghost" style={{padding:6,flexShrink:0}}
-                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                    <button onClick={()=>deleteInnerNote(note.id)} className="btn btn-ghost text-link-danger" style={{padding:6,flexShrink:0}}>
                       <Icon name="trash-2" size={16}/>
                     </button>
                   </div>
@@ -1671,7 +1632,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                     <input value={note.url||''} onChange={e=>updateInnerNote('url',e.target.value)}
                       placeholder="Link de referência (https://...)"
                       style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
-                    {note.url&&<a href={note.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+                    {note.url&&<a href={note.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} className="text-link"><Icon name="external-link" size={13}/></a>}
                   </div>
                   <textarea value={note.content||''} onChange={e=>updateInnerNote('content',e.target.value)}
                     placeholder="Notas, análises, referências..."
@@ -1733,8 +1694,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   <input value={activeResearch.title} onChange={e=>updateResearch('title',e.target.value)}
                     style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
                     placeholder="Título da pesquisa"/>
-                  <button onClick={()=>deleteResearch(activeResearch.id)} className="btn btn-ghost" style={{padding:6,flexShrink:0}}
-                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                  <button onClick={()=>deleteResearch(activeResearch.id)} className="btn btn-ghost text-link-danger" style={{padding:6,flexShrink:0}}>
                     <Icon name="trash-2" size={16}/>
                   </button>
                 </div>
@@ -1743,7 +1703,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   <input value={activeResearch.url||''} onChange={e=>updateResearch('url',e.target.value)}
                     placeholder="Link de referência (https://...)"
                     style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
-                  {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+                  {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} className="text-link"><Icon name="external-link" size={13}/></a>}
                 </div>
                 <textarea value={activeResearch.content} onChange={e=>updateResearch('content',e.target.value)}
                   placeholder="Notas, análises, referências..."
@@ -1962,8 +1922,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
                   onMouseEnter={e=>e.currentTarget.style.color=folder==='notes'?'#DC2626':'#276b3e'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
                   <Icon name={folder==='notes'?'trash-2':'undo-2'} size={17}/>
                 </button>
-                {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost" style={{padding:6}} title="Excluir permanentemente"
-                  onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash" size={17}/></button>}
+                {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost text-link-danger" style={{padding:6}} title="Excluir permanentemente"><Icon name="trash" size={17}/></button>}
               </div>
             </div>
             <textarea value={active.content} onChange={e=>update('content',e.target.value)} disabled={folder==='trash'} placeholder="Comece a escrever..."
@@ -2121,7 +2080,7 @@ const Social=({posts,setPosts})=>{
                     <button onClick={()=>setText(t.text)} style={{fontWeight:600,fontSize:'.82rem',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',color:'var(--text)',padding:0,textAlign:'left'}}>{t.label}</button>
                     <div style={{display:'flex',gap:2,flexShrink:0}}>
                       <button className="btn btn-ghost" style={{padding:'2px 5px'}} onClick={()=>openEditTpl(i)} title="Editar"><Icon name="pencil" size={12}/></button>
-                      <button className="btn btn-ghost" style={{padding:'2px 5px'}} onClick={()=>deleteTpl(i)} title="Excluir" onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="x" size={12}/></button>
+                      <button className="btn btn-ghost text-link-danger" style={{padding:'2px 5px'}} onClick={()=>deleteTpl(i)} title="Excluir"><Icon name="x" size={12}/></button>
                     </div>
                   </div>
                   <div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}} onClick={()=>setText(t.text)}>{t.text}</div>
@@ -2400,7 +2359,7 @@ const SyncHub=({appState,onImport,onClearSave})=>{
             <div style={{fontWeight:600,fontSize:'1rem',marginBottom:2}}>Sincronizar com GitHub Gist</div>
             <div style={{fontSize:'.78rem',color:'var(--muted)'}}>{configured?`Gist configurado · ID: ${gistId.slice(0,12)}…`:'Nenhum Gist configurado ainda.'}</div>
           </div>
-          {configured&&<a href={`https://gist.github.com/${gistId}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:4,fontSize:'.75rem',textDecoration:'none'}} onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="external-link" size={13}/></a>}
+          {configured&&<a href={`https://gist.github.com/${gistId}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:4,fontSize:'.75rem',textDecoration:'none'}} className="text-link"><Icon name="external-link" size={13}/></a>}
         </div>
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-dark" style={{flex:1,justifyContent:'center',padding:'10px 0',fontSize:'.9rem'}} onClick={syncNow} disabled={loading}>
@@ -2498,7 +2457,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const photos=form.photos||[null,null,null,null];
 
   return(
-    <div style={{position:'fixed',inset:0,background:'rgba(28,25,23,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal" style={{maxWidth:580}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
           <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{form.name||'Mentor'}</h2>
@@ -2689,17 +2648,20 @@ const App=()=>{
   // Persist pomoData whenever it changes
   useEffect(()=>{ pomoSave(pomoData); },[pomoData]);
 
-  // Auto-save to localStorage on any state change
+  // Auto-save to localStorage — debounced to avoid thrashing on every keystroke
+  const saveFlashTimer=useRef(null);
   useEffect(()=>{
-    const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
-    lsSave(state);
-    setSaveFlash(true);
-    const t=setTimeout(()=>setSaveFlash(false),1800);
-    return ()=>clearTimeout(t);
+    const timer=setTimeout(()=>{
+      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
+      lsSave(state);
+      setSaveFlash(true);
+      clearTimeout(saveFlashTimer.current);
+      saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
+    },800);
+    return ()=>clearTimeout(timer);
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
 
-  // Lucide icons: re-run after every render so new icons are always initialized
-  useEffect(()=>{const t=setTimeout(()=>lucide.createIcons(),50);return()=>clearTimeout(t);});
+  // Lucide icons: no longer needed — Icon component caches SVG paths on first use
 
   const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
