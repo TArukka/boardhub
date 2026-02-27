@@ -659,7 +659,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
       {/* Stats panel — replaces timer card inline */}
       {showStats && (
-        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)} style={{background:'transparent',backdropFilter:'none'}}>
+        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
@@ -2838,7 +2838,6 @@ const App=()=>{
     navigate('dashboard');
   };
 
-  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
   const handleImport=data=>{
     if(data.projects)setProjects(data.projects);
     if(data.clients)setClients(data.clients);
@@ -2850,9 +2849,52 @@ const App=()=>{
     if(data.pomoData)setPomoData(data.pomoData);
   };
 
+  const [syncToast,setSyncToast]=useState(null); // {type:'ok'|'err', msg:string}
+
+  // Auto-pull from Gist on startup if configured
+  useEffect(()=>{
+    const GIST_LS_KEY='boardhub_gist_config';
+    let cfg;
+    try{cfg=JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{cfg={};}
+    const {token,gistId}=cfg;
+    if(!token||!gistId)return;
+    (async()=>{
+      try{
+        const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${token}`}});
+        if(!res.ok)throw new Error(`Erro ${res.status}`);
+        const json=await res.json();
+        const file=json.files['boardhub-data.json'];
+        if(!file)throw new Error('boardhub-data.json não encontrado no Gist.');
+        let content=file.content;
+        if(file.truncated){
+          const rawRes=await fetch(file.raw_url,{headers:{Authorization:`token ${token}`}});
+          if(!rawRes.ok)throw new Error(`Erro ao buscar raw: ${rawRes.status}`);
+          content=await rawRes.text();
+        }
+        const data=JSON.parse(content);
+        handleImport(data);
+        const ts=data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida';
+        setSyncToast({type:'ok',msg:`☁ Dados sincronizados do Gist (${ts})`});
+        setTimeout(()=>setSyncToast(null),5000);
+      }catch(e){
+        setSyncToast({type:'err',msg:`Falha ao sincronizar na inicialização: ${e.message}`});
+        setTimeout(()=>setSyncToast(null),7000);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
+
   return(
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
+      {/* Startup sync toast */}
+      {syncToast&&(
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',zIndex:999,background:syncToast.type==='ok'?'#1C1917':'#9B1C1C',color:'white',padding:'10px 20px',borderRadius:10,fontSize:'.82rem',fontFamily:'Figtree,sans-serif',boxShadow:'0 4px 20px rgba(0,0,0,.18)',whiteSpace:'nowrap',maxWidth:'90vw',overflow:'hidden',textOverflow:'ellipsis'}}>
+          {syncToast.msg}
+        </div>
+      )}
       {isMobile
         ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
         : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
