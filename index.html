@@ -659,7 +659,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
       {/* Stats panel — replaces timer card inline */}
       {showStats && (
-        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
+        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)} style={{background:'transparent',backdropFilter:'none'}}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
