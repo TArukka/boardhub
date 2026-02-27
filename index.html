@@ -4,16 +4,18 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>BoardHub — Storyboard OS</title>
 <!--
-  BoardHub v15 — Optimized Build
-  Changes from v15_fixed:
-  • Icon system: Replaced per-render DOM lucide.createIcons() with cached SVG React component
-  • Pomodoro: Batched state updates every 30s via ref (was every 1s causing global re-renders)
-  • Auto-save: Debounced 800ms (was firing on every keystroke)
-  • Removed ~120 lines of dead PomodoroStatsPanel code
-  • Sidebar: Wrapped in React.memo (no longer re-renders on unrelated state changes)
-  • ProjectDetail: Fixed stale closure bug with functional setState
-  • CSS: Added hover utility classes, removed JS onMouseEnter/Leave handlers
-  • Fixed save-flash timer cleanup bug
+  BoardHub v17 — Responsive Build
+  Inherits all v16 optimizations plus:
+  • Auto-detects mobile via matchMedia hook (768px breakpoint)
+  • Desktop: fixed sidebar, full layouts
+  • Mobile: hamburger drawer, stacked columns, list→detail navigation
+  • All grids collapse to 1-column on mobile
+  • Gantt chart wraps in horizontal scroll container
+  • ProjectDetail cover compact, Animatics/Research use list→editor pattern
+  • IdeasLab: note list + tasks stack vertically, detail replaces list
+  • All modals slide up as bottom sheets on mobile
+  • Tab bars scroll horizontally on mobile
+  • Touch-friendly: larger tap targets via CSS media queries
 -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -79,6 +81,56 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+
+/* ─── MOBILE DRAWER ─────────────────────────────────────────────────────── */
+@keyframes drawerSlide{from{transform:translateX(-100%);}to{transform:translateX(0);}}
+@keyframes drawerOverlayIn{from{opacity:0;}to{opacity:1;}}
+.mobile-drawer-overlay{position:fixed;inset:0;background:rgba(28,25,23,.5);z-index:90;animation:drawerOverlayIn .2s ease;}
+.mobile-drawer{position:fixed;top:0;left:0;bottom:0;width:260px;background:var(--surface);z-index:91;animation:drawerSlide .25s ease;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 16px;overflow-y:auto;}
+.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.mobile-topbar-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;letter-spacing:-.02em;}
+.hamburger-btn{background:none;border:none;padding:6px;cursor:pointer;color:var(--text);border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.hamburger-btn:active{background:var(--bg);}
+
+/* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  /* Global spacing */
+  .main-mobile{margin-left:0!important;padding:16px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;}
+  .fade-up{animation:none!important;}
+  
+  /* Overlay / Modals */
+  .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
+  .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
+  
+  /* Save toast */
+  .save-toast{left:50%!important;bottom:12px!important;}
+  
+  /* Typography scale-down */
+  h1.serif{font-size:2rem!important;}
+  
+  /* Cards — reduce padding on mobile */
+  .card{border-radius:12px;}
+  
+  /* Tag — slightly bigger tap target */
+  .tag{padding:4px 10px;font-size:.7rem;}
+  
+  /* Buttons — bigger tap targets */
+  .btn{padding:10px 16px;font-size:.84rem;}
+  .btn-ghost{padding:8px 10px;}
+  .nav-item{padding:12px 14px;font-size:.88rem;}
+  
+  /* Input — bigger on mobile */
+  .input-box{padding:10px 14px;font-size:.88rem;}
+  
+  /* Tab buttons — more space */
+  .tab-btn{margin-right:16px;font-size:.84rem;}
+  
+  /* Upload zone */
+  .upload-zone{padding:20px;}
+  
+  /* Cover edit — always show on mobile (no hover) */
+  .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
+}
 </style>
 </head>
 <body>
@@ -157,23 +209,54 @@ const socialTemplates=[
 const statusTag=s=>({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluído':'tag-gray','Cancelado':'tag-red'}[s]||'tag-gray');
 
 // Icon: renders lucide icons as pure React SVGs with one-time caching per icon name.
-// Eliminates the old approach of calling lucide.createIcons() on every render.
+// Two strategies: (1) read directly from lucide.icons registry (fast, no DOM)
+// (2) fallback: temporarily inject into document, let createIcons process, extract SVG.
 const _svgCache={};
+const _resolveIcon=(name)=>{
+  if(_svgCache[name])return;
+  // Strategy 1: lucide.icons registry — each entry is [tag, defaultAttrs, children]
+  try{
+    const pascal=name.replace(/(^|-)([a-z0-9])/g,(_,__,c)=>c.toUpperCase());
+    const def=(lucide.icons||{})[pascal];
+    if(def&&Array.isArray(def)&&def.length>=3&&Array.isArray(def[2])){
+      _svgCache[name]=def[2].map(([tag,attrs])=>{
+        const a=Object.entries(attrs||{}).map(([k,v])=>k+'="'+v+'"').join(' ');
+        return '<'+tag+' '+a+'/>';
+      }).join('');
+      return;
+    }
+  }catch(e){}
+  // Strategy 2: DOM fallback — append to body so createIcons can find it
+  try{
+    const tmp=document.createElement('div');
+    tmp.style.cssText='position:fixed;left:-9999px;top:-9999px;pointer-events:none;opacity:0';
+    tmp.innerHTML='<i data-lucide="'+name+'"></i>';
+    document.body.appendChild(tmp);
+    lucide.createIcons();
+    const svg=tmp.querySelector('svg');
+    if(svg)_svgCache[name]=svg.innerHTML;
+    tmp.remove();
+  }catch(e){}
+};
 const Icon=({name,size=16,style={}})=>{
-  if(!_svgCache[name]){
-    try{
-      const tmp=document.createElement('div');
-      tmp.innerHTML='<i data-lucide="'+name+'"></i>';
-      lucide.createIcons({nodes:tmp.querySelectorAll('[data-lucide]')});
-      const svg=tmp.querySelector('svg');
-      if(svg)_svgCache[name]=svg.innerHTML;
-    }catch(e){}
-  }
-  return React.createElement('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
+  _resolveIcon(name);
+  return React.createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
 };
 
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
+
+// ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
+const useIsMobile=(breakpoint=768)=>{
+  const [isMobile,setIsMobile]=useState(()=>window.innerWidth<=breakpoint);
+  useEffect(()=>{
+    const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
+    const handler=e=>setIsMobile(e.matches);
+    mq.addEventListener('change',handler);
+    return()=>mq.removeEventListener('change',handler);
+  },[breakpoint]);
+  return isMobile;
+};
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
 // Images are stored as Blobs in IndexedDB (no 5 MB quota like localStorage).
@@ -281,34 +364,80 @@ const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
 );
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
-const Sidebar=React.memo(({activeView,setView,saveFlash})=>{
-  const nav=[
-    {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
-    {id:'projects', icon:'folder-open',     label:'Projetos'},
-    {id:'gallery',  icon:'image',           label:'Galeria'},
-    {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
-    {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
-    {id:'social',   icon:'share-2',         label:'Social'},
-    {id:'clients',  icon:'users',           label:'Clientes'},
-    {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
-  ];
+const NAV_ITEMS=[
+  {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
+  {id:'projects', icon:'folder-open',     label:'Projetos'},
+  {id:'gallery',  icon:'image',           label:'Galeria'},
+  {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
+  {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
+  {id:'social',   icon:'share-2',         label:'Social'},
+  {id:'clients',  icon:'users',           label:'Clientes'},
+  {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
+];
+
+// Desktop: fixed left sidebar
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
+  <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
+    <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
+      <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
+      <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
+    </div>
+    <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
+      {NAV_ITEMS.map(item=>(
+        <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
+          <Icon name={item.icon} size={15}/>{item.label}
+        </button>
+      ))}
+    </nav>
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+    </div>
+  </aside>
+));
+
+// Mobile: top bar + slide-out drawer
+const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
+  const [open,setOpen]=useState(false);
+  const go=id=>{setView(id);setOpen(false);};
+  const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||'BoardHub';
   return(
-    <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
-      <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
-        <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
-        <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
-      </div>
-      <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
-        {nav.map(item=>(
-          <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
-            <Icon name={item.icon} size={15}/>{item.label}
+    <>
+      <div className="mobile-topbar">
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <button className="hamburger-btn" onClick={()=>setOpen(true)}>
+            <Icon name="menu" size={22}/>
           </button>
-        ))}
-      </nav>
-      <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+          <span className="mobile-topbar-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
+          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+            <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>
+          </div>
+        </div>
       </div>
-    </aside>
+      {open&&(
+        <>
+          <div className="mobile-drawer-overlay" onClick={()=>setOpen(false)}/>
+          <div className="mobile-drawer">
+            <div onClick={()=>go('dashboard')} style={{cursor:'pointer',marginBottom:28,padding:'0 4px'}}>
+              <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
+              <div style={{fontSize:'.62rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
+            </div>
+            <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
+              {NAV_ITEMS.map(item=>(
+                <button key={item.id} onClick={()=>go(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
+                  <Icon name={item.icon} size={16}/>{item.label}
+                </button>
+              ))}
+            </nav>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',color:saveFlash?'#276b3e':'var(--muted)'}}>
+              <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 });
 
@@ -606,7 +735,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData})=>{
+const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
   const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
@@ -626,22 +755,22 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
 
   return(
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
-      <div style={{marginBottom:40}}>
-        <h1 className="serif" style={{fontSize:'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
+      <div style={{marginBottom:isMobile?24:40}}>
+        <h1 className="serif" style={{fontSize:isMobile?'2rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?10:16,marginBottom:isMobile?20:32}}>
         {stats.map(s=>(
-          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-              <span style={{fontSize:'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
-              <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
+          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:isMobile?'16px 18px':'24px 28px',display:'flex',flexDirection:isMobile?'row':'column',gap:12,alignItems:isMobile?'center':'stretch'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',flex:isMobile?0:undefined}}>
+              <span style={{fontSize:isMobile?'1.6rem':'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
+              {!isMobile&&<div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>}
             </div>
             <span style={{fontSize:'.8rem',color:'var(--muted)',fontWeight:500}}>{s.label}</span>
           </div>
         ))}
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
           {/* Projetos ativos */}
@@ -784,27 +913,27 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
 };
 
 // ─── NEW PROJECT MODAL ────────────────────────────────────────────────────────
-const NewProjectModal=({onSave,onClose})=>{
+const NewProjectModal=({onSave,onClose,isMobile})=>{
   const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const coverRef=useRef();
   const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await uploadImage(file));};
   const save=()=>{if(!form.title.trim())return;onSave({...form,id:Date.now(),cover:form.cover||'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'});};
   return(
-    <Modal title="Novo Projeto" onClose={onClose} width={520} offsetSidebar>
+    <Modal title="Novo Projeto" onClose={onClose} width={isMobile?'100%':520} offsetSidebar={!isMobile}>
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        <div onClick={()=>coverRef.current.click()} style={{height:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
+        <div onClick={()=>coverRef.current.click()} style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
           onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
           {form.cover?<img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
           {form.cover&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',gap:6,fontSize:'.82rem'}}><Icon name="camera" size={16}/>Trocar</div>}
           <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
         </div>
         <Field label="Título *"><input className="input-box" value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Ex: Comercial Nike Summer"/></Field>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:12}}>
           <Field label="Cliente"><input className="input-box" value={form.client} onChange={e=>set('client',e.target.value)} placeholder="Ex: Wieden+Kennedy"/></Field>
           <Field label="Tipo"><select className="input-box" value={form.type} onChange={e=>set('type',e.target.value)} style={{cursor:'pointer'}}><option value="work">Trabalho</option><option value="personal">Pessoal</option></select></Field>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr 1fr',gap:12}}>
           <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option></select></Field>
           <Field label="Início"><input className="input-box" type="date" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></Field>
           <Field label="Deadline"><input className="input-box" type="date" value={form.deadline} onChange={e=>set('deadline',e.target.value)}/></Field>
@@ -820,7 +949,7 @@ const NewProjectModal=({onSave,onClose})=>{
 };
 
 // ─── PROJECTS LIST ────────────────────────────────────────────────────────────
-const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
+const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
   const [filterType,setFilterType]=useState('all');
   const [onlyActive,setOnlyActive]=useState(false);
   const [trash,setTrash]=useState(false);
@@ -837,36 +966,36 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd})=>{
 
   return(
     <div className="fade-up" style={{maxWidth:1200,margin:'0 auto'}}>
-      <div style={{display:'flex',gap:28,alignItems:'flex-start'}}>
+      <div style={{display:'flex',gap:28,alignItems:'flex-start',flexDirection:isMobile?'column':'row'}}>
         {/* LEFT: projects list */}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-            <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+        <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
+            <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
                 <Icon name="trash-2" size={13}/>
-                {trash?'Sair da Lixeira':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
+                {trash?'Sair':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
               </button>
               {!trash&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
             </div>
           </div>
           {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
           {!trash&&(
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:24}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:isMobile?16:24,flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?8:0}}>
               <div style={{display:'flex',gap:4}}>
                 {[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=>(
                   <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
                 ))}
               </div>
               <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
-                Apenas ativos
+                {!isMobile&&'Apenas ativos'}
                 <div onClick={()=>setOnlyActive(!onlyActive)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:onlyActive?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s'}}>
                   <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:onlyActive?'translateX(16px)':'translateX(0)'}}/>
                 </div>
               </label>
             </div>
           )}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
+          <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
               <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
                 onClick={()=>!trash&&onSelect(p)}>
@@ -1256,7 +1385,7 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor})=>{
+const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,isMobile})=>{
   const [local,setLocal]=useState(()=>({...project,projectTasks:applyAutoLate(project.projectTasks)}));
   const [tab,setTab]=useState('Visão Geral');
   const coverRef=useRef();
@@ -1351,50 +1480,54 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
       <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
 
       {/* Cover */}
-      <div className="cover-wrap" style={{height:260,borderRadius:16,overflow:'hidden',marginBottom:28}}>
+      <div className="cover-wrap" style={{height:isMobile?180:260,borderRadius:isMobile?12:16,overflow:'hidden',marginBottom:isMobile?20:28}}>
         <div style={{position:'absolute',inset:0,backgroundImage:local.cover?`url(${local.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
         <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.2) 60%,transparent 100%)'}}/>
         <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white'}}><Icon name="camera" size={28}/><span style={{fontSize:'.82rem',fontWeight:500}}>Trocar capa</span></div>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white'}}><Icon name="camera" size={isMobile?22:28}/><span style={{fontSize:'.82rem',fontWeight:500}}>Trocar capa</span></div>
         </div>
-        <div style={{position:'absolute',inset:0,padding:28,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-            <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
-              <Icon name="arrow-left" size={13}/> Voltar
+        <div style={{position:'absolute',inset:0,padding:isMobile?16:28,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+            <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+              <Icon name="arrow-left" size={13}/> {isMobile?'':'Voltar'}
             </button>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm('Mover projeto para a lixeira?')){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
-              <Icon name="trash-2" size={13}/> Excluir Projeto
+            <button onClick={e=>{e.stopPropagation();if(window.confirm('Mover projeto para a lixeira?')){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+              <Icon name="trash-2" size={13}/>{isMobile?'':' Excluir Projeto'}
             </button>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
-            <div>
-              <h1 className="serif" style={{fontSize:'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em'}}>{local.title}</h1>
-              <p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',gap:8}}>
+            <div style={{minWidth:0,flex:1}}>
+              <h1 className="serif" style={{fontSize:isMobile?'1.4rem':'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isMobile?'nowrap':'normal'}}>{local.title}</h1>
+              {!isMobile&&<p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>}
             </div>
-            <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all'}}>
+            <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:isMobile?'5px 10px':'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all',flexShrink:0}}>
               <option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Gantt Timeline */}
-      <GanttTimeline
-        tasks={applyAutoLate(local.projectTasks||[])}
-        onUpdateTasks={tasks=>upd('projectTasks',tasks)}
-        projectStart={local.startDate}
-        projectEnd={local.deadline}
-      />
+      {/* Gantt Timeline — horizontal scroll on mobile */}
+      <div style={isMobile?{overflowX:'auto',WebkitOverflowScrolling:'touch',marginBottom:8}:{}}>
+        <div style={isMobile?{minWidth:600}:{}}>
+          <GanttTimeline
+            tasks={applyAutoLate(local.projectTasks||[])}
+            onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+            projectStart={local.startDate}
+            projectEnd={local.deadline}
+          />
+        </div>
+      </div>
 
       {/* Tabs */}
-      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20,overflowX:isMobile?'auto':'visible'}}>
         {['Visão Geral','Animatics','Pesquisa'].map(t=>(
-          <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent'}}>{t}</button>
+          <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{t}</button>
         ))}
       </div>
 
       {tab==='Visão Geral'&&(
-        <div style={{display:'grid',gridTemplateColumns:'1fr 220px',gap:20}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 220px',gap:20}}>
           <div style={{display:'flex',flexDirection:'column',gap:16}}>
             <div className="card" style={{padding:32}}>
               <span className="label" style={{display:'block',marginBottom:14}}>Notas & Direção de Arte</span>
@@ -1517,9 +1650,10 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
       )}
 
       {tab==='Animatics'&&(
-        <div style={{display:'flex',gap:16,minHeight:480}}>
+        <div style={{display:'flex',gap:16,minHeight:isMobile?0:480,flexDirection:isMobile?'column':'row'}}>
           {/* Left: animatics with expandable notes */}
-          <div style={{width:210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
+          {(!isMobile||(isMobile&&!activeMiniId))&&(
+          <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
             {(local.miniProjects||[]).map(m=>{
@@ -1574,9 +1708,16 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
               );
             })}
           </div>
+          )}
 
           {/* Right: editor panel */}
-          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+          {(!isMobile||activeMiniId)&&(
+          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0}}>
+            {isMobile&&activeMiniId&&(
+              <button onClick={()=>{setActiveMiniId(null);setActiveInnerNoteId(null);}} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'4px 8px',fontSize:'.78rem'}}>
+                <Icon name="arrow-left" size={13}/> Voltar aos animatics
+              </button>
+            )}
             {activeMini&&!activeInnerNoteId&&(
               /* Animatic editor: title, status, description, frames */
               <>
@@ -1599,7 +1740,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   placeholder="Notas, intenções, referências para este animatic..."
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                  <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i)=>(
                       <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -1638,7 +1779,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                     placeholder="Notas, análises, referências..."
                     style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                   {(note.images||[]).length>0&&(
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                    <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:10,marginBottom:14}}>
                       {(note.images||[]).map((img,i)=>(
                         <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                           <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -1661,19 +1802,21 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 </>
               );
             })()}
-            {!activeMini&&(
+            {!activeMini&&!isMobile&&(
               <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
                 <Icon name="folder" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
                 <p style={{fontSize:'.85rem'}}>Selecione ou crie um animatic</p>
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
       {tab==='Pesquisa'&&(
-        <div style={{display:'flex',gap:16,minHeight:480}}>
-          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'flex',gap:16,minHeight:isMobile?0:480,flexDirection:isMobile?'column':'row'}}>
+          {(!isMobile||(isMobile&&!activeResearchId))&&(
+          <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
             {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
             {(local.researchNotes||[]).map(n=>(
@@ -1686,7 +1829,14 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
               </div>
             ))}
           </div>
-          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+          )}
+          {(!isMobile||activeResearchId)&&(
+          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0}}>
+            {isMobile&&activeResearchId&&(
+              <button onClick={()=>setActiveResearchId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'4px 8px',fontSize:'.78rem'}}>
+                <Icon name="arrow-left" size={13}/> Voltar às pesquisas
+              </button>
+            )}
             {activeResearch?(
               <>
                 <input ref={researchImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>handleResearchImgUpload(activeResearchId,e)}/>
@@ -1710,7 +1860,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                 {/* Images — 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                  <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i)=>(
                       <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -1724,12 +1874,13 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 </button>
               </>
             ):(
-              <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+              !isMobile&&<div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
                 <Icon name="book-open" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
                 <p style={{fontSize:'.85rem'}}>Selecione ou crie uma pesquisa</p>
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </div>
@@ -1737,7 +1888,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
 };
 
 // ─── GALLERY ─────────────────────────────────────────────────────────────────
-const Gallery=({posts,setPosts})=>{
+const Gallery=({posts,setPosts,isMobile})=>{
   const FOLDERS=[
     {id:'work',        label:'Work'},
     {id:'movie-studies',label:'Movie Studies'},
@@ -1802,7 +1953,7 @@ const Gallery=({posts,setPosts})=>{
         </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i)=>(
             <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
               <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
@@ -1819,27 +1970,27 @@ const Gallery=({posts,setPosts})=>{
 
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-        <div><h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
-          <p style={{color:'var(--muted)',fontSize:'.85rem'}}>Acervo visual & estudos</p></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
+        <div><h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
+          {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem'}}>Acervo visual & estudos</p>}</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
+            <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
           </button>
           {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
         </div>
       </div>
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
       {!trash&&(
-        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
-          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent'}}>{f.label}</button>)}
+        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:isMobile?16:24,overflowX:isMobile?'auto':'visible'}}>
+          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
         </div>
       )}
-      {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
+      {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:isMobile?40:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
       {Object.entries(grouped).map(([month,monthPosts])=>(
-        <div key={month} style={{marginBottom:36}}>
+        <div key={month} style={{marginBottom:isMobile?24:36}}>
           <div style={{borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:16}}><span className="label">{month}</span></div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:14}}>
+          <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(180px,1fr))',gap:isMobile?10:14}}>
             {monthPosts.map(post=>(
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
                 <div style={{aspectRatio:'4/5',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1867,7 +2018,7 @@ const Gallery=({posts,setPosts})=>{
 };
 
 // ─── IDEAS ────────────────────────────────────────────────────────────────────
-const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
+const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
   const [folder,setFolder]=useState('notes');
   const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
   const [newTask,setNewTask]=useState('');
@@ -1884,18 +2035,19 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
   const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
   const removeTask=id=>setTasks(p=>p.filter(t=>t.id!==id));
   return(
-    <div className="fade-up" style={{maxWidth:1100,margin:'0 auto',height:'calc(100vh - 80px)',display:'flex',gap:20}}>
+    <div className="fade-up" style={{maxWidth:1100,margin:'0 auto',height:isMobile?'auto':'calc(100vh - 80px)',display:'flex',gap:isMobile?0:20,flexDirection:isMobile?'column':'row'}}>
       {/* Left */}
-      <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
-        <h1 className="serif" style={{fontSize:'2rem',fontWeight:300}}>Ideias</h1>
-        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+      {(!isMobile||(isMobile&&!activeId))&&(
+      <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
+        <h1 className="serif" style={{fontSize:isMobile?'1.6rem':'2rem',fontWeight:300}}>Ideias</h1>
+        <div style={{display:'flex',flexDirection:isMobile?'row':'column',gap:4}}>
           {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
             <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(first?.id||null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
               {l} <span style={{opacity:.6,fontSize:'.75rem'}}>({notes.filter(n=>v==='notes'?!n.deleted:n.deleted).length})</span>
             </button>
           ))}
         </div>
-        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+        <div style={{flex:isMobile?undefined:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
           {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
           {visible.map(n=>(
             <div key={n.id} onClick={()=>setActiveId(n.id)}
@@ -1909,8 +2061,15 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
         </div>
         {folder==='notes'&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
       </div>
+      )}
       {/* Center */}
-      <div className="card" style={{flex:1,padding:32,display:'flex',flexDirection:'column',minWidth:0}}>
+      {(!isMobile||activeId)&&(
+      <div className="card" style={{flex:1,padding:isMobile?20:32,display:'flex',flexDirection:'column',minWidth:0,marginTop:isMobile?12:0}}>
+        {isMobile&&activeId&&(
+          <button onClick={()=>setActiveId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:8,padding:'4px 8px',fontSize:'.78rem'}}>
+            <Icon name="arrow-left" size={13}/> Voltar às notas
+          </button>
+        )}
         {active?(
           <>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
@@ -1929,15 +2088,17 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
               style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1}}/>
           </>
         ):(
-          <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+          !isMobile&&<div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
             <Icon name="file-text" size={28} style={{display:'block',margin:'0 auto 10px'}}/>
             <p style={{fontSize:'.85rem'}}>Selecione ou crie uma nota</p>
           </div>
         )}
       </div>
-      {/* Right tasks */}
-      <div style={{width:260,flexShrink:0}}>
-        <div className="card" style={{height:'100%',padding:20,display:'flex',flexDirection:'column'}}>
+      )}
+      {/* Right tasks — below on mobile, sidebar on desktop */}
+      {(!isMobile||!activeId)&&(
+      <div style={{width:isMobile?'100%':260,flexShrink:0,marginTop:isMobile?16:0}}>
+        <div className="card" style={{height:isMobile?'auto':'100%',padding:20,display:'flex',flexDirection:'column'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
             <span className="label">Atividades</span>
             <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{tasks.filter(t=>!t.done).length} pendentes</span>
@@ -1947,7 +2108,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
               placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',color:'var(--text)',paddingBottom:3}}/>
             <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px'}}><Icon name="plus" size={12}/></button>
           </div>
-          <div style={{flex:1,overflowY:'auto'}}>
+          <div style={{flex:isMobile?undefined:1,overflowY:'auto'}}>
             {tasks.length===0&&<p style={{fontSize:'.8rem',color:'var(--muted)',textAlign:'center',marginTop:16}}>Nenhuma atividade.</p>}
             {tasks.map(t=>(
               <div key={t.id} className="task-row" style={{padding:'7px 0'}}>
@@ -1959,6 +2120,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
@@ -1966,7 +2128,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks})=>{
 // ─── SOCIAL ───────────────────────────────────────────────────────────────────
 const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
 
-const Social=({posts,setPosts})=>{
+const Social=({posts,setPosts,isMobile})=>{
   const [text,setText]=useState('');
   const [platform,setPlatform]=useState('Instagram');
   const [editId,setEditId]=useState(null);
@@ -2034,15 +2196,15 @@ const Social=({posts,setPosts})=>{
         </div>
       )}
 
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
+        <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
         <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-          <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
+          <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
         </button>
       </div>
       {trash&&<TrashBanner label="Social Media" onExit={()=>setTrash(false)}/>}
       {!trash&&(
-        <div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:20,marginBottom:32}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 260px',gap:20,marginBottom:32}}>
           {/* Composer */}
           <div className="card" style={{padding:24,display:'flex',flexDirection:'column'}}>
             {editId&&<div style={{fontSize:'.75rem',color:'#92700b',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
@@ -2176,7 +2338,7 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
 };
 
 // ─── CLIENTS ──────────────────────────────────────────────────────────────────
-const Clients=({clients,setClients})=>{
+const Clients=({clients,setClients,isMobile})=>{
   const [selected,setSelected]=useState(null);
   const [trash,setTrash]=useState(false);
   const tagColor=s=>({'Ativo':'tag-green','Lead':'tag-yellow','Inativo':'tag-gray','Arquivado':'tag-gray'}[s]||'tag-gray');
@@ -2189,17 +2351,17 @@ const Clients=({clients,setClients})=>{
   if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:24}}>
-        <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
+        <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-            <Icon name="trash-2" size={13}/>{trash?'Sair da Lixeira':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
+            <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
           </button>
           {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
         </div>
       </div>
       {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
         {visible.map(c=>(
           <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
             <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
@@ -2231,7 +2393,7 @@ const Clients=({clients,setClients})=>{
 };
 
 // ─── SYNC HUB (GitHub Gist) ───────────────────────────────────────────────────
-const SyncHub=({appState,onImport,onClearSave})=>{
+const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
   const GIST_LS_KEY='boardhub_gist_config';
   const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{return{};}};
   const [token,setToken]=useState(()=>loadConfig().token||'');
@@ -2328,11 +2490,11 @@ const SyncHub=({appState,onImport,onClearSave})=>{
 
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
-      <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
+      <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:24}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:10,marginBottom:isMobile?16:24}}>
         {counts.map(s=>(
           <div key={s.label} className="card" style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{s.label}</span>
@@ -2535,7 +2697,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   );
 };
 
-const MentorsHub=({mentors,setMentors})=>{
+const MentorsHub=({mentors,setMentors,isMobile})=>{
   const [selected,setSelected]=useState(null);
   const [search,setSearch]=useState('');
 
@@ -2570,10 +2732,10 @@ const MentorsHub=({mentors,setMentors})=>{
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
       {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:28}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?20:28,gap:12,flexWrap:'wrap'}}>
         <div>
-          <h1 className="serif" style={{fontSize:'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
-          <p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>
+          <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
+          {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>}
         </div>
         <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
       </div>
@@ -2590,7 +2752,7 @@ const MentorsHub=({mentors,setMentors})=>{
           <p style={{fontSize:'.9rem',margin:0}}>{search?'Nenhum mentor encontrado.':'Adicione seu primeiro mentor acima.'}</p>
         </div>
       )}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
         {visible.map(m=>{
           const photos=(m.photos||[]).filter(Boolean);
           return(
@@ -2630,6 +2792,7 @@ const MentorsHub=({mentors,setMentors})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
+  const isMobile=useIsMobile();
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -2688,19 +2851,22 @@ const App=()=>{
   };
 
   return(
-    <div style={{display:'flex',minHeight:'100vh'}}>
-      {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)}/>}
-      <Sidebar activeView={view} setView={navigate} saveFlash={saveFlash}/>
-      <main style={{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
-        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData}/>}
-        {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)}/>}
-        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}}/>}
-        {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts}/>}
-        {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks}/>}
-        {view==='mentors'       && <MentorsHub mentors={mentors} setMentors={setMentors}/>}
-        {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts}/>}
-        {view==='clients'        && <Clients clients={clients} setClients={setClients}/>}
-        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave}/>}
+    <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh'}}>
+      {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
+      {isMobile
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
+      }
+      <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px',overflowY:'auto',minHeight:'calc(100vh - 56px)'}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
+        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
+        {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
+        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
+        {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
+        {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks} isMobile={isMobile}/>}
+        {view==='mentors'       && <MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
+        {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
+        {view==='clients'        && <Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
+        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} isMobile={isMobile}/>}
       </main>
     </div>
   );
