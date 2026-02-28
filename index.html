@@ -2,15 +2,6 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<script>
-// Runs synchronously before any external script — viewport is already applied at this point.
-// Stamps a class on <html> so React can read it reliably regardless of Babel compile timing.
-(function(){
-  if(window.matchMedia('(max-width:768px)').matches){
-    document.documentElement.classList.add('is-mobile');
-  }
-})();
-</script>
 <title>BoardHub — Storyboard OS</title>
 <!--
   BoardHub v17 — Responsive Build
@@ -255,23 +246,7 @@ const Icon=({name,size=16,style={}})=>{
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
-// ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
-const useIsMobile=(breakpoint=768)=>{
-  // Initial value comes from the class stamped synchronously in <head> — never wrong.
-  const [isMobile,setIsMobile]=useState(()=>document.documentElement.classList.contains('is-mobile'));
-  useEffect(()=>{
-    const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    const sync=()=>{
-      const m=mq.matches;
-      setIsMobile(m);
-      document.documentElement.classList.toggle('is-mobile',m);
-    };
-    sync();
-    mq.addEventListener('change',sync);
-    return()=>mq.removeEventListener('change',sync);
-  },[breakpoint]);
-  return isMobile;
-};
+
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
 // Images are stored as Blobs in IndexedDB (no 5 MB quota like localStorage).
@@ -391,7 +366,7 @@ const NAV_ITEMS=[
 ];
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash,setIsMobile})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
@@ -404,14 +379,24 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
         </button>
       ))}
     </nav>
-    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:8}}>
+      <div style={{display:'flex',gap:6}}>
+        <button onClick={()=>setIsMobile(false)} title="Layout Desktop" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,border:'2px solid var(--text)',background:'var(--text)',color:'white',cursor:'pointer',fontSize:'.72rem',fontWeight:600,fontFamily:'Figtree,sans-serif'}}>
+          <Icon name="monitor" size={13}/>PC
+        </button>
+        <button onClick={()=>setIsMobile(true)} title="Layout Mobile" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'7px 0',borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',cursor:'pointer',fontSize:'.72rem',fontWeight:500,fontFamily:'Figtree,sans-serif'}}>
+          <Icon name="smartphone" size={13}/>Mobile
+        </button>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+      </div>
     </div>
   </aside>
 ));
 
 // Mobile: top bar + slide-out drawer
-const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
+const SidebarMobile=React.memo(({activeView,setView,saveFlash,setIsMobile})=>{
   const [open,setOpen]=useState(false);
   const go=id=>{setView(id);setOpen(false);};
   const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||'BoardHub';
@@ -446,8 +431,18 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
                 </button>
               ))}
             </nav>
-            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',color:saveFlash?'#276b3e':'var(--muted)'}}>
-              <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>{setIsMobile(false);setOpen(false);}} title="Layout Desktop" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'8px 0',borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--muted)',cursor:'pointer',fontSize:'.72rem',fontWeight:500,fontFamily:'Figtree,sans-serif'}}>
+                  <Icon name="monitor" size={13}/>PC
+                </button>
+                <button onClick={()=>{setIsMobile(true);setOpen(false);}} title="Layout Mobile" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'8px 0',borderRadius:8,border:'2px solid var(--text)',background:'var(--text)',color:'white',cursor:'pointer',fontSize:'.72rem',fontWeight:600,fontFamily:'Figtree,sans-serif'}}>
+                  <Icon name="smartphone" size={13}/>Mobile
+                </button>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',color:saveFlash?'#276b3e':'var(--muted)'}}>
+                <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+              </div>
             </div>
           </div>
         </>
@@ -2807,7 +2802,11 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
-  const isMobile=useIsMobile();
+  const [isMobile,setIsMobileState]=useState(()=>{
+    try{const v=localStorage.getItem('boardhub_layout');if(v==='mobile')return true;if(v==='desktop')return false;}catch{}
+    return false;
+  });
+  const setIsMobile=v=>{setIsMobileState(v);try{localStorage.setItem('boardhub_layout',v?'mobile':'desktop');}catch{}};
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -2869,8 +2868,8 @@ const App=()=>{
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setIsMobile={setIsMobile}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} setIsMobile={setIsMobile}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px',overflowY:'auto',minHeight:'calc(100vh - 56px)'}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
