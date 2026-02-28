@@ -284,16 +284,24 @@ const Field=({label,children})=><div style={{display:'flex',flexDirection:'colum
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
-const useIsMobile=(breakpoint=768)=>{
-  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+const LAYOUT_LS='boardhub_layout_override';
+const useLayoutMode=(breakpoint=768)=>{
+  const [physical,setPhysical]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+  const [override,setOverride]=useState(()=>{try{return localStorage.getItem(LAYOUT_LS)||null;}catch{return null;}});
   useEffect(()=>{
     const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    setIsMobile(mq.matches);
-    const handler=e=>setIsMobile(e.matches);
-    mq.addEventListener('change',handler);
-    return()=>mq.removeEventListener('change',handler);
+    setPhysical(mq.matches);
+    const h=e=>setPhysical(e.matches);
+    mq.addEventListener('change',h);
+    return()=>mq.removeEventListener('change',h);
   },[breakpoint]);
-  return isMobile;
+  const toggle=()=>setOverride(prev=>{
+    const next=prev?null:(physical?'desktop':'mobile');
+    try{next?localStorage.setItem(LAYOUT_LS,next):localStorage.removeItem(LAYOUT_LS);}catch{}
+    return next;
+  });
+  const isMobile=override?override==='mobile':physical;
+  return [isMobile,toggle];
 };
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
