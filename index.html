@@ -248,17 +248,14 @@ const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
 const useIsMobile=(breakpoint=768)=>{
-  const mq=useRef(null);
-  if(!mq.current&&typeof window!=='undefined')mq.current=window.matchMedia(`(max-width:${breakpoint}px)`);
-  const [isMobile,setIsMobile]=useState(()=>mq.current?mq.current.matches:false);
+  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
   useEffect(()=>{
-    const m=mq.current;
-    if(!m)return;
-    setIsMobile(m.matches);
+    const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
+    setIsMobile(mq.matches);
     const handler=e=>setIsMobile(e.matches);
-    m.addEventListener('change',handler);
-    return()=>m.removeEventListener('change',handler);
-  },[]);
+    mq.addEventListener('change',handler);
+    return()=>mq.removeEventListener('change',handler);
+  },[breakpoint]);
   return isMobile;
 };
 
