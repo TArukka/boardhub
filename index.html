@@ -2,6 +2,15 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<script>
+// Runs synchronously before any external script — viewport is already applied at this point.
+// Stamps a class on <html> so React can read it reliably regardless of Babel compile timing.
+(function(){
+  if(window.matchMedia('(max-width:768px)').matches){
+    document.documentElement.classList.add('is-mobile');
+  }
+})();
+</script>
 <title>BoardHub — Storyboard OS</title>
 <!--
   BoardHub v17 — Responsive Build
@@ -248,13 +257,18 @@ const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
 const useIsMobile=(breakpoint=768)=>{
-  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+  // Initial value comes from the class stamped synchronously in <head> — never wrong.
+  const [isMobile,setIsMobile]=useState(()=>document.documentElement.classList.contains('is-mobile'));
   useEffect(()=>{
     const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    setIsMobile(mq.matches);
-    const handler=e=>setIsMobile(e.matches);
-    mq.addEventListener('change',handler);
-    return()=>mq.removeEventListener('change',handler);
+    const sync=()=>{
+      const m=mq.matches;
+      setIsMobile(m);
+      document.documentElement.classList.toggle('is-mobile',m);
+    };
+    sync();
+    mq.addEventListener('change',sync);
+    return()=>mq.removeEventListener('change',sync);
   },[breakpoint]);
   return isMobile;
 };
