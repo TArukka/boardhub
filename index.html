@@ -87,46 +87,46 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 @keyframes moreSheetIn{from{opacity:0;transform:translateY(30px);}to{opacity:1;transform:translateY(0);}}
 
 /* Bottom tab bar */
-.mobile-tab-bar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
-.mobile-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;height:100%;border:none;background:none;cursor:pointer;padding:0;font-family:'Figtree',sans-serif;color:var(--muted);transition:color .15s;min-width:44px;}
+.mobile-tab-bar{position:fixed;bottom:0;left:0;right:0;height:72px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
+.mobile-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:1;height:100%;border:none;background:none;cursor:pointer;padding:0;font-family:'Figtree',sans-serif;color:var(--muted);transition:color .15s;min-width:52px;}
 .mobile-tab-item.active{color:var(--text);}
-.mobile-tab-item svg{width:22px;height:22px;}
-.mobile-tab-label{font-size:.62rem;font-weight:600;letter-spacing:.01em;}
+.mobile-tab-item svg{width:26px;height:26px;}
+.mobile-tab-label{font-size:.72rem;font-weight:600;letter-spacing:.01em;}
 
 /* More sheet */
 .more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);z-index:90;}
 .more-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-radius:20px 20px 0 0;z-index:91;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 8px);animation:moreSheetIn .22s ease;border-top:1px solid var(--border);}
 .more-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:12px auto 20px;}
-.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 24px;font-family:'Figtree',sans-serif;font-size:1rem;color:var(--text);border:none;background:none;cursor:pointer;width:100%;text-align:left;font-weight:500;transition:background .12s;}
+.more-sheet-item{display:flex;align-items:center;gap:16px;padding:18px 28px;font-family:'Figtree',sans-serif;font-size:1.1rem;color:var(--text);border:none;background:none;cursor:pointer;width:100%;text-align:left;font-weight:500;transition:background .12s;}
 .more-sheet-item:active{background:var(--bg);}
 
 /* Compact list rows (P1) */
-.compact-row{display:flex;align-items:center;gap:12px;padding:0 16px;min-height:64px;border-bottom:1px solid var(--border);cursor:pointer;background:var(--surface);transition:background .1s;}
+.compact-row{display:flex;align-items:center;gap:14px;padding:0 20px;min-height:72px;border-bottom:1px solid var(--border);cursor:pointer;background:var(--surface);transition:background .1s;}
 .compact-row:last-child{border-bottom:none;}
 .compact-row:active{background:var(--bg);}
-.compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;object-fit:cover;background:var(--bg);}
-.compact-row-thumb-circle{width:44px;height:44px;border-radius:50%;flex-shrink:0;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1.2rem;font-weight:500;flex-shrink:0;}
+.compact-row-thumb{width:50px;height:50px;border-radius:10px;flex-shrink:0;object-fit:cover;background:var(--bg);}
+.compact-row-thumb-circle{width:50px;height:50px;border-radius:50%;flex-shrink:0;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:500;flex-shrink:0;}
 .compact-row-body{flex:1;min-width:0;}
-.compact-row-title{font-size:.95rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
-.compact-row-meta{font-size:.78rem;color:#5C574F;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.compact-row-title{font-size:1.05rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.compact-row-meta{font-size:.85rem;color:#5C574F;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* FAB (P1) */
-.mobile-fab{position:fixed;bottom:calc(56px + 16px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:40;transition:transform .15s,box-shadow .15s;}
+.mobile-fab{position:fixed;bottom:calc(72px + 20px + env(safe-area-inset-bottom,0px));right:20px;width:62px;height:62px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(28,25,23,.3);z-index:40;transition:transform .15s,box-shadow .15s;}
 .mobile-fab:active{transform:scale(.94);box-shadow:0 2px 8px rgba(28,25,23,.2);}
 
 /* Stat scroll row (P2) */
-.stat-scroll-row{display:flex;gap:10px;overflow-x:auto;padding:0 0 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.stat-scroll-row{display:flex;gap:12px;overflow-x:auto;padding:0 0 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .stat-scroll-row::-webkit-scrollbar{display:none;}
-.stat-scroll-card{min-width:120px;flex-shrink:0;}
+.stat-scroll-card{min-width:140px;flex-shrink:0;}
 
 /* Bottom sheet with drag handle (P2) */
 .bottom-sheet-modal{border-radius:20px 20px 0 0!important;max-height:85vh!important;padding:8px 20px 24px!important;}
 .bottom-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:0 auto 16px;}
 
 /* Segment control tabs (P2) */
-.seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;scrollbar-width:none;}
+.seg-tabs{display:flex;background:var(--bg);border-radius:12px;padding:4px;gap:3px;overflow-x:auto;scrollbar-width:none;}
 .seg-tabs::-webkit-scrollbar{display:none;}
-.seg-tab{flex:1;min-width:fit-content;padding:8px 12px;border:none;background:none;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.82rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.seg-tab{flex:1;min-width:fit-content;padding:10px 16px;border:none;background:none;border-radius:9px;font-family:'Figtree',sans-serif;font-size:.92rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
 .seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(28,25,23,.1);}
 
 /* Vertical timeline (replaces Gantt on mobile — P1) */
@@ -136,51 +136,51 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .vtl-line{width:1px;background:var(--border);position:absolute;top:0;bottom:0;left:4px;}
 
 /* Mobile topbar — kept for page title only */
-.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.mobile-topbar-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;letter-spacing:-.02em;}
+.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.mobile-topbar-title{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:500;letter-spacing:-.02em;}
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
 @media(max-width:768px){
-  /* Global spacing — 8px grid */
-  .main-mobile{margin-left:0!important;padding:16px!important;padding-top:8px!important;padding-bottom:calc(56px + 16px + env(safe-area-inset-bottom,0px))!important;min-height:100vh!important;}
+  /* Global spacing */
+  .main-mobile{margin-left:0!important;padding:20px!important;padding-top:12px!important;padding-bottom:calc(72px + 20px + env(safe-area-inset-bottom,0px))!important;min-height:100vh!important;}
   .fade-up{animation:none!important;}
   
   /* Overlay / Modals → bottom sheets */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
-  .modal{border-radius:20px 20px 0 0!important;max-height:85vh!important;padding:8px 20px 24px!important;}
+  .modal{border-radius:24px 24px 0 0!important;max-height:88vh!important;padding:10px 24px 32px!important;}
   
   /* Save toast */
-  .save-toast{left:50%!important;bottom:calc(56px + 16px)!important;}
+  .save-toast{left:50%!important;bottom:calc(72px + 16px)!important;font-size:.88rem!important;padding:10px 22px!important;}
   
-  /* P0 — Typography: 16px minimum body */
-  body{font-size:16px;}
-  h1.serif{font-size:1.75rem!important;}
-  .label{font-size:.78rem;}
+  /* Typography — noticeably bigger */
+  body{font-size:17px;}
+  h1.serif{font-size:2.2rem!important;}
+  .label{font-size:.88rem;letter-spacing:.08em;}
   
-  /* P0 — Touch targets: 44px+ everywhere */
-  .btn{padding:12px 18px;font-size:.9rem;min-height:44px;}
-  .btn-ghost{padding:10px 12px;min-height:44px;}
-  .btn-outline{min-height:44px;}
-  .nav-item{padding:14px 16px;font-size:.95rem;min-height:48px;}
-  .tab-btn{min-height:44px;padding:12px 0;margin-right:16px;font-size:.9rem;}
+  /* Touch targets — generously sized */
+  .btn{padding:14px 20px;font-size:1rem;min-height:52px;}
+  .btn-ghost{padding:12px 14px;min-height:48px;font-size:.95rem;}
+  .btn-outline{min-height:52px;font-size:1rem;}
+  .nav-item{padding:16px 18px;font-size:1.05rem;min-height:52px;}
+  .tab-btn{min-height:52px;padding:14px 0;margin-right:20px;font-size:1rem;}
   
-  /* P0 — Input 16px prevents iOS auto-zoom */
-  .input-box{padding:12px 14px;font-size:1rem;min-height:48px;}
-  input,textarea,select{font-size:1rem!important;}
+  /* Inputs — large and readable */
+  .input-box{padding:14px 16px;font-size:1.05rem;min-height:54px;}
+  input,textarea,select{font-size:1.05rem!important;}
   
-  /* Cards */
-  .card{border-radius:12px;}
+  /* Cards — more breathing room */
+  .card{border-radius:16px;}
   
-  /* P0 — Tag: bigger touch area */
-  .tag{padding:6px 12px;font-size:.75rem;}
+  /* Tags — bigger */
+  .tag{padding:7px 14px;font-size:.82rem;}
   
   /* Upload zone */
-  .upload-zone{padding:20px;}
+  .upload-zone{padding:28px;}
   
   /* Cover edit — always show on mobile (no hover) */
   .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
   
-  /* P2 — WCAG AA muted text: darken to 4.5:1 ratio */
+  /* WCAG AA muted text */
   .compact-row-meta, .label, [style*="color:var(--muted)"], .mobile-tab-item:not(.active){color:#5C574F;}
 }
 </style>
@@ -486,7 +486,7 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>
       <div className="mobile-topbar">
         <span className="mobile-topbar-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:'.8rem',color:'#5C574F',fontWeight:500}}>{currentLabel}</span>
+          <span style={{fontSize:'1rem',color:'#5C574F',fontWeight:600}}>{currentLabel}</span>
           <div style={{fontSize:'.7rem',transition:'color .4s',color:saveFlash?'#276b3e':'#5C574F',display:'flex',alignItems:'center',gap:4}}>
             <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>
           </div>
@@ -852,7 +852,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
   return(
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
       <div style={{marginBottom:isMobile?24:40}}>
-        <h1 className="serif" style={{fontSize:isMobile?'2rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
+        <h1 className="serif" style={{fontSize:isMobile?'2.4rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
       {isMobile?(
@@ -1077,7 +1077,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
         {/* LEFT: projects list */}
         <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-            <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+            <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
                 <Icon name="trash-2" size={13}/>
@@ -2129,7 +2129,7 @@ const Gallery=({posts,setPosts,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <div><h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
+        <div><h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem'}}>Acervo visual & estudos</p>}</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
@@ -2205,7 +2205,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
       {/* Left */}
       {(!isMobile||(isMobile&&!activeId))&&(
       <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
-        <h1 className="serif" style={{fontSize:isMobile?'1.6rem':'2rem',fontWeight:300}}>Ideias</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'1.9rem':'2rem',fontWeight:300}}>Ideias</h1>
         <div style={{display:'flex',flexDirection:isMobile?'row':'column',gap:4}}>
           {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
             <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(first?.id||null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
@@ -2383,7 +2383,7 @@ const Social=({posts,setPosts,isMobile})=>{
       )}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
         <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
           <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
         </button>
@@ -2538,7 +2538,7 @@ const Clients=({clients,setClients,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
@@ -2697,7 +2697,7 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
 
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
-      <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
+      <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
       <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
 
       {/* Stats */}
@@ -2941,7 +2941,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
       {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?20:28,gap:12,flexWrap:'wrap'}}>
         <div>
-          <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
+          <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>}
         </div>
         {!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
