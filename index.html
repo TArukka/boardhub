@@ -285,15 +285,15 @@ const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
 const useIsMobile=(breakpoint=768)=>{
-  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+  const [autoMobile,setAutoMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
   useEffect(()=>{
     const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    setIsMobile(mq.matches);
-    const handler=e=>setIsMobile(e.matches);
+    setAutoMobile(mq.matches);
+    const handler=e=>setAutoMobile(e.matches);
     mq.addEventListener('change',handler);
     return()=>mq.removeEventListener('change',handler);
   },[breakpoint]);
-  return isMobile;
+  return autoMobile;
 };
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
@@ -414,7 +414,7 @@ const NAV_ITEMS=[
 ];
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
@@ -427,8 +427,16 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
         </button>
       ))}
     </nav>
-    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
+      <button onClick={()=>setForceMobile(true)}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}
+        onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--text)';e.currentTarget.style.color='var(--text)';}}
+        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--muted)';}}>
+        <Icon name="smartphone" size={13}/> Visualização Mobile
+      </button>
+      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+      </div>
     </div>
   </aside>
 ));
@@ -447,7 +455,7 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
+const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile})=>{
   const [moreOpen,setMoreOpen]=useState(false);
   const go=id=>{setView(id);setMoreOpen(false);};
   const isMore=MORE_ITEMS.some(n=>activeView.startsWith(n.id));
@@ -486,8 +494,15 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
                 <Icon name={item.icon} size={20}/>{item.label}
               </button>
             ))}
-            <div style={{borderTop:'1px solid var(--border)',marginTop:8,paddingTop:12,display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'12px 12px'}}>
-              <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+            <div style={{borderTop:'1px solid var(--border)',marginTop:8,paddingTop:12}}>
+              <button onClick={()=>{setForceMobile(false);setMoreOpen(false);}}
+                className="more-sheet-item"
+                style={{color:'var(--muted)',fontSize:'.88rem'}}>
+                <Icon name="monitor" size={18}/> Visualização Desktop
+              </button>
+              <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
+                <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+              </div>
             </div>
           </div>
         </>
@@ -2955,7 +2970,17 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
-  const isMobile=useIsMobile();
+  const autoMobile=useIsMobile();
+  const [forceMobile,setForceMobileRaw]=useState(null); // null = auto
+  const isMobile = forceMobile !== null ? forceMobile : autoMobile;
+
+  // When screen resizes to mobile, clear any desktop-forced override
+  useEffect(()=>{ if(autoMobile) setForceMobileRaw(null); },[autoMobile]);
+
+  const setForceMobile=(val)=>{
+    // val=true → force mobile, val=false → force desktop, null → auto
+    setForceMobileRaw(val);
+  };
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -3017,8 +3042,8 @@ const App=()=>{
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
