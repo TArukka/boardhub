@@ -82,54 +82,106 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 
-/* ─── MOBILE DRAWER ─────────────────────────────────────────────────────── */
-@keyframes drawerSlide{from{transform:translateX(-100%);}to{transform:translateX(0);}}
-@keyframes drawerOverlayIn{from{opacity:0;}to{opacity:1;}}
-.mobile-drawer-overlay{position:fixed;inset:0;background:rgba(28,25,23,.5);z-index:90;animation:drawerOverlayIn .2s ease;}
-.mobile-drawer{position:fixed;top:0;left:0;bottom:0;width:260px;background:var(--surface);z-index:91;animation:drawerSlide .25s ease;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 16px;overflow-y:auto;}
-.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+/* ─── MOBILE BOTTOM TAB BAR ─────────────────────────────────────────────── */
+@keyframes sheetSlide{from{transform:translateY(100%);}to{transform:translateY(0);}}
+@keyframes moreSheetIn{from{opacity:0;transform:translateY(30px);}to{opacity:1;transform:translateY(0);}}
+
+/* Bottom tab bar */
+.mobile-tab-bar{position:fixed;bottom:0;left:0;right:0;height:56px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
+.mobile-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;height:100%;border:none;background:none;cursor:pointer;padding:0;font-family:'Figtree',sans-serif;color:var(--muted);transition:color .15s;min-width:44px;}
+.mobile-tab-item.active{color:var(--text);}
+.mobile-tab-item svg{width:22px;height:22px;}
+.mobile-tab-label{font-size:.62rem;font-weight:600;letter-spacing:.01em;}
+
+/* More sheet */
+.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);z-index:90;}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-radius:20px 20px 0 0;z-index:91;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 8px);animation:moreSheetIn .22s ease;border-top:1px solid var(--border);}
+.more-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:12px auto 20px;}
+.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 24px;font-family:'Figtree',sans-serif;font-size:1rem;color:var(--text);border:none;background:none;cursor:pointer;width:100%;text-align:left;font-weight:500;transition:background .12s;}
+.more-sheet-item:active{background:var(--bg);}
+
+/* Compact list rows (P1) */
+.compact-row{display:flex;align-items:center;gap:12px;padding:0 16px;min-height:64px;border-bottom:1px solid var(--border);cursor:pointer;background:var(--surface);transition:background .1s;}
+.compact-row:last-child{border-bottom:none;}
+.compact-row:active{background:var(--bg);}
+.compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;object-fit:cover;background:var(--bg);}
+.compact-row-thumb-circle{width:44px;height:44px;border-radius:50%;flex-shrink:0;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1.2rem;font-weight:500;flex-shrink:0;}
+.compact-row-body{flex:1;min-width:0;}
+.compact-row-title{font-size:.95rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.compact-row-meta{font-size:.78rem;color:#5C574F;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* FAB (P1) */
+.mobile-fab{position:fixed;bottom:calc(56px + 16px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:40;transition:transform .15s,box-shadow .15s;}
+.mobile-fab:active{transform:scale(.94);box-shadow:0 2px 8px rgba(28,25,23,.2);}
+
+/* Stat scroll row (P2) */
+.stat-scroll-row{display:flex;gap:10px;overflow-x:auto;padding:0 0 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.stat-scroll-row::-webkit-scrollbar{display:none;}
+.stat-scroll-card{min-width:120px;flex-shrink:0;}
+
+/* Bottom sheet with drag handle (P2) */
+.bottom-sheet-modal{border-radius:20px 20px 0 0!important;max-height:85vh!important;padding:8px 20px 24px!important;}
+.bottom-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:0 auto 16px;}
+
+/* Segment control tabs (P2) */
+.seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;scrollbar-width:none;}
+.seg-tabs::-webkit-scrollbar{display:none;}
+.seg-tab{flex:1;min-width:fit-content;padding:8px 12px;border:none;background:none;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.82rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(28,25,23,.1);}
+
+/* Vertical timeline (replaces Gantt on mobile — P1) */
+.vtl-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+.vtl-row:last-child{border-bottom:none;}
+.vtl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:5px;}
+.vtl-line{width:1px;background:var(--border);position:absolute;top:0;bottom:0;left:4px;}
+
+/* Mobile topbar — kept for page title only */
+.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .mobile-topbar-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;letter-spacing:-.02em;}
-.hamburger-btn{background:none;border:none;padding:6px;cursor:pointer;color:var(--text);border-radius:6px;display:flex;align-items:center;justify-content:center;}
-.hamburger-btn:active{background:var(--bg);}
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
 @media(max-width:768px){
-  /* Global spacing */
-  .main-mobile{margin-left:0!important;padding:16px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;}
+  /* Global spacing — 8px grid */
+  .main-mobile{margin-left:0!important;padding:16px!important;padding-top:8px!important;padding-bottom:calc(56px + 16px + env(safe-area-inset-bottom,0px))!important;min-height:100vh!important;}
   .fade-up{animation:none!important;}
   
-  /* Overlay / Modals */
+  /* Overlay / Modals → bottom sheets */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
-  .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
+  .modal{border-radius:20px 20px 0 0!important;max-height:85vh!important;padding:8px 20px 24px!important;}
   
   /* Save toast */
-  .save-toast{left:50%!important;bottom:12px!important;}
+  .save-toast{left:50%!important;bottom:calc(56px + 16px)!important;}
   
-  /* Typography scale-down */
-  h1.serif{font-size:2rem!important;}
+  /* P0 — Typography: 16px minimum body */
+  body{font-size:16px;}
+  h1.serif{font-size:1.75rem!important;}
+  .label{font-size:.78rem;}
   
-  /* Cards — reduce padding on mobile */
+  /* P0 — Touch targets: 44px+ everywhere */
+  .btn{padding:12px 18px;font-size:.9rem;min-height:44px;}
+  .btn-ghost{padding:10px 12px;min-height:44px;}
+  .btn-outline{min-height:44px;}
+  .nav-item{padding:14px 16px;font-size:.95rem;min-height:48px;}
+  .tab-btn{min-height:44px;padding:12px 0;margin-right:16px;font-size:.9rem;}
+  
+  /* P0 — Input 16px prevents iOS auto-zoom */
+  .input-box{padding:12px 14px;font-size:1rem;min-height:48px;}
+  input,textarea,select{font-size:1rem!important;}
+  
+  /* Cards */
   .card{border-radius:12px;}
   
-  /* Tag — slightly bigger tap target */
-  .tag{padding:4px 10px;font-size:.7rem;}
-  
-  /* Buttons — bigger tap targets */
-  .btn{padding:10px 16px;font-size:.84rem;}
-  .btn-ghost{padding:8px 10px;}
-  .nav-item{padding:12px 14px;font-size:.88rem;}
-  
-  /* Input — bigger on mobile */
-  .input-box{padding:10px 14px;font-size:.88rem;}
-  
-  /* Tab buttons — more space */
-  .tab-btn{margin-right:16px;font-size:.84rem;}
+  /* P0 — Tag: bigger touch area */
+  .tag{padding:6px 12px;font-size:.75rem;}
   
   /* Upload zone */
   .upload-zone{padding:20px;}
   
   /* Cover edit — always show on mobile (no hover) */
   .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
+  
+  /* P2 — WCAG AA muted text: darken to 4.5:1 ratio */
+  .compact-row-meta, .label, [style*="color:var(--muted)"], .mobile-tab-item:not(.active){color:#5C574F;}
 }
 </style>
 </head>
@@ -353,17 +405,22 @@ const TrashBanner=({label,onExit})=>(
 );
 
 // ─── MODAL ────────────────────────────────────────────────────────────────────
-const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
-  <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
-    <div className="modal" style={{maxWidth:width}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
-        <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{title}</h2>
-        <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
+const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>{
+  const mob=window.innerWidth<=768;
+  return(
+    <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal" style={{maxWidth:width}}>
+        {/* P2: drag handle on mobile bottom sheets */}
+        {mob&&<div className="bottom-sheet-handle"/>}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>{title}</h2>
+          <button className="btn btn-ghost" onClick={onClose} style={{padding:8}}><Icon name="x" size={18}/></button>
+        </div>
+        {children}
       </div>
-      {children}
     </div>
-  </div>
-);
+  );
+};
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 const NAV_ITEMS=[
@@ -402,53 +459,80 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=
   </aside>
 ));
 
-// Mobile: top bar + slide-out drawer
+// Mobile: sticky topbar (logo + page title) + persistent bottom tab bar + "More" half-sheet
+// Top 5 tabs: Dashboard, Projetos, Ideias, Galeria, ⋯ More
+const TAB_ITEMS=[
+  {id:'dashboard',icon:'layout-dashboard',label:'Início'},
+  {id:'projects', icon:'folder-open',     label:'Projetos'},
+  {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
+  {id:'gallery',  icon:'image',           label:'Galeria'},
+];
+const MORE_ITEMS=[
+  {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
+  {id:'social',   icon:'share-2',         label:'Social'},
+  {id:'clients',  icon:'users',           label:'Clientes'},
+  {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
+];
+
+// LEGACY: keep SidebarMobile name but totally replace internals
 const SidebarMobile=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>{
-  const [open,setOpen]=useState(false);
-  const go=id=>{setView(id);setOpen(false);};
+  const [showMore,setShowMore]=useState(false);
+  const go=id=>{setView(id);setShowMore(false);};
   const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||'BoardHub';
+  const moreActive=MORE_ITEMS.some(m=>activeView.startsWith(m.id));
   return(
     <>
+      {/* Top bar — logo + current page title */}
       <div className="mobile-topbar">
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <button className="hamburger-btn" onClick={()=>setOpen(true)}>
-            <Icon name="menu" size={22}/>
-          </button>
-          <span className="mobile-topbar-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
-        </div>
+        <span className="mobile-topbar-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
-          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
-            <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>
+          <span style={{fontSize:'.8rem',color:'#5C574F',fontWeight:500}}>{currentLabel}</span>
+          <div style={{fontSize:'.7rem',transition:'color .4s',color:saveFlash?'#276b3e':'#5C574F',display:'flex',alignItems:'center',gap:4}}>
+            <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>
           </div>
         </div>
       </div>
-      {open&&(
+
+      {/* More half-sheet */}
+      {showMore&&(
         <>
-          <div className="mobile-drawer-overlay" onClick={()=>setOpen(false)}/>
-          <div className="mobile-drawer">
-            <div onClick={()=>go('dashboard')} style={{cursor:'pointer',marginBottom:28,padding:'0 4px'}}>
-              <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
-              <div style={{fontSize:'.62rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
-            </div>
-            <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
-              {NAV_ITEMS.map(item=>(
-                <button key={item.id} onClick={()=>go(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
-                  <Icon name={item.icon} size={16}/>{item.label}
-                </button>
-              ))}
-            </nav>
-            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',color:saveFlash?'#276b3e':'var(--muted)'}}>
-                <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+          <div className="more-sheet-overlay" onClick={()=>setShowMore(false)}/>
+          <div className="more-sheet">
+            <div className="more-sheet-handle"/>
+            {MORE_ITEMS.map(item=>(
+              <button key={item.id} className="more-sheet-item" onClick={()=>go(item.id)}>
+                <div style={{width:36,height:36,borderRadius:10,background:activeView.startsWith(item.id)?'var(--text)':'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Icon name={item.icon} size={18} style={{color:activeView.startsWith(item.id)?'white':'#5C574F'}}/>
+                </div>
+                <span style={{color:activeView.startsWith(item.id)?'var(--text)':'#5C574F',fontWeight:activeView.startsWith(item.id)?600:400}}>{item.label}</span>
+              </button>
+            ))}
+            <div style={{borderTop:'1px solid var(--border)',margin:'8px 24px 0',paddingBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,paddingTop:14,fontSize:'.82rem',color:'#5C574F'}}>
+                <Icon name={saveFlash?'check-circle':'hard-drive'} size={14} style={{color:saveFlash?'#276b3e':'#5C574F'}}/>
+                {saveFlash?'Salvo automaticamente!':'Auto-save ativo'}
               </div>
-              <button onClick={onToggleLayout} className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.7rem',width:'100%',justifyContent:'center',gap:6}}>
-                <Icon name="monitor" size={12}/> Modo Desktop
+              <button onClick={onToggleLayout} className="btn btn-outline" style={{marginTop:12,width:'100%',justifyContent:'center',gap:8,fontSize:'.85rem'}}>
+                <Icon name="monitor" size={14}/> Modo Desktop
               </button>
             </div>
           </div>
         </>
       )}
+
+      {/* Bottom tab bar — always visible */}
+      <div className="mobile-tab-bar">
+        {TAB_ITEMS.map(item=>(
+          <button key={item.id} className={`mobile-tab-item ${activeView.startsWith(item.id)?'active':''}`} onClick={()=>go(item.id)}>
+            <Icon name={item.icon} size={22}/>
+            <span className="mobile-tab-label">{item.label}</span>
+          </button>
+        ))}
+        <button className={`mobile-tab-item ${moreActive||showMore?'active':''}`} onClick={()=>setShowMore(s=>!s)}>
+          <Icon name="more-horizontal" size={22}/>
+          <span className="mobile-tab-label">Mais</span>
+        </button>
+      </div>
     </>
   );
 });
@@ -771,17 +855,28 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
         <h1 className="serif" style={{fontSize:isMobile?'2rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?10:16,marginBottom:isMobile?20:32}}>
-        {stats.map(s=>(
-          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:isMobile?'16px 18px':'24px 28px',display:'flex',flexDirection:isMobile?'row':'column',gap:12,alignItems:isMobile?'center':'stretch'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',flex:isMobile?0:undefined}}>
-              <span style={{fontSize:isMobile?'1.6rem':'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
-              {!isMobile&&<div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>}
+      {isMobile?(
+        <div className="stat-scroll-row" style={{marginBottom:20,marginLeft:-16,marginRight:-16,paddingLeft:16,paddingRight:16}}>
+          {stats.map(s=>(
+            <div key={s.label} className="card card-click stat-scroll-card" onClick={()=>setView(s.view)} style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:6}}>
+              <span style={{fontSize:'2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
+              <span style={{fontSize:'.78rem',color:'#5C574F',fontWeight:500,whiteSpace:'nowrap'}}>{s.label}</span>
             </div>
-            <span style={{fontSize:'.8rem',color:'var(--muted)',fontWeight:500}}>{s.label}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ):(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
+          {stats.map(s=>(
+            <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                <span style={{fontSize:'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
+                <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
+              </div>
+              <span style={{fontSize:'.8rem',color:'var(--muted)',fontWeight:500}}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
@@ -988,8 +1083,10 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
                 <Icon name="trash-2" size={13}/>
                 {trash?'Sair':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}
               </button>
-              {!trash&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
+              {!trash&&!isMobile&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
             </div>
+            {/* P1: FAB replaces inline button on mobile */}
+            {isMobile&&!trash&&<button className="mobile-fab" onClick={onAdd}><Icon name="plus" size={24}/></button>}
           </div>
           {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
           {!trash&&(
@@ -1007,44 +1104,61 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
               </label>
             </div>
           )}
-          <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
-            {visible.map(p=>(
-              <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
-                onClick={()=>!trash&&onSelect(p)}>
-                {!trash&&(
-                  <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
-                    style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
-                    onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
-                    onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
-                    <Icon name="trash-2" size={12}/>
-                  </button>
-                )}
-                <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
-                  <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
-                    <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
+          {isMobile&&!trash?(
+            /* P1: Compact list rows on mobile */
+            <div className="card" style={{overflow:'hidden',padding:0}}>
+              {visible.map(p=>(
+                <div key={p.id} className="compact-row" onClick={()=>onSelect(p)}>
+                  <div style={{width:44,height:44,borderRadius:8,flexShrink:0,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                  <div className="compact-row-body">
+                    <div className="compact-row-title">{p.title}</div>
+                    <div className="compact-row-meta">{p.client} &middot; <span className={`tag ${statusTag(p.status)}`} style={{verticalAlign:'middle'}}>{p.status}</span></div>
                   </div>
+                  <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
                 </div>
-                <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
-                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
-                  </div>
-                  {!trash?(
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
-                      <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
-                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
-                    </div>
-                  ):(
-                    <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
-                      <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
-                      <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
-                    </div>
+              ))}
+              {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>Nenhum projeto encontrado.</div>}
+            </div>
+          ):(
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
+              {visible.map(p=>(
+                <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
+                  onClick={()=>!trash&&onSelect(p)}>
+                  {!trash&&(
+                    <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
+                      style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
+                      onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
+                      onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
+                      <Icon name="trash-2" size={12}/>
+                    </button>
                   )}
+                  <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
+                    <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
+                      <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
+                    </div>
+                  </div>
+                  <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
+                      <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
+                    </div>
+                    {!trash?(
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                        <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
+                        <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
+                      </div>
+                    ):(
+                      <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
+                        <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
+                        <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
-          </div>
+              ))}
+              {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
+            </div>
+          )}
         </div>
 
         {/* RIGHT: tasks sidebar hub */}
@@ -1519,24 +1633,56 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
         </div>
       </div>
 
-      {/* Gantt Timeline — horizontal scroll on mobile */}
-      <div style={isMobile?{overflowX:'auto',WebkitOverflowScrolling:'touch',marginBottom:8}:{}}>
-        <div style={isMobile?{minWidth:600}:{}}>
-          <GanttTimeline
-            tasks={applyAutoLate(local.projectTasks||[])}
-            onUpdateTasks={tasks=>upd('projectTasks',tasks)}
-            projectStart={local.startDate}
-            projectEnd={local.deadline}
-          />
+      {/* P1: Vertical timeline on mobile, full Gantt on desktop */}
+      {isMobile?(
+        <div className="card" style={{padding:'16px 0',marginBottom:20,overflow:'hidden'}}>
+          <div style={{padding:'0 16px 10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span className="label">Cronograma</span>
+            <button className="btn btn-ghost" style={{padding:'6px 10px',fontSize:'.8rem',gap:6}}
+              onClick={()=>{const t={id:Date.now(),text:'Nova tarefa',status:'Pendente',startDate:local.startDate||'',endDate:local.deadline||''};upd('projectTasks',[...(local.projectTasks||[]),t]);}}>
+              <Icon name="plus" size={13}/> Tarefa
+            </button>
+          </div>
+          {(applyAutoLate(local.projectTasks||[])).length===0?(
+            <div style={{textAlign:'center',padding:'24px 0',color:'#5C574F',fontSize:'.85rem'}}>Nenhuma tarefa ainda.</div>
+          ):(
+            <div style={{padding:'0 16px'}}>
+              {(applyAutoLate(local.projectTasks||[])).map(t=>(
+                <div key={t.id} className="vtl-row">
+                  <div className="vtl-dot" style={{background:{'Pendente':'#B5ABA0','Fazendo':'#F59E0B','Concluído':'#10B981','Atrasado':'#EF4444'}[t.status]||'var(--border-2)'}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:'.9rem',fontWeight:500,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</div>
+                    {(t.startDate||t.endDate)&&<div style={{fontSize:'.75rem',color:'#5C574F',marginTop:1}}>{t.startDate&&fmtShort(t.startDate)}{t.startDate&&t.endDate?' → ':''}{t.endDate&&fmtShort(t.endDate)}</div>}
+                  </div>
+                  <span className={`ptask-pill ptask-${t.status}`} onClick={()=>{const next=PTASK_NEXT[t.status]||'Pendente';upd('projectTasks',(local.projectTasks||[]).map(x=>x.id===t.id?{...x,status:next}:x));}}>{t.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      ):(
+        <GanttTimeline
+          tasks={applyAutoLate(local.projectTasks||[])}
+          onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+          projectStart={local.startDate}
+          projectEnd={local.deadline}
+        />
+      )}
 
-      {/* Tabs */}
-      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20,overflowX:isMobile?'auto':'visible'}}>
-        {['Visão Geral','Animatics','Pesquisa'].map(t=>(
-          <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{t}</button>
-        ))}
-      </div>
+      {/* P2: Segmented control tabs on mobile, underline tabs on desktop */}
+      {isMobile?(
+        <div className="seg-tabs" style={{marginBottom:20}}>
+          {['Visão Geral','Animatics','Pesquisa'].map(t=>(
+            <button key={t} className={`seg-tab ${tab===t?'active':''}`} onClick={()=>setTab(t)}>{t}</button>
+          ))}
+        </div>
+      ):(
+        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
+          {['Visão Geral','Animatics','Pesquisa'].map(t=>(
+            <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{t}</button>
+          ))}
+        </div>
+      )}
 
       {tab==='Visão Geral'&&(
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 220px',gap:20}}>
@@ -1989,14 +2135,22 @@ const Gallery=({posts,setPosts,isMobile})=>{
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
           </button>
-          {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
+          {!trash&&!isMobile&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
         </div>
       </div>
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
+      {/* P1: FAB on mobile */}
+      {isMobile&&!trash&&<button className="mobile-fab" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={24}/></button>}
       {!trash&&(
-        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:isMobile?16:24,overflowX:isMobile?'auto':'visible'}}>
-          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
-        </div>
+        isMobile?(
+          <div className="seg-tabs" style={{marginBottom:16}}>
+            {FOLDERS.map(f=><button key={f.id} className={`seg-tab ${activeFolder===f.id?'active':''}`} onClick={()=>setActiveFolder(f.id)}>{f.label}</button>)}
+          </div>
+        ):(
+          <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
+            {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
+          </div>
+        )
       )}
       {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:isMobile?40:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
       {Object.entries(grouped).map(([month,monthPosts])=>(
@@ -2059,19 +2213,39 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
             </button>
           ))}
         </div>
-        <div style={{flex:isMobile?undefined:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
-          {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
-          {visible.map(n=>(
-            <div key={n.id} onClick={()=>setActiveId(n.id)}
-              style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
-              onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-              onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
-              <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-              <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
-            </div>
-          ))}
-        </div>
-        {folder==='notes'&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
+        {isMobile?(
+          <div className="card" style={{overflow:'hidden',padding:0,marginTop:4}}>
+            {visible.length===0&&<div style={{fontSize:'.9rem',color:'#5C574F',padding:'24px 16px',textAlign:'center'}}>Nenhuma nota aqui.</div>}
+            {visible.map(n=>(
+              <div key={n.id} className="compact-row" onClick={()=>setActiveId(n.id)}
+                style={{background:activeId===n.id?'var(--bg)':'var(--surface)'}}>
+                <div style={{width:36,height:36,borderRadius:8,background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <Icon name="file-text" size={16} style={{color:'#5C574F'}}/>
+                </div>
+                <div className="compact-row-body">
+                  <div className="compact-row-title">{n.title}</div>
+                  <div className="compact-row-meta">{n.content?n.content.slice(0,50)+'…':n.date}</div>
+                </div>
+                <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
+              </div>
+            ))}
+          </div>
+        ):(
+          <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+            {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
+            {visible.map(n=>(
+              <div key={n.id} onClick={()=>setActiveId(n.id)}
+                style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
+                onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
+                onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
+                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {folder==='notes'&&!isMobile&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
+        {isMobile&&folder==='notes'&&<button className="mobile-fab" onClick={newNote}><Icon name="plus" size={24}/></button>}
       </div>
       )}
       {/* Center */}
@@ -2369,37 +2543,58 @@ const Clients=({clients,setClients,isMobile})=>{
           <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
           </button>
-          {!trash&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
+          {!trash&&!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
         </div>
       </div>
+      {isMobile&&!trash&&<button className="mobile-fab" onClick={add}><Icon name="plus" size={24}/></button>}
       {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
-        {visible.map(c=>(
-          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
-            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-              {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
-              <div>
-                <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
-                <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
+      {isMobile&&!trash?(
+        /* P1: Compact list rows on mobile */
+        <div className="card" style={{overflow:'hidden',padding:0}}>
+          {visible.map(c=>(
+            <div key={c.id} className="compact-row" onClick={()=>setSelected(c)}>
+              <div className="compact-row-thumb-circle">
+                {c.photo?<img src={c.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                  :<span>{c.name.charAt(0)}</span>}
               </div>
+              <div className="compact-row-body">
+                <div className="compact-row-title">{c.name}</div>
+                <div className="compact-row-meta">{c.role}{c.role&&c.company?' · ':''}{c.company} &middot; <span className={`tag ${tagColor(c.status)}`} style={{verticalAlign:'middle'}}>{c.status}</span></div>
+              </div>
+              <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
             </div>
-            {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
-              {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
-                <div style={{display:'flex',gap:5}}>
-                  <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
-                  <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+          ))}
+          {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>Nenhum cliente.</div>}
+        </div>
+      ):(
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
+          {visible.map(c=>(
+            <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+                {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                  :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+                <div>
+                  <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
                 </div>
-              )}
-              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
-                <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+              </div>
+              {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
+                {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
+                  <div style={{display:'flex',gap:5}}>
+                    <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
+                    <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+                  </div>
+                )}
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
+                  <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
-      </div>
+          ))}
+          {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
+        </div>
+      )}
     </div>
   );
 };
@@ -2749,8 +2944,9 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
           <h1 className="serif" style={{fontSize:isMobile?'1.8rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>}
         </div>
-        <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
+        {!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
       </div>
+      {isMobile&&<button className="mobile-fab" onClick={add}><Icon name="plus" size={24}/></button>}
       {mentors.filter(m=>!m.deleted).length>0&&(
         <div style={{position:'relative',marginBottom:24}}>
           <Icon name="search" size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--muted)',pointerEvents:'none'}}/>
@@ -2764,40 +2960,63 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
           <p style={{fontSize:'.9rem',margin:0}}>{search?'Nenhum mentor encontrado.':'Adicione seu primeiro mentor acima.'}</p>
         </div>
       )}
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
-        {visible.map(m=>{
-          const photos=(m.photos||[]).filter(Boolean);
-          return(
-            <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
-              {photos.length>0
-                ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
-                    {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
-                  </div>
-                :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                    <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
-                  </div>
-              }
-              <div style={{padding:'14px 16px'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                  {m.photo
-                    ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
-                    :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
-                  }
-                  <div style={{minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                    {m.area&&<div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' - '+m.medium:''}</div>}
-                  </div>
+      {isMobile?(
+        /* P1: Compact list rows on mobile */
+        <div className="card" style={{overflow:'hidden',padding:0}}>
+          {visible.map(m=>(
+            <div key={m.id} className="compact-row" onClick={()=>setSelected(m)}>
+              <div className="compact-row-thumb-circle">
+                {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                  :<span>{(m.name||'?').charAt(0)}</span>}
+              </div>
+              <div className="compact-row-body">
+                <div className="compact-row-title" style={{display:'flex',alignItems:'center',gap:6}}>
+                  {m.name}
+                  {m.main&&<Icon name="star" size={12} style={{color:'#92700b',flexShrink:0}}/>}
                 </div>
-                {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
-                <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
-                  <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
-                  {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                <div className="compact-row-meta">{m.area}{m.area&&m.medium?' · ':''}{m.medium}</div>
+              </div>
+              <span style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 8px',borderRadius:20,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'#5C574F',flexShrink:0}}>{m.active?'Ativo':'Inativo'}</span>
+            </div>
+          ))}
+          {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>{search?'Nenhum mentor encontrado.':'Adicione seu primeiro mentor.'}</div>}
+        </div>
+      ):(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+          {visible.map(m=>{
+            const photos=(m.photos||[]).filter(Boolean);
+            return(
+              <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
+                {photos.length>0
+                  ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
+                      {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
+                    </div>
+                  :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
+                    </div>
+                }
+                <div style={{padding:'14px 16px'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                    {m.photo
+                      ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
+                      :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
+                    }
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                      {m.area&&<div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' - '+m.medium:''}</div>}
+                    </div>
+                  </div>
+                  {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
+                  <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
+                    <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                    {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -2869,7 +3088,7 @@ const App=()=>{
         ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
         : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
       }
-      <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px',overflowY:'auto',minHeight:'calc(100vh - 56px)'}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
+      <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px',paddingTop:'8px',overflowY:'auto'}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
