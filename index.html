@@ -118,7 +118,7 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
   .save-toast{left:50%!important;bottom:72px!important;}
   
   /* Cards */
-  .card{border-radius:12px;}
+  .card{border-radius:12px;overflow:hidden;}
   
   /* Tag — readable on mobile */
   .tag{padding:5px 10px;font-size:.72rem;}
@@ -284,24 +284,16 @@ const Field=({label,children})=><div style={{display:'flex',flexDirection:'colum
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
-const LAYOUT_LS='boardhub_layout_override';
-const useLayoutMode=(breakpoint=768)=>{
-  const [physical,setPhysical]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
-  const [override,setOverride]=useState(()=>{try{return localStorage.getItem(LAYOUT_LS)||null;}catch{return null;}});
+const useIsMobile=(breakpoint=768)=>{
+  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
   useEffect(()=>{
     const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    setPhysical(mq.matches);
-    const h=e=>setPhysical(e.matches);
-    mq.addEventListener('change',h);
-    return()=>mq.removeEventListener('change',h);
+    setIsMobile(mq.matches);
+    const handler=e=>setIsMobile(e.matches);
+    mq.addEventListener('change',handler);
+    return()=>mq.removeEventListener('change',handler);
   },[breakpoint]);
-  const toggle=()=>setOverride(prev=>{
-    const next=prev?null:(physical?'desktop':'mobile');
-    try{next?localStorage.setItem(LAYOUT_LS,next):localStorage.removeItem(LAYOUT_LS);}catch{}
-    return next;
-  });
-  const isMobile=override?override==='mobile':physical;
-  return [isMobile,toggle];
+  return isMobile;
 };
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
@@ -422,7 +414,7 @@ const NAV_ITEMS=[
 ];
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
@@ -435,13 +427,8 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=
         </button>
       ))}
     </nav>
-    <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
-      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
-      </div>
-      <button onClick={onToggleLayout} className="btn btn-ghost" style={{justifyContent:'center',gap:8,fontSize:'.78rem',color:'var(--muted)',padding:'7px 0',width:'100%'}}>
-        <Icon name="smartphone" size={13}/> Modo Mobile
-      </button>
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
     </div>
   </aside>
 ));
@@ -822,25 +809,25 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
   const taskToNote=task=>{const n={id:Date.now(),title:task.text,content:'',date:'Agora',deleted:false};setNotes(p=>[n,...p]);setTasks(p=>p.map(t=>t.id===task.id?{...t,noteId:n.id}:t));};
 
   return(
-    <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
+    <div className="fade-up" style={{maxWidth:960,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
       <div style={{marginBottom:isMobile?24:40}}>
         <h1 className="serif" style={{fontSize:isMobile?'2.2rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
       <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:20}:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
         {stats.map(s=>(
-          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={isMobile?{padding:'14px 12px',display:'flex',flexDirection:'column',gap:6,alignItems:'center',textAlign:'center'}:{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
+          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={isMobile?{padding:'12px 8px',display:'flex',flexDirection:'column',gap:6,alignItems:'center',textAlign:'center',minWidth:0,overflow:'hidden'}:{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
             <span style={{fontSize:isMobile?'1.6rem':'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
             {!isMobile&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
               <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
             </div>}
-            <span style={{fontSize:isMobile?'.68rem':'.8rem',color:'var(--muted)',fontWeight:500,lineHeight:1.2}}>{s.label}</span>
+            <span style={{fontSize:isMobile?'.65rem':'.8rem',color:'var(--muted)',fontWeight:500,lineHeight:1.2,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{s.label}</span>
           </div>
         ))}
       </div>
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
-        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+        <div style={{display:'flex',flexDirection:'column',gap:20,minWidth:0}}>
           {/* Projetos ativos */}
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -894,7 +881,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
         </div>
 
         {/* RIGHT: activities + recent notes */}
-        <div style={{display:'flex',flexDirection:'column',gap:20}}>
+        <div style={{display:'flex',flexDirection:'column',gap:20,minWidth:0}}>
           <PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} />
           {/* Atividades gerais */}
           <div>
@@ -946,7 +933,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
             <span className="label" style={{display:'flex',alignItems:'center',gap:6}}><Icon name="star" size={11}/> Mentores Principais</span>
             <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat('+mentors.filter(m=>!m.deleted&&m.main).length+',1fr)',gap:14}}>
+          <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat('+mentors.filter(m=>!m.deleted&&m.main).length+',1fr)',gap:isMobile?10:14}}>
             {mentors.filter(m=>!m.deleted&&m.main).map(m=>{
               const photos=(m.photos||[]).filter(Boolean);
               return(
@@ -2332,18 +2319,28 @@ const Social=({posts,setPosts,isMobile})=>{
             <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:180,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)'}}/>
             <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
               {/* Platform selector */}
-              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',paddingBottom:0}}>
-                <span className="label" style={{flexShrink:0}}>Plataforma</span>
-                {SOCIAL_PLATFORMS.map(pl=>(
-                  <button key={pl} onClick={()=>setPlatform(pl)}
-                    style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.74rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
-                    {pl}
-                  </button>
-                ))}
-              </div>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              {isMobile?(
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span className="label" style={{flexShrink:0}}>Plataforma</span>
+                  <select value={platform} onChange={e=>setPlatform(e.target.value)}
+                    style={{flex:1,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',fontFamily:'Figtree,sans-serif',fontSize:'16px',color:'var(--text)',outline:'none',cursor:'pointer',minHeight:44}}>
+                    {SOCIAL_PLATFORMS.map(pl=><option key={pl}>{pl}</option>)}
+                  </select>
+                </div>
+              ):(
+                <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',paddingBottom:0}}>
+                  <span className="label" style={{flexShrink:0}}>Plataforma</span>
+                  {SOCIAL_PLATFORMS.map(pl=>(
+                    <button key={pl} onClick={()=>setPlatform(pl)}
+                      style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.74rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s',flexShrink:0,whiteSpace:'nowrap'}}>
+                      {pl}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?8:0}}>
                 <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{text.length} caracteres</span>
-                <button className="btn btn-dark" onClick={savePost} disabled={!text.trim()} style={{opacity:text.trim()?1:.5}}><Icon name={editId?'check':'save'} size={13}/> {editId?'Atualizar':'Salvar Post'}</button>
+                <button className="btn btn-dark" onClick={savePost} disabled={!text.trim()} style={{opacity:text.trim()?1:.5,width:isMobile?'100%':'auto',justifyContent:isMobile?'center':'flex-start'}}><Icon name={editId?'check':'save'} size={13}/> {editId?'Atualizar':'Salvar Post'}</button>
               </div>
             </div>
           </div>
@@ -2377,33 +2374,40 @@ const Social=({posts,setPosts,isMobile})=>{
           <span className="label" style={{display:'block',marginBottom:16}}>{trash?'Posts na Lixeira':'Posts Salvos'}</span>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {displayed.map(p=>(
-              <div key={p.id} className="card" style={{padding:isMobile?'14px 16px':'18px 22px',display:'flex',gap:isMobile?10:16,alignItems:'flex-start',flexDirection:isMobile?'column':'row'}}>
+              <div key={p.id} className="card" style={{padding:isMobile?'14px 16px':'18px 22px',display:'flex',gap:16,alignItems:'flex-start',flexDirection:'row',width:'100%',boxSizing:'border-box'}}>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.text}</p>
                   <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     {/* Platform badge — clickable when not in trash */}
                     {!trash?(
-                      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-                        {SOCIAL_PLATFORMS.map(pl=>(
-                          <button key={pl} onClick={()=>changePostPlatform(p.id,pl)}
-                            style={{padding:'3px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s'}}>
-                            {pl}
-                          </button>
-                        ))}
-                      </div>
+                      isMobile?(
+                        <select value={p.platform||'Instagram'} onChange={e=>changePostPlatform(p.id,e.target.value)}
+                          style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:20,padding:'4px 10px',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:600,color:'var(--text)',outline:'none',cursor:'pointer',maxWidth:'100%'}}>
+                          {SOCIAL_PLATFORMS.map(pl=><option key={pl}>{pl}</option>)}
+                        </select>
+                      ):(
+                        <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                          {SOCIAL_PLATFORMS.map(pl=>(
+                            <button key={pl} onClick={()=>changePostPlatform(p.id,pl)}
+                              style={{padding:'3px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s',flexShrink:0}}>
+                              {pl}
+                            </button>
+                          ))}
+                        </div>
+                      )
                     ):(
                       <span style={{fontSize:'.75rem',fontWeight:600,padding:'2px 9px',borderRadius:20,background:'var(--bg)',color:'var(--muted)',border:'1px solid var(--border)'}}>{p.platform||'Instagram'}</span>
                     )}
                     <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.date}</span>
                   </div>
                 </div>
-                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                <div style={{display:'flex',gap:4,flexShrink:0,flexDirection:isMobile&&trash?'column':'row',alignItems:isMobile&&trash?'stretch':'center'}}>
                   {!trash?(
                     <><button className="btn btn-ghost" style={{padding:5}} onClick={()=>startEdit(p)}><Icon name="pencil" size={14}/></button>
                     <button className="btn btn-ghost" style={{padding:5}} onClick={()=>softDelete(p.id)}><Icon name="trash-2" size={14}/></button></>
                   ):(
-                    <><button className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>restore(p.id)}><Icon name="undo-2" size={12}/> Restaurar</button>
-                    <button className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>hardDelete(p.id)}><Icon name="trash-2" size={12}/> Excluir</button></>
+                    <><button className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>restore(p.id)}><Icon name="undo-2" size={12}/>{isMobile?' Restaurar':' Restaurar'}</button>
+                    <button className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.78rem'}} onClick={()=>hardDelete(p.id)}><Icon name="trash-2" size={12}/>{isMobile?' Excluir':' Excluir'}</button></>
                   )}
                 </div>
               </div>
@@ -2951,7 +2955,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
-  const [isMobile,toggleLayout]=useLayoutMode();
+  const isMobile=useIsMobile();
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -3013,8 +3017,8 @@ const App=()=>{
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
