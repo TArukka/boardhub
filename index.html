@@ -414,7 +414,7 @@ const NAV_ITEMS=[
 ];
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
@@ -427,8 +427,13 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
         </button>
       ))}
     </nav>
-    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+      </div>
+      <button onClick={onToggleLayout} className="btn btn-ghost" style={{justifyContent:'center',gap:8,fontSize:'.78rem',color:'var(--muted)',padding:'7px 0',width:'100%'}}>
+        <Icon name="smartphone" size={13}/> Modo Mobile
+      </button>
     </div>
   </aside>
 ));
@@ -2938,7 +2943,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
-  const isMobile=useIsMobile();
+  const [isMobile,toggleLayout]=useLayoutMode();
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -3000,8 +3005,8 @@ const App=()=>{
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
