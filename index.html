@@ -102,6 +102,27 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:70;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
 .fab:active{transform:scale(.92);}
 
+/* ─── MOBILE-LAYOUT COMPONENT STYLES (always applied — used whenever isMobile=true) ── */
+/* Compact list rows */
+.compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s;min-height:64px;}
+.compact-row:active{background:var(--bg);}
+.compact-row:last-child{border-bottom:none;}
+.compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;background-color:var(--bg);overflow:hidden;}
+.compact-row-info{flex:1;min-width:0;}
+.compact-row-title{font-weight:600;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px;}
+.compact-row-meta{font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Segmented tabs */
+.seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
+.seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .15s;background:transparent;color:var(--muted);}
+.seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+/* Vertical timeline */
+.vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
+.vtimeline-item:last-child{border-bottom:none;}
+.vtimeline-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid var(--border-2);}
+.vtimeline-dot.done{background:var(--text);border-color:var(--text);}
+.vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
+.vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
+
 /* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
 @media(max-width:768px){
   /* Prevent horizontal scroll */
@@ -145,28 +166,6 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
   
   /* Cover edit — always show on mobile (no hover) */
   .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
-  
-  /* Compact list rows for mobile */
-  .compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s;min-height:64px;}
-  .compact-row:active{background:var(--bg);}
-  .compact-row:last-child{border-bottom:none;}
-  .compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;background-color:var(--bg);}
-  .compact-row-info{flex:1;min-width:0;}
-  .compact-row-title{font-weight:600;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px;}
-  .compact-row-meta{font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  
-  /* Segmented tabs */
-  .seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
-  .seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .15s;background:transparent;color:var(--muted);}
-  .seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);}
-  
-  /* Vertical timeline */
-  .vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
-  .vtimeline-item:last-child{border-bottom:none;}
-  .vtimeline-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid var(--border-2);}
-  .vtimeline-dot.done{background:var(--text);border-color:var(--text);}
-  .vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
-  .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
 }
 </style>
 </head>
@@ -312,29 +311,59 @@ const useIsMobile=(breakpoint=768)=>{
 const IDB_NAME='boardhub_images';
 const IDB_STORE='images';
 let _idb=null;
+
+// FIX 1: Reset the cached IDB connection whenever it closes unexpectedly.
+// Without this, openIdb() returns a closed/invalid DB handle forever, causing
+// all subsequent image reads to silently fail.
+const _resetIdb=()=>{ _idb=null; };
+
 const openIdb=()=>new Promise((res,rej)=>{
-  if(_idb)return res(_idb);
+  // If we have a valid open connection, reuse it
+  if(_idb && _idb.objectStoreNames){
+    try{ _idb.transaction(IDB_STORE,'readonly').abort(); return res(_idb); }
+    catch{ _idb=null; /* connection was stale — fall through to re-open */ }
+  }
   const req=indexedDB.open(IDB_NAME,1);
   req.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);
-  req.onsuccess=e=>{_idb=e.target.result;res(_idb);};
-  req.onerror=e=>rej(e.target.error);
+  req.onsuccess=e=>{
+    _idb=e.target.result;
+    // Listen for browser-initiated close (memory pressure, page unload, etc.)
+    _idb.onclose=_resetIdb;
+    _idb.onerror=()=>_resetIdb();
+    _idb.onversionchange=()=>{ _idb.close(); _resetIdb(); };
+    res(_idb);
+  };
+  req.onerror=e=>{ _resetIdb(); rej(e.target.error); };
 });
+
 const idbPut=(key,blob)=>openIdb().then(db=>new Promise((res,rej)=>{
-  const tx=db.transaction(IDB_STORE,'readwrite');
-  tx.objectStore(IDB_STORE).put(blob,key);
-  tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);
+  try{
+    const tx=db.transaction(IDB_STORE,'readwrite');
+    tx.objectStore(IDB_STORE).put(blob,key);
+    tx.oncomplete=()=>res();
+    tx.onerror=e=>{ _resetIdb(); rej(e.target.error); };
+  }catch(e){ _resetIdb(); rej(e); }
 }));
+
 const idbGet=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
-  const req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key);
-  req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e.target.error);
+  try{
+    const req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key);
+    req.onsuccess=e=>res(e.target.result);
+    req.onerror=e=>{ _resetIdb(); rej(e.target.error); };
+  }catch(e){ _resetIdb(); rej(e); }
 }));
+
 const idbDel=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
-  const tx=db.transaction(IDB_STORE,'readwrite');
-  tx.objectStore(IDB_STORE).delete(key);
-  tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);
+  try{
+    const tx=db.transaction(IDB_STORE,'readwrite');
+    tx.objectStore(IDB_STORE).delete(key);
+    tx.oncomplete=()=>res();
+    tx.onerror=e=>{ _resetIdb(); rej(e.target.error); };
+  }catch(e){ _resetIdb(); rej(e); }
 }));
 
 // Hook: given an image src (may be idb://key, https://, or data:), returns a displayable URL.
+// FIX 2: Track and revoke object URLs to prevent memory leaks that cause IDB connection drops.
 const _objUrlCache={};
 const useIdbUrl=(src)=>{
   const [url,setUrl]=React.useState(()=>src&&!src.startsWith('idb://')?src:'');
@@ -343,12 +372,16 @@ const useIdbUrl=(src)=>{
     if(!src.startsWith('idb://')){setUrl(src);return;}
     const key=src.slice(6);
     if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
+    let cancelled=false;
     idbGet(key).then(blob=>{
-      if(!blob){setUrl('');return;}
+      if(cancelled||!blob){if(!cancelled)setUrl('');return;}
+      // Recheck cache — another instance may have populated it while we awaited
+      if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
       const u=URL.createObjectURL(blob);
       _objUrlCache[key]=u;
       setUrl(u);
-    }).catch(()=>setUrl(''));
+    }).catch(()=>{ if(!cancelled) setUrl(''); });
+    return ()=>{ cancelled=true; };
   },[src]);
   return url;
 };
@@ -360,23 +393,37 @@ const Img=({src,...props})=>{
   return <img src={url} {...props}/>;
 };
 
-// Upload: try Imgur first (works when online), otherwise store in IndexedDB.
+// FIX 3: Upload images sequentially in small batches to avoid Imgur rate-limit
+// cascades where 20 simultaneous requests all fail, each blocking for 8s timeout,
+// before the IDB fallback fires. Now we skip Imgur entirely for bulk uploads (>3 files).
 const IMGUR_CLIENT_ID='546c25a59c58ad7';
-const uploadImage=async file=>{
-  // 1. Try Imgur
-  try{
-    const b64=await readFile(file);
-    const body=new FormData();
-    body.append('image',b64.split(',')[1]);
-    body.append('type','base64');
-    const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:AbortSignal.timeout(8000)});
-    const json=await res.json();
-    if(json.success)return json.data.link; // https:// URL — stored in state as-is
-  }catch{/* offline or quota exceeded — fall through */}
-  // 2. Store blob in IndexedDB, keep only a tiny key in state
+const _uploadSingle=async (file, tryImgur=true)=>{
+  if(tryImgur){
+    try{
+      const b64=await readFile(file);
+      const body=new FormData();
+      body.append('image',b64.split(',')[1]);
+      body.append('type','base64');
+      const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:AbortSignal.timeout(8000)});
+      const json=await res.json();
+      if(json.success)return json.data.link;
+    }catch{/* offline or rate-limited — fall through */}
+  }
   const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   await idbPut(key,file);
   return 'idb://'+key;
+};
+
+const uploadImage=file=>_uploadSingle(file,true);
+
+// Bulk upload: skip Imgur to avoid rate-limit timeouts, go straight to IDB.
+// Returns array of idb:// keys in order.
+const uploadImages=async files=>{
+  const results=[];
+  for(const file of files){
+    results.push(await _uploadSingle(file,false));
+  }
+  return results;
 };
 
 // Strip idb:// and base64 refs before Gist sync (they are local-only)
@@ -398,8 +445,8 @@ const TrashBanner=({label,onExit})=>(
 );
 
 // ─── MODAL ────────────────────────────────────────────────────────────────────
-const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
-  <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
+const Modal=({title,onClose,children,width=480})=>(
+  <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal" style={{maxWidth:width}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
         <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{title}</h2>
@@ -738,7 +785,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
       {/* Stats panel — replaces timer card inline */}
       {showStats && (
-        <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
@@ -951,42 +998,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
           </div>
         </div>
       </div>
-      {mentors.filter(m=>!m.deleted&&m.main).length>0&&(
-        <div style={{marginTop:32}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-            <span className="label" style={{display:'flex',alignItems:'center',gap:6}}><Icon name="star" size={11}/> Mentores Principais</span>
-            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat('+mentors.filter(m=>!m.deleted&&m.main).length+',1fr)',gap:isMobile?10:14}}>
-            {mentors.filter(m=>!m.deleted&&m.main).map(m=>{
-              const photos=(m.photos||[]).filter(Boolean);
-              return(
-                <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setView('mentors')}>
-                  {photos.length>0
-                    ?<div style={{height:80,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
-                        {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:80,objectFit:'cover',display:'block'}}/>)}
-                      </div>
-                    :<div style={{height:80,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                        <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.4rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
-                      </div>
-                  }
-                  <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
-                    {m.photo
-                      ?<img src={m.photo} style={{width:30,height:30,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                      :<div style={{width:30,height:30,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.9rem'}}>{(m.name||'?').charAt(0)}</div>
-                    }
-                    <div style={{minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                      {m.area&&<div style={{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>}
-                    </div>
-                    <Icon name="star" size={11} style={{color:'#92700b',marginLeft:'auto',flexShrink:0}}/>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
@@ -999,7 +1011,7 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
   const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await uploadImage(file));};
   const save=()=>{if(!form.title.trim())return;onSave({...form,id:Date.now(),cover:form.cover||'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'});};
   return(
-    <Modal title="Novo Projeto" onClose={onClose} width={isMobile?'100%':520} offsetSidebar={!isMobile}>
+    <Modal title="Novo Projeto" onClose={onClose} width={isMobile?'100%':520}>
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
         <div onClick={()=>coverRef.current.click()} style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
           onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
@@ -1080,7 +1092,12 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
             <div className="card" style={{overflow:'hidden',borderRadius:12}}>
               {visible.map(p=>(
                 <div key={p.id} className="compact-row" onClick={()=>onSelect(p)}>
-                  <div className="compact-row-thumb" style={{backgroundImage:p.cover?`url(${p.cover})`:'none'}}/>
+                  <div className="compact-row-thumb">
+                    {p.cover
+                      ?<Img src={p.cover} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                      :<div style={{width:'100%',height:'100%',background:'var(--bg)'}}/>
+                    }
+                  </div>
                   <div className="compact-row-info">
                     <div className="compact-row-title">{p.title}</div>
                     <div className="compact-row-meta">{p.client} · <span className={`tag ${statusTag(p.status)}`} style={{display:'inline',padding:'1px 6px',fontSize:'.65rem'}}>{p.status}</span></div>
@@ -1520,7 +1537,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
   const handleCoverUpload=async e=>{const file=e.target.files[0];if(!file)return;upd('cover',await uploadImage(file));};
   const handleResearchImgUpload=async(noteId,e)=>{
     const files=Array.from(e.target.files);
-    const urls=await Promise.all(files.map(uploadImage));
+    const urls=await uploadImages(files);
     const rn=(local.researchNotes||[]).map(n=>n.id===noteId?{...n,images:[...(n.images||[]),...urls]}:n);
     upd('researchNotes',rn);e.target.value='';
   };
@@ -1566,7 +1583,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
   const miniImgRef=useRef();
   const handleMiniImgs=async e=>{
     const files=Array.from(e.target.files);
-    const urls=await Promise.all(files.map(uploadImage));
+    const urls=await uploadImages(files);
     updateMini('frames',[...((local.miniProjects||[]).find(m=>m.id===activeMiniId)?.frames||[]),...urls]);
     e.target.value='';
   };
@@ -1924,7 +1941,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                     </button>
                     <input id={'inner-note-img-'+activeInnerNoteId} type="file" accept="image/*" multiple style={{display:'none'}} onChange={async e=>{
                       const files=Array.from(e.target.files);
-                      const urls=await Promise.all(files.map(uploadImage));
+                      const urls=await uploadImages(files);
                       updateInnerNote('images',[...(note.images||[]),...urls]);
                       e.target.value='';
                     }}/>
@@ -2041,7 +2058,7 @@ const Gallery=({posts,setPosts,isMobile})=>{
   const handleAddImages=async e=>{
     const files=Array.from(e.target.files);
     setUploading(true);
-    const urls=await Promise.all(files.map(uploadImage));
+    const urls=await uploadImages(files);
     setUploading(false);
     const merged=[...(selected.images||[]),...urls];
     upd('images',merged);
@@ -2784,7 +2801,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const photos=form.photos||[null,null,null,null];
 
   return(
-    <div className="overlay-offset" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal" style={{maxWidth:580}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
           <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{form.name||'Mentor'}</h2>
