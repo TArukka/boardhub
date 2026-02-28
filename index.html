@@ -82,106 +82,91 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 
-/* ─── MOBILE BOTTOM TAB BAR ─────────────────────────────────────────────── */
-@keyframes sheetSlide{from{transform:translateY(100%);}to{transform:translateY(0);}}
-@keyframes moreSheetIn{from{opacity:0;transform:translateY(30px);}to{opacity:1;transform:translateY(0);}}
-
-/* Bottom tab bar */
-.mobile-tab-bar{position:fixed;bottom:0;left:0;right:0;height:72px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;z-index:50;padding-bottom:env(safe-area-inset-bottom,0);}
-.mobile-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:1;height:100%;border:none;background:none;cursor:pointer;padding:0;font-family:'Figtree',sans-serif;color:var(--muted);transition:color .15s;min-width:52px;}
-.mobile-tab-item.active{color:var(--text);}
-.mobile-tab-item svg{width:26px;height:26px;}
-.mobile-tab-label{font-size:.72rem;font-weight:600;letter-spacing:.01em;}
-
-/* More sheet */
-.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);z-index:90;}
-.more-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-radius:20px 20px 0 0;z-index:91;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 8px);animation:moreSheetIn .22s ease;border-top:1px solid var(--border);}
-.more-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:12px auto 20px;}
-.more-sheet-item{display:flex;align-items:center;gap:16px;padding:18px 28px;font-family:'Figtree',sans-serif;font-size:1.1rem;color:var(--text);border:none;background:none;cursor:pointer;width:100%;text-align:left;font-weight:500;transition:background .12s;}
+/* ─── BOTTOM TAB BAR ────────────────────────────────────────────────────── */
+.bottom-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:80;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:stretch;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
+.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
+.bottom-tab-item.active{color:var(--text);}
+.bottom-tab-item:active{opacity:.7;}
+@keyframes moreSheetIn{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
+@keyframes moreOverlayIn{from{opacity:0;}to{opacity:1;}}
+.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);z-index:90;animation:moreOverlayIn .2s ease;}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .25s ease;max-height:70vh;overflow-y:auto;}
+.more-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--border-2);margin:0 auto 16px;}
+.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s;-webkit-tap-highlight-color:transparent;}
 .more-sheet-item:active{background:var(--bg);}
-
-/* Compact list rows (P1) */
-.compact-row{display:flex;align-items:center;gap:14px;padding:0 20px;min-height:72px;border-bottom:1px solid var(--border);cursor:pointer;background:var(--surface);transition:background .1s;}
-.compact-row:last-child{border-bottom:none;}
-.compact-row:active{background:var(--bg);}
-.compact-row-thumb{width:50px;height:50px;border-radius:10px;flex-shrink:0;object-fit:cover;background:var(--bg);}
-.compact-row-thumb-circle{width:50px;height:50px;border-radius:50%;flex-shrink:0;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:500;flex-shrink:0;}
-.compact-row-body{flex:1;min-width:0;}
-.compact-row-title{font-size:1.05rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
-.compact-row-meta{font-size:.85rem;color:#5C574F;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-
-/* FAB (P1) */
-.mobile-fab{position:fixed;bottom:calc(72px + 20px + env(safe-area-inset-bottom,0px));right:20px;width:62px;height:62px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(28,25,23,.3);z-index:40;transition:transform .15s,box-shadow .15s;}
-.mobile-fab:active{transform:scale(.94);box-shadow:0 2px 8px rgba(28,25,23,.2);}
-
-/* Stat scroll row (P2) */
-.stat-scroll-row{display:flex;gap:12px;overflow-x:auto;padding:0 0 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-.stat-scroll-row::-webkit-scrollbar{display:none;}
-.stat-scroll-card{min-width:140px;flex-shrink:0;}
-
-/* Bottom sheet with drag handle (P2) */
-.bottom-sheet-modal{border-radius:20px 20px 0 0!important;max-height:85vh!important;padding:8px 20px 24px!important;}
-.bottom-sheet-handle{width:40px;height:4px;background:var(--border-2);border-radius:4px;margin:0 auto 16px;}
-
-/* Segment control tabs (P2) */
-.seg-tabs{display:flex;background:var(--bg);border-radius:12px;padding:4px;gap:3px;overflow-x:auto;scrollbar-width:none;}
-.seg-tabs::-webkit-scrollbar{display:none;}
-.seg-tab{flex:1;min-width:fit-content;padding:10px 16px;border:none;background:none;border-radius:9px;font-family:'Figtree',sans-serif;font-size:.92rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
-.seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(28,25,23,.1);}
-
-/* Vertical timeline (replaces Gantt on mobile — P1) */
-.vtl-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
-.vtl-row:last-child{border-bottom:none;}
-.vtl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:5px;}
-.vtl-line{width:1px;background:var(--border);position:absolute;top:0;bottom:0;left:4px;}
-
-/* Mobile topbar — kept for page title only */
-.mobile-topbar{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.mobile-topbar-title{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:500;letter-spacing:-.02em;}
+.more-sheet-item.active-sheet{background:var(--bg);font-weight:600;}
+/* Mobile header bar */
+.mobile-header{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.mobile-header-title{font-family:'Cormorant Garamond',serif;font-size:1.15rem;font-weight:500;letter-spacing:-.02em;}
+/* FAB */
+.fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:70;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
+.fab:active{transform:scale(.92);}
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
 @media(max-width:768px){
-  /* Global spacing */
-  .main-mobile{margin-left:0!important;padding:20px!important;padding-top:12px!important;padding-bottom:calc(72px + 20px + env(safe-area-inset-bottom,0px))!important;min-height:100vh!important;}
-  .fade-up{animation:none!important;}
+  /* Prevent horizontal scroll */
+  html,body{overflow-x:hidden!important;max-width:100vw!important;}
+  /* Global spacing — room for bottom tab */
+  .main-mobile{margin-left:0!important;padding:16px 16px 72px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;overflow-x:hidden!important;width:100%!important;box-sizing:border-box!important;}
+  .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
-  /* Overlay / Modals → bottom sheets */
+  /* Overlay / Modals */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
-  .modal{border-radius:24px 24px 0 0!important;max-height:88vh!important;padding:10px 24px 32px!important;}
+  .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
   
-  /* Save toast */
-  .save-toast{left:50%!important;bottom:calc(72px + 16px)!important;font-size:.88rem!important;padding:10px 22px!important;}
+  /* Save toast — above tab bar */
+  .save-toast{left:50%!important;bottom:72px!important;}
   
-  /* Typography — noticeably bigger */
-  body{font-size:17px;}
-  h1.serif{font-size:2.2rem!important;}
-  .label{font-size:.88rem;letter-spacing:.08em;}
+  /* Cards */
+  .card{border-radius:12px;}
   
-  /* Touch targets — generously sized */
-  .btn{padding:14px 20px;font-size:1rem;min-height:52px;}
-  .btn-ghost{padding:12px 14px;min-height:48px;font-size:.95rem;}
-  .btn-outline{min-height:52px;font-size:1rem;}
-  .nav-item{padding:16px 18px;font-size:1.05rem;min-height:52px;}
-  .tab-btn{min-height:52px;padding:14px 0;margin-right:20px;font-size:1rem;}
+  /* Tag — readable on mobile */
+  .tag{padding:5px 10px;font-size:.72rem;}
   
-  /* Inputs — large and readable */
-  .input-box{padding:14px 16px;font-size:1.05rem;min-height:54px;}
-  input,textarea,select{font-size:1.05rem!important;}
+  /* Buttons — 48px touch targets */
+  .btn{padding:12px 18px;font-size:.9rem;min-height:44px;}
+  .btn-ghost{padding:10px 12px;min-height:44px;}
+  .nav-item{padding:14px 16px;font-size:.95rem;}
   
-  /* Cards — more breathing room */
-  .card{border-radius:16px;}
+  /* Input — 16px prevents iOS zoom */
+  .input-box{padding:12px 14px;font-size:16px!important;min-height:48px;}
+  textarea{font-size:16px!important;}
+  select{font-size:16px!important;min-height:44px;}
+  input{font-size:16px!important;}
   
-  /* Tags — bigger */
-  .tag{padding:7px 14px;font-size:.82rem;}
+  /* Label — readable */
+  .label{font-size:.72rem;}
+  
+  /* Tab buttons — larger tap area */
+  .tab-btn{margin-right:0;font-size:.88rem;padding:12px 16px;}
   
   /* Upload zone */
-  .upload-zone{padding:28px;}
+  .upload-zone{padding:20px;}
   
   /* Cover edit — always show on mobile (no hover) */
   .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
   
-  /* WCAG AA muted text */
-  .compact-row-meta, .label, [style*="color:var(--muted)"], .mobile-tab-item:not(.active){color:#5C574F;}
+  /* Compact list rows for mobile */
+  .compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s;min-height:64px;}
+  .compact-row:active{background:var(--bg);}
+  .compact-row:last-child{border-bottom:none;}
+  .compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;background-color:var(--bg);}
+  .compact-row-info{flex:1;min-width:0;}
+  .compact-row-title{font-weight:600;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px;}
+  .compact-row-meta{font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  
+  /* Segmented tabs */
+  .seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
+  .seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .15s;background:transparent;color:var(--muted);}
+  .seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  
+  /* Vertical timeline */
+  .vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
+  .vtimeline-item:last-child{border-bottom:none;}
+  .vtimeline-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid var(--border-2);}
+  .vtimeline-dot.done{background:var(--text);border-color:var(--text);}
+  .vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
+  .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
 }
 </style>
 </head>
@@ -298,18 +283,17 @@ const Icon=({name,size=16,style={}})=>{
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
-// ─── LAYOUT MODE (manual toggle, saved to localStorage) ─────────────────────
-const LAYOUT_KEY='boardhub_layout';
-const useLayoutMode=()=>{
-  const [isMobile,setIsMobile]=useState(()=>{
-    try{return localStorage.getItem(LAYOUT_KEY)==='mobile';}catch(e){return false;}
-  });
-  const toggle=()=>setIsMobile(prev=>{
-    const next=!prev;
-    try{localStorage.setItem(LAYOUT_KEY,next?'mobile':'desktop');}catch(e){}
-    return next;
-  });
-  return [isMobile,toggle];
+// ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
+const useIsMobile=(breakpoint=768)=>{
+  const [isMobile,setIsMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+  useEffect(()=>{
+    const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
+    setIsMobile(mq.matches);
+    const handler=e=>setIsMobile(e.matches);
+    mq.addEventListener('change',handler);
+    return()=>mq.removeEventListener('change',handler);
+  },[breakpoint]);
+  return isMobile;
 };
 
 // ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
@@ -405,22 +389,17 @@ const TrashBanner=({label,onExit})=>(
 );
 
 // ─── MODAL ────────────────────────────────────────────────────────────────────
-const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>{
-  const mob=window.innerWidth<=768;
-  return(
-    <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{maxWidth:width}}>
-        {/* P2: drag handle on mobile bottom sheets */}
-        {mob&&<div className="bottom-sheet-handle"/>}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>{title}</h2>
-          <button className="btn btn-ghost" onClick={onClose} style={{padding:8}}><Icon name="x" size={18}/></button>
-        </div>
-        {children}
+const Modal=({title,onClose,children,width=480,offsetSidebar=false})=>(
+  <div className={offsetSidebar?'overlay-offset':'overlay'} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal" style={{maxWidth:width}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+        <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{title}</h2>
+        <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
       </div>
+      {children}
     </div>
-  );
-};
+  </div>
+);
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 const NAV_ITEMS=[
@@ -435,7 +414,7 @@ const NAV_ITEMS=[
 ];
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
@@ -448,19 +427,13 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,onToggleLayout})=
         </button>
       ))}
     </nav>
-    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
-      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
-        <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
-      </div>
-      <button onClick={onToggleLayout} className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.7rem',width:'100%',justifyContent:'center',gap:6}}>
-        <Icon name="smartphone" size={12}/> Modo Mobile
-      </button>
+    <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
+      <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
     </div>
   </aside>
 ));
 
-// Mobile: sticky topbar (logo + page title) + persistent bottom tab bar + "More" half-sheet
-// Top 5 tabs: Dashboard, Projetos, Ideias, Galeria, ⋯ More
+// Mobile: bottom tab bar with "More" sheet
 const TAB_ITEMS=[
   {id:'dashboard',icon:'layout-dashboard',label:'Início'},
   {id:'projects', icon:'folder-open',     label:'Projetos'},
@@ -469,70 +442,56 @@ const TAB_ITEMS=[
 ];
 const MORE_ITEMS=[
   {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
-  {id:'social',   icon:'share-2',         label:'Social'},
+  {id:'social',   icon:'share-2',         label:'Social Media'},
   {id:'clients',  icon:'users',           label:'Clientes'},
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-// LEGACY: keep SidebarMobile name but totally replace internals
-const SidebarMobile=React.memo(({activeView,setView,saveFlash,onToggleLayout})=>{
-  const [showMore,setShowMore]=useState(false);
-  const go=id=>{setView(id);setShowMore(false);};
+const SidebarMobile=React.memo(({activeView,setView,saveFlash})=>{
+  const [moreOpen,setMoreOpen]=useState(false);
+  const go=id=>{setView(id);setMoreOpen(false);};
+  const isMore=MORE_ITEMS.some(n=>activeView.startsWith(n.id));
   const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||'BoardHub';
-  const moreActive=MORE_ITEMS.some(m=>activeView.startsWith(m.id));
   return(
     <>
-      {/* Top bar — logo + current page title */}
-      <div className="mobile-topbar">
-        <span className="mobile-topbar-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
+      {/* Header bar */}
+      <div className="mobile-header">
+        <span className="mobile-header-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:'1rem',color:'#5C574F',fontWeight:600}}>{currentLabel}</span>
-          <div style={{fontSize:'.7rem',transition:'color .4s',color:saveFlash?'#276b3e':'#5C574F',display:'flex',alignItems:'center',gap:4}}>
-            <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>
+          <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
+          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+            <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>
           </div>
         </div>
       </div>
-
-      {/* More half-sheet */}
-      {showMore&&(
+      {/* Bottom tab bar */}
+      <nav className="bottom-tab-bar">
+        {TAB_ITEMS.map(item=>(
+          <button key={item.id} onClick={()=>go(item.id)} className={`bottom-tab-item ${activeView.startsWith(item.id)?'active':''}`}>
+            <Icon name={item.icon} size={22}/>{item.label}
+          </button>
+        ))}
+        <button onClick={()=>setMoreOpen(true)} className={`bottom-tab-item ${isMore?'active':''}`}>
+          <Icon name="menu" size={22}/>Mais
+        </button>
+      </nav>
+      {/* More sheet */}
+      {moreOpen&&(
         <>
-          <div className="more-sheet-overlay" onClick={()=>setShowMore(false)}/>
+          <div className="more-sheet-overlay" onClick={()=>setMoreOpen(false)}/>
           <div className="more-sheet">
             <div className="more-sheet-handle"/>
             {MORE_ITEMS.map(item=>(
-              <button key={item.id} className="more-sheet-item" onClick={()=>go(item.id)}>
-                <div style={{width:36,height:36,borderRadius:10,background:activeView.startsWith(item.id)?'var(--text)':'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  <Icon name={item.icon} size={18} style={{color:activeView.startsWith(item.id)?'white':'#5C574F'}}/>
-                </div>
-                <span style={{color:activeView.startsWith(item.id)?'var(--text)':'#5C574F',fontWeight:activeView.startsWith(item.id)?600:400}}>{item.label}</span>
+              <button key={item.id} onClick={()=>go(item.id)} className={`more-sheet-item ${activeView.startsWith(item.id)?'active-sheet':''}`}>
+                <Icon name={item.icon} size={20}/>{item.label}
               </button>
             ))}
-            <div style={{borderTop:'1px solid var(--border)',margin:'8px 24px 0',paddingBottom:8}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,paddingTop:14,fontSize:'.82rem',color:'#5C574F'}}>
-                <Icon name={saveFlash?'check-circle':'hard-drive'} size={14} style={{color:saveFlash?'#276b3e':'#5C574F'}}/>
-                {saveFlash?'Salvo automaticamente!':'Auto-save ativo'}
-              </div>
-              <button onClick={onToggleLayout} className="btn btn-outline" style={{marginTop:12,width:'100%',justifyContent:'center',gap:8,fontSize:'.85rem'}}>
-                <Icon name="monitor" size={14}/> Modo Desktop
-              </button>
+            <div style={{borderTop:'1px solid var(--border)',marginTop:8,paddingTop:12,display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'12px 12px'}}>
+              <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
             </div>
           </div>
         </>
       )}
-
-      {/* Bottom tab bar — always visible */}
-      <div className="mobile-tab-bar">
-        {TAB_ITEMS.map(item=>(
-          <button key={item.id} className={`mobile-tab-item ${activeView.startsWith(item.id)?'active':''}`} onClick={()=>go(item.id)}>
-            <Icon name={item.icon} size={22}/>
-            <span className="mobile-tab-label">{item.label}</span>
-          </button>
-        ))}
-        <button className={`mobile-tab-item ${moreActive||showMore?'active':''}`} onClick={()=>setShowMore(s=>!s)}>
-          <Icon name="more-horizontal" size={22}/>
-          <span className="mobile-tab-label">Mais</span>
-        </button>
-      </div>
     </>
   );
 });
@@ -852,31 +811,20 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
   return(
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
       <div style={{marginBottom:isMobile?24:40}}>
-        <h1 className="serif" style={{fontSize:isMobile?'2.4rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
+        <h1 className="serif" style={{fontSize:isMobile?'2.2rem':'3rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:6,lineHeight:1.1}}>{greeting}, <em>Artista.</em></h1>
         <p style={{color:'var(--muted)',fontSize:'.9rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
-      {isMobile?(
-        <div className="stat-scroll-row" style={{marginBottom:20,marginLeft:-16,marginRight:-16,paddingLeft:16,paddingRight:16}}>
-          {stats.map(s=>(
-            <div key={s.label} className="card card-click stat-scroll-card" onClick={()=>setView(s.view)} style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:6}}>
-              <span style={{fontSize:'2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
-              <span style={{fontSize:'.78rem',color:'#5C574F',fontWeight:500,whiteSpace:'nowrap'}}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-      ):(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
-          {stats.map(s=>(
-            <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                <span style={{fontSize:'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
-                <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
-              </div>
-              <span style={{fontSize:'.8rem',color:'var(--muted)',fontWeight:500}}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:20}:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:32}}>
+        {stats.map(s=>(
+          <div key={s.label} className="card card-click" onClick={()=>setView(s.view)} style={isMobile?{padding:'14px 12px',display:'flex',flexDirection:'column',gap:6,alignItems:'center',textAlign:'center'}:{padding:'24px 28px',display:'flex',flexDirection:'column',gap:12}}>
+            <span style={{fontSize:isMobile?'1.6rem':'2.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif',lineHeight:1}}>{s.value}</span>
+            {!isMobile&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <div style={{width:32,height:32,borderRadius:8,backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name={s.icon} size={15}/></div>
+            </div>}
+            <span style={{fontSize:isMobile?'.68rem':'.8rem',color:'var(--muted)',fontWeight:500,lineHeight:1.2}}>{s.label}</span>
+          </div>
+        ))}
+      </div>
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:20}}>
         {/* LEFT: projects + project tasks */}
         <div style={{display:'flex',flexDirection:'column',gap:20}}>
@@ -1077,7 +1025,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
         {/* LEFT: projects list */}
         <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-            <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+            <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
                 <Icon name="trash-2" size={13}/>
@@ -1085,9 +1033,8 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
               </button>
               {!trash&&!isMobile&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
             </div>
-            {/* P1: FAB replaces inline button on mobile */}
-            {isMobile&&!trash&&<button className="mobile-fab" onClick={onAdd}><Icon name="plus" size={24}/></button>}
           </div>
+          {isMobile&&!trash&&<button className="fab" onClick={onAdd}><Icon name="plus" size={24}/></button>}
           {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
           {!trash&&(
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:isMobile?16:24,flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?8:0}}>
@@ -1105,64 +1052,65 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
             </div>
           )}
           {isMobile&&!trash?(
-            /* P1: Compact list rows on mobile */
-            <div className="card" style={{overflow:'hidden',padding:0}}>
+            /* Mobile: compact list rows */
+            <div className="card" style={{overflow:'hidden',borderRadius:12}}>
               {visible.map(p=>(
                 <div key={p.id} className="compact-row" onClick={()=>onSelect(p)}>
-                  <div style={{width:44,height:44,borderRadius:8,flexShrink:0,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
-                  <div className="compact-row-body">
+                  <div className="compact-row-thumb" style={{backgroundImage:p.cover?`url(${p.cover})`:'none'}}/>
+                  <div className="compact-row-info">
                     <div className="compact-row-title">{p.title}</div>
-                    <div className="compact-row-meta">{p.client} &middot; <span className={`tag ${statusTag(p.status)}`} style={{verticalAlign:'middle'}}>{p.status}</span></div>
+                    <div className="compact-row-meta">{p.client} · <span className={`tag ${statusTag(p.status)}`} style={{display:'inline',padding:'1px 6px',fontSize:'.65rem'}}>{p.status}</span></div>
                   </div>
-                  <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
+                  <Icon name="chevron-right" size={16} style={{color:'var(--muted)',flexShrink:0}}/>
                 </div>
               ))}
-              {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>Nenhum projeto encontrado.</div>}
+              {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.9rem'}}>Nenhum projeto encontrado.</div>}
             </div>
           ):(
+            /* Desktop: card grid (and trash on both) */
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
-              {visible.map(p=>(
-                <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
-                  onClick={()=>!trash&&onSelect(p)}>
-                  {!trash&&(
-                    <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
-                      style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
-                      onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
-                      onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
-                      <Icon name="trash-2" size={12}/>
-                    </button>
-                  )}
-                  <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
-                    <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
-                      <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
-                    </div>
-                  </div>
-                  <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
-                    <div>
-                      <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
-                      <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
-                    </div>
-                    {!trash?(
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
-                        <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
-                        <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
-                      </div>
-                    ):(
-                      <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
-                        <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
-                        <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
-                      </div>
-                    )}
+            {visible.map(p=>(
+              <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
+                onClick={()=>!trash&&onSelect(p)}>
+                {!trash&&(
+                  <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
+                    style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
+                    onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
+                    onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
+                    <Icon name="trash-2" size={12}/>
+                  </button>
+                )}
+                <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
+                  <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
+                    <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
                   </div>
                 </div>
-              ))}
-              {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
+                <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
+                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
+                  </div>
+                  {!trash?(
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                      <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
+                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
+                    </div>
+                  ):(
+                    <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
+                      <button onClick={e=>{e.stopPropagation();restore(p.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="refresh-cw" size={11}/> Restaurar</button>
+                      <button onClick={e=>{e.stopPropagation();hardDelete(p.id);}} className="btn btn-danger" style={{flex:1,justifyContent:'center',padding:'5px 0',fontSize:'.78rem'}}><Icon name="trash-2" size={11}/> Excluir</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.9rem'}}>{trash?'Lixeira vazia.':'Nenhum projeto encontrado.'}</div>}
             </div>
           )}
         </div>
 
-        {/* RIGHT: tasks sidebar hub */}
-        {!trash&&(
+        {/* RIGHT: tasks sidebar hub — hidden on mobile */}
+        {!trash&&!isMobile&&(
           <div style={{width:280,flexShrink:0,position:'sticky',top:48}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
               <span className="label">Tarefas Pendentes</span>
@@ -1606,7 +1554,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
       <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
 
       {/* Cover */}
-      <div className="cover-wrap" style={{height:isMobile?180:260,borderRadius:isMobile?12:16,overflow:'hidden',marginBottom:isMobile?20:28}}>
+      <div className="cover-wrap" style={{height:isMobile?140:260,borderRadius:isMobile?12:16,overflow:'hidden',marginBottom:isMobile?20:28}}>
         <div style={{position:'absolute',inset:0,backgroundImage:local.cover?`url(${local.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
         <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.2) 60%,transparent 100%)'}}/>
         <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}>
@@ -1614,8 +1562,8 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
         </div>
         <div style={{position:'absolute',inset:0,padding:isMobile?16:28,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-            <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
-              <Icon name="arrow-left" size={13}/> {isMobile?'':'Voltar'}
+            <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:isMobile?'8px 14px':'6px 14px',fontSize:isMobile?'.88rem':'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+              <Icon name="arrow-left" size={isMobile?16:13}/> {isMobile?'':'Voltar'}
             </button>
             <button onClick={e=>{e.stopPropagation();if(window.confirm('Mover projeto para a lixeira?')){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
               <Icon name="trash-2" size={13}/>{isMobile?'':' Excluir Projeto'}
@@ -1633,28 +1581,28 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
         </div>
       </div>
 
-      {/* P1: Vertical timeline on mobile, full Gantt on desktop */}
+      {/* Timeline — vertical on mobile, Gantt on desktop */}
       {isMobile?(
-        <div className="card" style={{padding:'16px 0',marginBottom:20,overflow:'hidden'}}>
-          <div style={{padding:'0 16px 10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span className="label">Cronograma</span>
-            <button className="btn btn-ghost" style={{padding:'6px 10px',fontSize:'.8rem',gap:6}}
-              onClick={()=>{const t={id:Date.now(),text:'Nova tarefa',status:'Pendente',startDate:local.startDate||'',endDate:local.deadline||''};upd('projectTasks',[...(local.projectTasks||[]),t]);}}>
-              <Icon name="plus" size={13}/> Tarefa
-            </button>
-          </div>
-          {(applyAutoLate(local.projectTasks||[])).length===0?(
-            <div style={{textAlign:'center',padding:'24px 0',color:'#5C574F',fontSize:'.85rem'}}>Nenhuma tarefa ainda.</div>
-          ):(
-            <div style={{padding:'0 16px'}}>
-              {(applyAutoLate(local.projectTasks||[])).map(t=>(
-                <div key={t.id} className="vtl-row">
-                  <div className="vtl-dot" style={{background:{'Pendente':'#B5ABA0','Fazendo':'#F59E0B','Concluído':'#10B981','Atrasado':'#EF4444'}[t.status]||'var(--border-2)'}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:'.9rem',fontWeight:500,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</div>
-                    {(t.startDate||t.endDate)&&<div style={{fontSize:'.75rem',color:'#5C574F',marginTop:1}}>{t.startDate&&fmtShort(t.startDate)}{t.startDate&&t.endDate?' → ':''}{t.endDate&&fmtShort(t.endDate)}</div>}
-                  </div>
-                  <span className={`ptask-pill ptask-${t.status}`} onClick={()=>{const next=PTASK_NEXT[t.status]||'Pendente';upd('projectTasks',(local.projectTasks||[]).map(x=>x.id===t.id?{...x,status:next}:x));}}>{t.status}</span>
+        <div style={{marginBottom:16}}>
+          {(local.timelineEvents||[]).length>0?(
+            <div className="card" style={{padding:16}}>
+              <span className="label" style={{display:'block',marginBottom:12}}>Timeline</span>
+              {(local.timelineEvents||[]).map((ev,i)=>(
+                <div key={ev.id||i} className="vtimeline-item">
+                  <div className={`vtimeline-dot ${i<(local.timelineEvents||[]).length-1?'done':''}`}/>
+                  <span className="vtimeline-text">{ev.title}</span>
+                  <span className="vtimeline-date">{ev.date}</span>
+                </div>
+              ))}
+            </div>
+          ):null}
+          {(local.projectTasks||[]).length>0&&(
+            <div className="card" style={{padding:16,marginTop:12}}>
+              <span className="label" style={{display:'block',marginBottom:12}}>Tarefas do Projeto</span>
+              {applyAutoLate(local.projectTasks||[]).map(t=>(
+                <div key={t.id} className="vtimeline-item">
+                  <span className={`ptask-pill ptask-${t.status}`} style={{fontSize:'.62rem',flexShrink:0}}>{t.status}</span>
+                  <span className="vtimeline-text" style={{fontSize:'.88rem'}}>{t.text}</span>
                 </div>
               ))}
             </div>
@@ -1669,11 +1617,11 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
         />
       )}
 
-      {/* P2: Segmented control tabs on mobile, underline tabs on desktop */}
+      {/* Tabs */}
       {isMobile?(
-        <div className="seg-tabs" style={{marginBottom:20}}>
+        <div className="seg-tabs">
           {['Visão Geral','Animatics','Pesquisa'].map(t=>(
-            <button key={t} className={`seg-tab ${tab===t?'active':''}`} onClick={()=>setTab(t)}>{t}</button>
+            <button key={t} onClick={()=>setTab(t)} className={`seg-tab ${tab===t?'active':''}`}>{t}</button>
           ))}
         </div>
       ):(
@@ -1872,8 +1820,8 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
           {(!isMobile||activeMiniId)&&(
           <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0}}>
             {isMobile&&activeMiniId&&(
-              <button onClick={()=>{setActiveMiniId(null);setActiveInnerNoteId(null);}} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'4px 8px',fontSize:'.78rem'}}>
-                <Icon name="arrow-left" size={13}/> Voltar aos animatics
+              <button onClick={()=>{setActiveMiniId(null);setActiveInnerNoteId(null);}} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'8px 12px',fontSize:'.88rem'}}>
+                <Icon name="arrow-left" size={16}/> Voltar aos animatics
               </button>
             )}
             {activeMini&&!activeInnerNoteId&&(
@@ -2129,28 +2077,20 @@ const Gallery=({posts,setPosts,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <div><h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
+        <div><h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem'}}>Acervo visual & estudos</p>}</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
           </button>
-          {!trash&&!isMobile&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
+          {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
         </div>
       </div>
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
-      {/* P1: FAB on mobile */}
-      {isMobile&&!trash&&<button className="mobile-fab" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={24}/></button>}
       {!trash&&(
-        isMobile?(
-          <div className="seg-tabs" style={{marginBottom:16}}>
-            {FOLDERS.map(f=><button key={f.id} className={`seg-tab ${activeFolder===f.id?'active':''}`} onClick={()=>setActiveFolder(f.id)}>{f.label}</button>)}
-          </div>
-        ):(
-          <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
-            {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
-          </div>
-        )
+        <div style={isMobile?{display:'flex',background:'var(--bg)',borderRadius:10,padding:3,gap:2,marginBottom:16}:{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:24}}>
+          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
+        </div>
       )}
       {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:isMobile?40:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
       {Object.entries(grouped).map(([month,monthPosts])=>(
@@ -2205,7 +2145,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
       {/* Left */}
       {(!isMobile||(isMobile&&!activeId))&&(
       <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
-        <h1 className="serif" style={{fontSize:isMobile?'1.9rem':'2rem',fontWeight:300}}>Ideias</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'1.6rem':'2rem',fontWeight:300}}>Ideias</h1>
         <div style={{display:'flex',flexDirection:isMobile?'row':'column',gap:4}}>
           {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
             <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(first?.id||null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
@@ -2213,47 +2153,27 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
             </button>
           ))}
         </div>
-        {isMobile?(
-          <div className="card" style={{overflow:'hidden',padding:0,marginTop:4}}>
-            {visible.length===0&&<div style={{fontSize:'.9rem',color:'#5C574F',padding:'24px 16px',textAlign:'center'}}>Nenhuma nota aqui.</div>}
-            {visible.map(n=>(
-              <div key={n.id} className="compact-row" onClick={()=>setActiveId(n.id)}
-                style={{background:activeId===n.id?'var(--bg)':'var(--surface)'}}>
-                <div style={{width:36,height:36,borderRadius:8,background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  <Icon name="file-text" size={16} style={{color:'#5C574F'}}/>
-                </div>
-                <div className="compact-row-body">
-                  <div className="compact-row-title">{n.title}</div>
-                  <div className="compact-row-meta">{n.content?n.content.slice(0,50)+'…':n.date}</div>
-                </div>
-                <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
-              </div>
-            ))}
-          </div>
-        ):(
-          <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
-            {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
-            {visible.map(n=>(
-              <div key={n.id} onClick={()=>setActiveId(n.id)}
-                style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
-                onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-                onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
-                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {folder==='notes'&&!isMobile&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
-        {isMobile&&folder==='notes'&&<button className="mobile-fab" onClick={newNote}><Icon name="plus" size={24}/></button>}
+        <div style={{flex:isMobile?undefined:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+          {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
+          {visible.map(n=>(
+            <div key={n.id} onClick={()=>setActiveId(n.id)}
+              style={{padding:isMobile?'14px 14px':'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s',minHeight:isMobile?48:undefined}}
+              onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
+              onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
+              <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+              <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
+            </div>
+          ))}
+        </div>
+        {folder==='notes'&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
       </div>
       )}
       {/* Center */}
       {(!isMobile||activeId)&&(
       <div className="card" style={{flex:1,padding:isMobile?20:32,display:'flex',flexDirection:'column',minWidth:0,marginTop:isMobile?12:0}}>
         {isMobile&&activeId&&(
-          <button onClick={()=>setActiveId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:8,padding:'4px 8px',fontSize:'.78rem'}}>
-            <Icon name="arrow-left" size={13}/> Voltar às notas
+          <button onClick={()=>setActiveId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'8px 12px',fontSize:'.88rem'}}>
+            <Icon name="arrow-left" size={16}/> Voltar às notas
           </button>
         )}
         {active?(
@@ -2357,7 +2277,7 @@ const Social=({posts,setPosts,isMobile})=>{
   const platformColor=pl=>({Instagram:'#833AB4',LinkedIn:'#0A66C2','Twitter/X':'#000000',TikTok:'#010101',YouTube:'#FF0000',Behance:'#053EFF'}[pl]||'var(--text)');
 
   return(
-    <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
+    <div className="fade-up" style={{maxWidth:900,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
       {/* Template edit modal */}
       {editingTpl&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setEditingTpl(null)}>
@@ -2383,14 +2303,14 @@ const Social=({posts,setPosts,isMobile})=>{
       )}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
         <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
           <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
         </button>
       </div>
       {trash&&<TrashBanner label="Social Media" onExit={()=>setTrash(false)}/>}
       {!trash&&(
-        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 260px',gap:20,marginBottom:32}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 260px',gap:isMobile?16:20,marginBottom:isMobile?24:32}}>
           {/* Composer */}
           <div className="card" style={{padding:24,display:'flex',flexDirection:'column'}}>
             {editId&&<div style={{fontSize:'.75rem',color:'#92700b',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
@@ -2399,11 +2319,11 @@ const Social=({posts,setPosts,isMobile})=>{
             <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:180,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)'}}/>
             <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
               {/* Platform selector */}
-              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',paddingBottom:0}}>
                 <span className="label" style={{flexShrink:0}}>Plataforma</span>
                 {SOCIAL_PLATFORMS.map(pl=>(
                   <button key={pl} onClick={()=>setPlatform(pl)}
-                    style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.72rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
+                    style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.74rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
                     {pl}
                   </button>
                 ))}
@@ -2444,16 +2364,16 @@ const Social=({posts,setPosts,isMobile})=>{
           <span className="label" style={{display:'block',marginBottom:16}}>{trash?'Posts na Lixeira':'Posts Salvos'}</span>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {displayed.map(p=>(
-              <div key={p.id} className="card" style={{padding:'18px 22px',display:'flex',gap:16,alignItems:'flex-start'}}>
-                <div style={{flex:1}}>
-                  <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap'}}>{p.text}</p>
+              <div key={p.id} className="card" style={{padding:isMobile?'14px 16px':'18px 22px',display:'flex',gap:isMobile?10:16,alignItems:'flex-start',flexDirection:isMobile?'column':'row'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.text}</p>
                   <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     {/* Platform badge — clickable when not in trash */}
                     {!trash?(
                       <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                         {SOCIAL_PLATFORMS.map(pl=>(
                           <button key={pl} onClick={()=>changePostPlatform(p.id,pl)}
-                            style={{padding:'2px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s'}}>
+                            style={{padding:'3px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s'}}>
                             {pl}
                           </button>
                         ))}
@@ -2538,7 +2458,7 @@ const Clients=({clients,setClients,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?16:24,gap:12,flexWrap:'wrap'}}>
-        <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
+        <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
@@ -2546,53 +2466,50 @@ const Clients=({clients,setClients,isMobile})=>{
           {!trash&&!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
         </div>
       </div>
-      {isMobile&&!trash&&<button className="mobile-fab" onClick={add}><Icon name="plus" size={24}/></button>}
+      {isMobile&&!trash&&<button className="fab" onClick={add}><Icon name="plus" size={24}/></button>}
       {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
       {isMobile&&!trash?(
-        /* P1: Compact list rows on mobile */
-        <div className="card" style={{overflow:'hidden',padding:0}}>
+        <div className="card" style={{overflow:'hidden',borderRadius:12}}>
           {visible.map(c=>(
             <div key={c.id} className="compact-row" onClick={()=>setSelected(c)}>
-              <div className="compact-row-thumb-circle">
-                {c.photo?<img src={c.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  :<span>{c.name.charAt(0)}</span>}
-              </div>
-              <div className="compact-row-body">
+              {c.photo?<img src={c.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                :<div style={{width:44,height:44,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+              <div className="compact-row-info">
                 <div className="compact-row-title">{c.name}</div>
-                <div className="compact-row-meta">{c.role}{c.role&&c.company?' · ':''}{c.company} &middot; <span className={`tag ${tagColor(c.status)}`} style={{verticalAlign:'middle'}}>{c.status}</span></div>
+                <div className="compact-row-meta">{c.role}{c.role&&c.company?' · ':''}{c.company} · <span className={`tag ${tagColor(c.status)}`} style={{display:'inline',padding:'1px 6px',fontSize:'.62rem'}}>{c.status}</span></div>
               </div>
-              <Icon name="chevron-right" size={16} style={{color:'#5C574F',flexShrink:0}}/>
+              <Icon name="chevron-right" size={16} style={{color:'var(--muted)',flexShrink:0}}/>
             </div>
           ))}
-          {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>Nenhum cliente.</div>}
+          {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum cliente.</div>}
         </div>
       ):(
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
-          {visible.map(c=>(
-            <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
-              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                  :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
-                <div>
-                  <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
-                  <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
-                </div>
-              </div>
-              {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
-                {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
-                  <div style={{display:'flex',gap:5}}>
-                    <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
-                    <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
-                  </div>
-                )}
-                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
-                  <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
-                </div>
+        {visible.map(c=>(
+          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+              {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+              <div>
+                <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
+                <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
               </div>
             </div>
-          ))}
-          {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
+            {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
+              {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
+                <div style={{display:'flex',gap:5}}>
+                  <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
+                  <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+                </div>
+              )}
+              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
+                <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
         </div>
       )}
     </div>
@@ -2697,7 +2614,7 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
 
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
-      <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
+      <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
       <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
 
       {/* Stats */}
@@ -2941,12 +2858,11 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
       {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?20:28,gap:12,flexWrap:'wrap'}}>
         <div>
-          <h1 className="serif" style={{fontSize:isMobile?'2.1rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
+          <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>}
         </div>
-        {!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
+        <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
       </div>
-      {isMobile&&<button className="mobile-fab" onClick={add}><Icon name="plus" size={24}/></button>}
       {mentors.filter(m=>!m.deleted).length>0&&(
         <div style={{position:'relative',marginBottom:24}}>
           <Icon name="search" size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--muted)',pointerEvents:'none'}}/>
@@ -2961,60 +2877,59 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
         </div>
       )}
       {isMobile?(
-        /* P1: Compact list rows on mobile */
-        <div className="card" style={{overflow:'hidden',padding:0}}>
+        <div className="card" style={{overflow:'hidden',borderRadius:12}}>
           {visible.map(m=>(
             <div key={m.id} className="compact-row" onClick={()=>setSelected(m)}>
-              <div className="compact-row-thumb-circle">
-                {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  :<span>{(m.name||'?').charAt(0)}</span>}
+              {m.photo
+                ?<img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                :<div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
+              }
+              <div className="compact-row-info">
+                <div className="compact-row-title">{m.name}</div>
+                <div className="compact-row-meta">{m.area}{m.medium?' · '+m.medium:''}</div>
               </div>
-              <div className="compact-row-body">
-                <div className="compact-row-title" style={{display:'flex',alignItems:'center',gap:6}}>
-                  {m.name}
-                  {m.main&&<Icon name="star" size={12} style={{color:'#92700b',flexShrink:0}}/>}
-                </div>
-                <div className="compact-row-meta">{m.area}{m.area&&m.medium?' · ':''}{m.medium}</div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
+                <span style={{fontSize:'.6rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'2px 6px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                {m.main&&<Icon name="star" size={11} style={{color:'#92700b'}}/>}
               </div>
-              <span style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 8px',borderRadius:20,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'#5C574F',flexShrink:0}}>{m.active?'Ativo':'Inativo'}</span>
             </div>
           ))}
-          {visible.length===0&&<div style={{textAlign:'center',padding:48,color:'#5C574F',fontSize:'.9rem'}}>{search?'Nenhum mentor encontrado.':'Adicione seu primeiro mentor.'}</div>}
+          {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum mentor.</div>}
         </div>
       ):(
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
-          {visible.map(m=>{
-            const photos=(m.photos||[]).filter(Boolean);
-            return(
-              <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
-                {photos.length>0
-                  ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
-                      {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
-                    </div>
-                  :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
-                    </div>
-                }
-                <div style={{padding:'14px 16px'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-                    {m.photo
-                      ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
-                      :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
-                    }
-                    <div style={{minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                      {m.area&&<div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' - '+m.medium:''}</div>}
-                    </div>
+        {visible.map(m=>{
+          const photos=(m.photos||[]).filter(Boolean);
+          return(
+            <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
+              {photos.length>0
+                ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
+                    {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
                   </div>
-                  {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
-                  <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
-                    <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
-                    {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
+                  </div>
+              }
+              <div style={{padding:'14px 16px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                  {m.photo
+                    ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
+                    :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
+                  }
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                    {m.area&&<div style={{fontSize:'.73rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' - '+m.medium:''}</div>}
                   </div>
                 </div>
+                {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
+                <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
+                  <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                  {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                </div>
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
         </div>
       )}
     </div>
@@ -3023,7 +2938,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
-  const [isMobile,toggleLayout]=useLayoutMode();
+  const isMobile=useIsMobile();
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
@@ -3082,13 +2997,13 @@ const App=()=>{
   };
 
   return(
-    <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh'}}>
+    <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} onToggleLayout={toggleLayout}/>
+        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash}/>
+        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash}/>
       }
-      <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px',paddingTop:'8px',overflowY:'auto'}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
+      <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
