@@ -285,13 +285,22 @@ const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(
 
 // ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
 const useIsMobile=(breakpoint=768)=>{
-  const [autoMobile,setAutoMobile]=useState(()=>window.matchMedia(`(max-width:${breakpoint}px)`).matches);
+  // Use both matchMedia AND innerWidth — belt-and-suspenders for local file vs web server
+  const detect=()=>{
+    try{
+      const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
+      return mq.matches || window.innerWidth<=breakpoint;
+    }catch{return window.innerWidth<=breakpoint;}
+  };
+  const [autoMobile,setAutoMobile]=useState(detect);
   useEffect(()=>{
+    // Re-run once DOM is fully painted (catches cases where initial viewport isn't settled)
+    setAutoMobile(detect());
     const mq=window.matchMedia(`(max-width:${breakpoint}px)`);
-    setAutoMobile(mq.matches);
-    const handler=e=>setAutoMobile(e.matches);
+    const handler=()=>setAutoMobile(detect());
     mq.addEventListener('change',handler);
-    return()=>mq.removeEventListener('change',handler);
+    window.addEventListener('resize',handler);
+    return()=>{mq.removeEventListener('change',handler);window.removeEventListener('resize',handler);};
   },[breakpoint]);
   return autoMobile;
 };
