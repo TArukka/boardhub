@@ -442,6 +442,15 @@ const stripBase64=obj=>{
   return obj;
 };
 
+// Resolve idb:// refs to base64 data URLs so images survive Gist sync
+const blobToBase64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
+const resolveIdbRefs=async obj=>{
+  if(Array.isArray(obj))return Promise.all(obj.map(resolveIdbRefs));
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await resolveIdbRefs(obj[k]);return out;}
+  if(typeof obj==='string'&&obj.startsWith('idb://')){try{const blob=await idbGet(obj.slice(6));if(blob)return await blobToBase64(blob);}catch{}return '';}
+  return obj;
+};
+
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
 const TrashBanner=({label,onExit})=>(
   <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'#991B1B'}}>
@@ -635,6 +644,82 @@ const pomoFmtMonth = function(mk) {
 };
 
 // ─── POMODORO TIMER (with built-in stats panel) ───────────────────────────────
+// ─── FLOATING DRAGGABLE POMODORO WIDGET ──────────────────────────────────────
+const FloatingPomo = ({ timeStr, isActive, isFocus, pct, onToggle, onReset, onClose }) => {
+  const posRef = useRef({ x: null, y: null });
+  const [pos, setPos] = React.useState({ x: null, y: null });
+  const dragging = useRef(false);
+  const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+
+  React.useLayoutEffect(() => {
+    if (pos.x === null) {
+      const x = window.innerWidth - 210;
+      const y = window.innerHeight - 170;
+      posRef.current = { x, y };
+      setPos({ x, y });
+    }
+  }, []);
+
+  const onMouseDown = e => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    dragging.current = true;
+    dragStart.current = { mx: e.clientX, my: e.clientY, px: posRef.current.x, py: posRef.current.y };
+    const onMove = ev => {
+      if (!dragging.current) return;
+      const nx = Math.max(0, Math.min(window.innerWidth - 210, dragStart.current.px + ev.clientX - dragStart.current.mx));
+      const ny = Math.max(0, Math.min(window.innerHeight - 120, dragStart.current.py + ev.clientY - dragStart.current.my));
+      posRef.current = { x: nx, y: ny };
+      setPos({ x: nx, y: ny });
+    };
+    const onUp = () => { dragging.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const r = 28; const circ = 2 * Math.PI * r; const offset = circ * (1 - pct);
+  if (pos.x === null) return null;
+
+  return ReactDOM.createPortal(
+    <div onMouseDown={onMouseDown} style={{
+      position:'fixed', left:pos.x, top:pos.y, zIndex:9999,
+      background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16,
+      boxShadow:'0 8px 32px rgba(28,25,23,.2)', padding:'14px 16px',
+      display:'flex', alignItems:'center', gap:12,
+      cursor:'grab', userSelect:'none', minWidth:190,
+    }}>
+      <div style={{position:'relative',width:64,height:64,flexShrink:0}}>
+        <svg width="64" height="64" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
+          <circle cx="32" cy="32" r={r} fill="none" stroke="var(--border)" strokeWidth="4"/>
+          <circle cx="32" cy="32" r={r} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4"
+            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+            style={{transition:'stroke-dashoffset 1s linear,stroke .4s'}}/>
+        </svg>
+        <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.05rem',fontWeight:500}}>{timeStr}</span>
+        </div>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:7,flex:1,minWidth:0}}>
+        <div style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',color:isFocus?'var(--muted)':'#276b3e'}}>
+          {isFocus ? '🧠 Foco' : '☕ Pausa'}
+        </div>
+        <div style={{display:'flex',gap:5}}>
+          <button onClick={onToggle} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',minWidth:0,gap:4,minHeight:0}}>
+            <Icon name={isActive?'pause':'play'} size={12}/>{isActive?'Pausar':'Retomar'}
+          </button>
+          <button onClick={onReset} className="btn btn-ghost" title="Reiniciar" style={{padding:'4px 7px',minHeight:0}}>
+            <Icon name="rotate-ccw" size={12}/>
+          </button>
+        </div>
+      </div>
+      <button onClick={onClose} className="btn btn-ghost" style={{position:'absolute',top:5,right:5,padding:3,minHeight:0,lineHeight:0}}>
+        <Icon name="x" size={11}/>
+      </button>
+    </div>,
+    document.body
+  );
+};
+
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const FOCUS_SECS = 25 * 60;
   const BREAK_SECS = 5 * 60;
@@ -642,6 +727,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const [isActive, setIsActive] = useState(false);
   const [mode, setMode] = useState('focus');
   const [showStats, setShowStats] = useState(false);
+  const [showFloat, setShowFloat] = useState(false);
   const modeRef = useRef('focus');
   const timeLeftRef = useRef(FOCUS_SECS);
   const unsavedSecsRef = useRef(0);
@@ -704,7 +790,8 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     return () => clearInterval(id);
   }, [isActive]);
 
-  const toggle = () => { requestNotifPermission(); setIsActive(a => !a); };
+  const toggle = () => { requestNotifPermission(); setIsActive(a => { if (!a) setShowFloat(true); return !a; }); };
+  const closeFloat = () => setShowFloat(false);
   const reset  = () => { setIsActive(false); setTimeLeft(mode === 'focus' ? FOCUS_SECS : BREAK_SECS); };
 
   const mins = Math.floor(timeLeft / 60);
@@ -745,6 +832,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
   return (
     <div style={{marginBottom:20}}>
+      {showFloat&&<FloatingPomo timeStr={timeStr} isActive={isActive} isFocus={isFocus} pct={pct} onToggle={toggle} onReset={reset} onClose={closeFloat}/>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <span className="label">Pomodoro</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -752,6 +840,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
             {isFocus ? 'Foco' : 'Pausa'}
           </div>
+          <button
+            className="btn btn-ghost"
+            onClick={()=>setShowFloat(f=>!f)}
+            title="Janela flutuante"
+            style={{padding:'4px 8px',borderRadius:6,background:showFloat?'var(--text)':'transparent',color:showFloat?'white':'var(--muted)'}}
+          >
+            <Icon name="picture-in-picture-2" size={14}/>
+          </button>
           <button
             className="btn btn-ghost"
             onClick={()=>setShowStats(s=>!s)}
@@ -1051,10 +1147,16 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
   const [filterType,setFilterType]=useState('all');
   const [onlyActive,setOnlyActive]=useState(false);
   const [trash,setTrash]=useState(false);
+  const [dragId,setDragId]=useState(null);
+  const [dragOverId,setDragOverId]=useState(null);
   const visible=projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
   const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
+  const handleDragStart=(e,id)=>{setDragId(id);e.dataTransfer.effectAllowed='move';};
+  const handleDragOver=(e,id)=>{e.preventDefault();e.dataTransfer.dropEffect='move';setDragOverId(id);};
+  const handleDrop=(e,targetId)=>{e.preventDefault();if(!dragId||dragId===targetId){setDragId(null);setDragOverId(null);return;}setProjects(prev=>{const arr=[...prev];const fi=arr.findIndex(p=>p.id===dragId);const ti=arr.findIndex(p=>p.id===targetId);const[item]=arr.splice(fi,1);arr.splice(ti,0,item);return arr;});setDragId(null);setDragOverId(null);};
+  const handleDragEnd=()=>{setDragId(null);setDragOverId(null);};
 
   // All pending tasks grouped by project
   const activeProjsWithTasks=projects.filter(p=>!p.deleted&&(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
@@ -1118,7 +1220,13 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
             /* Desktop: card grid (and trash on both) */
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
-              <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?.85:1,position:'relative'}}
+              <div key={p.id} className="card"
+                draggable={!trash}
+                onDragStart={e=>handleDragStart(e,p.id)}
+                onDragOver={e=>handleDragOver(e,p.id)}
+                onDrop={e=>handleDrop(e,p.id)}
+                onDragEnd={handleDragEnd}
+                style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':dragId===p.id?'grabbing':'grab',opacity:dragId===p.id?.4:trash?.85:1,position:'relative',outline:dragOverId===p.id&&dragOverId!==dragId?'2px dashed var(--text)':'none',transition:'opacity .15s'}}
                 onClick={()=>!trash&&onSelect(p)}>
                 {!trash&&(
                   <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
@@ -2602,7 +2710,8 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
     setLoading(true);
     try{
-      const data=JSON.stringify({...stripBase64(appState),_v:'2.0',_exported:new Date().toISOString()},null,2);
+      const resolved=await resolveIdbRefs(appState);
+      const data=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
       const res=await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content:data}}})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
@@ -2919,8 +3028,9 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
   const selectedFresh=selected?mentors.find(m=>m.id===selected.id)||null:null;
 
   return(
+    <>
+    {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
     <div className="fade-up" style={{maxWidth:900,margin:'0 auto'}}>
-      {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?20:28,gap:12,flexWrap:'wrap'}}>
         <div>
           <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Mentores</h1>
@@ -2998,6 +3108,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
         </div>
       )}
     </div>
+    </>
   );
 };
 
@@ -3034,6 +3145,33 @@ const App=()=>{
 
   // Auto-save to localStorage — debounced to avoid thrashing on every keystroke
   const saveFlashTimer=useRef(null);
+  const gistSyncTimer=useRef(null);
+  const loadGistCfg=()=>{try{return JSON.parse(localStorage.getItem('boardhub_gist_config'))||{};}catch{return{};}};
+
+  // Auto-pull from Gist once on mount
+  useEffect(()=>{
+    const cfg=loadGistCfg();
+    if(!cfg.token||!cfg.gistId)return;
+    fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:'token '+cfg.token}})
+      .then(r=>r.ok?r.json():null)
+      .then(json=>{
+        if(!json)return;
+        const file=json.files['boardhub-data.json'];
+        if(!file)return;
+        try{
+          const data=JSON.parse(file.content);
+          if(data.projects)setProjects(data.projects);
+          if(data.clients)setClients(data.clients);
+          if(data.mentors)setMentors(data.mentors);
+          if(data.notes)setNotes(data.notes);
+          if(data.tasks)setTasks(data.tasks);
+          if(data.socialPosts)setSocialPosts(data.socialPosts);
+          if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
+        }catch{}
+      }).catch(()=>{});
+  },[]);
+
+  // Auto-save to localStorage + auto-push to Gist
   useEffect(()=>{
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
@@ -3041,6 +3179,20 @@ const App=()=>{
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
       saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
+      clearTimeout(gistSyncTimer.current);
+      gistSyncTimer.current=setTimeout(async()=>{
+        const cfg=loadGistCfg();
+        if(!cfg.token||!cfg.gistId)return;
+        try{
+          const resolved=await resolveIdbRefs(state);
+          const content=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
+          await fetch('https://api.github.com/gists/'+cfg.gistId,{
+            method:'PATCH',
+            headers:{Authorization:'token '+cfg.token,'Content-Type':'application/json'},
+            body:JSON.stringify({files:{'boardhub-data.json':{content}}})
+          });
+        }catch{}
+      },3000);
     },800);
     return ()=>clearTimeout(timer);
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
