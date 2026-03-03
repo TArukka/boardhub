@@ -442,41 +442,23 @@ const stripBase64=obj=>{
   return obj;
 };
 
-// ─── IMAGE SYNC HELPERS ───────────────────────────────────────────────────────
-// Convert blob to data URL string
-const blobToBase64=blob=>new Promise((res,rej)=>{
-  const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);
-});
 
-// Walk state tree, replacing every idb:// key with its base64 data URL.
-// Called before pushing to Gist so images survive cross-device sync.
+// Resolve idb:// keys → base64 data URLs for export/sync
+const blobToBase64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
 const resolveIdbRefs=async obj=>{
   if(Array.isArray(obj))return Promise.all(obj.map(resolveIdbRefs));
-  if(obj&&typeof obj==='object'){
-    const out={};
-    for(const k of Object.keys(obj))out[k]=await resolveIdbRefs(obj[k]);
-    return out;
-  }
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await resolveIdbRefs(obj[k]);return out;}
   if(typeof obj==='string'&&obj.startsWith('idb://')){
-    try{const blob=await idbGet(obj.slice(6));if(blob)return await blobToBase64(blob);}catch(e){}
+    try{const blob=await idbGet(obj.slice(6));if(blob)return await blobToBase64(blob);}catch{}
     return '';
   }
   return obj;
 };
-
-// Walk imported data: store any base64 images into IDB, return idb:// refs.
-// Called after pulling from Gist so images work normally in the app.
-const ingestImages=async obj=>{
-  if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
-  if(obj&&typeof obj==='object'){
-    const out={};
-    for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);
-    return out;
-  }
-  if(typeof obj==='string'&&obj.startsWith('data:')){
-    try{const r2=await fetch(obj);const blob=await r2.blob();const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;}catch(e){}
-  }
-  return obj;
+// Build payload: include images but warn if > 900KB (Gist limit is 1MB)
+const buildSyncPayload=async(state,includeImages=true)=>{
+  const resolved=includeImages?await resolveIdbRefs(state):stripBase64(state);
+  const json=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
+  return json;
 };
 
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
@@ -2634,17 +2616,31 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
   const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),5000);};
 
-  // Single sync: push local data to Gist
+  // Helper: push content to Gist, returns response json
+  const doPatch=async(content)=>fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content}}})});
+
+  // Manual sync: push to Gist with images, auto-retry on 409 conflict
   const syncNow=async()=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
     setLoading(true);
     try{
-      const resolved=await resolveIdbRefs(appState);
-      const data=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content:data}}})});
-      if(!res.ok)throw new Error(`Erro ${res.status}`);
+      let content=await buildSyncPayload(appState,true);
+      const sizeKB=Math.round(content.length/1024);
+      let withImages=true;
+      if(content.length>900*1024){content=await buildSyncPayload(appState,false);withImages=false;}
+      let res=await doPatch(content);
+      if(res.status===409){
+        // Conflict: another device updated the Gist — wait briefly and retry once
+        await new Promise(r=>setTimeout(r,1500));
+        res=await doPatch(content);
+      }
+      if(!res.ok)throw new Error(res.status===409
+        ?'Conflito de versão (409) — outro dispositivo sincronizou ao mesmo tempo. Tente novamente em alguns segundos, ou use ↓ para carregar a versão mais recente primeiro.'
+        :`Erro ${res.status}`);
       const json=await res.json();
-      showStatus('ok',`✓ Sincronizado com sucesso! ${new Date(json.updated_at).toLocaleString('pt-BR')}`);
+      showStatus(withImages?'ok':'warn',withImages
+        ?`✓ Sincronizado com imagens! (${sizeKB}KB) — ${new Date(json.updated_at).toLocaleString('pt-BR')}`
+        :`⚠ Sincronizado SEM imagens (payload ${sizeKB}KB excede o limite do Gist). Use Exportar para backup completo.`);
     }catch(e){showStatus('err',`Falha na sincronização: ${e.message}`);}
     finally{setLoading(false);}
   };
@@ -2678,9 +2674,8 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
     if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
     setLoading(true);
     try{
-      const resolved=await resolveIdbRefs(appState);
-      const data=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
-      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content:data}}})});
+      const content=await buildSyncPayload(appState,true);
+      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content}}})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
       setGistIdInput(json.id);
@@ -2692,8 +2687,7 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
   };
 
   const exportData=async()=>{
-    const resolved=await resolveIdbRefs(appState);
-    const data=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
+    const data=await buildSyncPayload(appState,true);
     const blob=new Blob([data],{type:'application/json'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
@@ -2734,8 +2728,8 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
 
       {/* Status message */}
       {status&&(
-        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
+        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':status.type==='warn'?'#FEF9E7':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':status.type==='warn'?'#fde68a':'#FECACA'}`,color:status.type==='ok'?'#276b3e':status.type==='warn'?'#92700b':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
+          <Icon name={status.type==='ok'?'check-circle':status.type==='warn'?'alert-triangle':'alert-circle'} size={16}/>{status.msg}
           <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
         </div>
       )}
@@ -3075,13 +3069,13 @@ const App=()=>{
   // Auto-save to localStorage — debounced to avoid thrashing on every keystroke
   const saveFlashTimer=useRef(null);
   const gistSyncTimer=useRef(null);
-  const isMountedRef=useRef(false);
-
-  // Gist config loader (available in App scope for auto-sync)
   const loadGistCfg=()=>{try{return JSON.parse(localStorage.getItem('boardhub_gist_config'))||{};}catch{return{};}};
+  const hasSynced=useRef(false);
 
-  // Auto-pull from Gist on mount — always load latest data when opening the app
+  // Auto-pull once on mount
   useEffect(()=>{
+    if(hasSynced.current)return;
+    hasSynced.current=true;
     const cfg=loadGistCfg();
     if(!cfg.token||!cfg.gistId)return;
     (async()=>{
@@ -3092,7 +3086,7 @@ const App=()=>{
         const file=json.files['boardhub-data.json'];
         if(!file)return;
         let content=file.content;
-        if(file.truncated){const raw=await fetch(file.raw_url,{headers:{Authorization:'token '+cfg.token}});if(raw.ok)content=await raw.text();}
+        if(file.truncated){const r2=await fetch(file.raw_url,{headers:{Authorization:'token '+cfg.token}});content=await r2.text();}
         const data=JSON.parse(content);
         const ingested=await ingestImages(data);
         if(ingested.projects)setProjects(ingested.projects);
@@ -3102,41 +3096,36 @@ const App=()=>{
         if(ingested.tasks)setTasks(ingested.tasks);
         if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
         if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
-        if(ingested.pomoData)setPomoData(ingested.pomoData);
-        clearTimeout(gistSyncTimer.current);
-        isMountedRef.current=false;
       }catch{}
     })();
-  },[]);// eslint-disable-line react-hooks/exhaustive-deps
+  },[]);
 
-  // Auto-save to localStorage + debounced auto-push to Gist after every change
+  // Auto-save localStorage + debounced auto-push to Gist (no images for speed)
   useEffect(()=>{
-    if(!isMountedRef.current){isMountedRef.current=true;return;}
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
       lsSave(state);
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
       saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
-      // Push to Gist 3s after last change (skip if not configured)
       clearTimeout(gistSyncTimer.current);
       gistSyncTimer.current=setTimeout(async()=>{
         const cfg=loadGistCfg();
         if(!cfg.token||!cfg.gistId)return;
         try{
-          const gistState={...state,pomoData};
-          const resolved=await resolveIdbRefs(gistState);
-          const content=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
-          await fetch('https://api.github.com/gists/'+cfg.gistId,{
+          const content=await buildSyncPayload(state,false);
+          const doPatch=()=>fetch('https://api.github.com/gists/'+cfg.gistId,{
             method:'PATCH',
             headers:{Authorization:'token '+cfg.token,'Content-Type':'application/json'},
             body:JSON.stringify({files:{'boardhub-data.json':{content}}})
           });
+          let r=await doPatch();
+          if(r.status===409){await new Promise(x=>setTimeout(x,2000+Math.random()*2000));await doPatch();}
         }catch{}
-      },3000);
+      },4000);
     },800);
     return ()=>clearTimeout(timer);
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData]);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
 
   // Lucide icons: no longer needed — Icon component caches SVG paths on first use
 
@@ -3153,8 +3142,17 @@ const App=()=>{
   };
 
   const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
+  const // Walk imported data: store base64 images into IDB and replace with idb:// refs
+  const ingestImages=async obj=>{
+    if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
+    if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
+    if(typeof obj==='string'&&obj.startsWith('data:image')){
+      try{const res=await fetch(obj);const blob=await res.blob();const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;}catch{}
+    }
+    return obj;
+  };
 
-  const handleImport=async data=>{
+  handleImport=async data=>{
     const ingested=await ingestImages(data);
     if(ingested.projects)setProjects(ingested.projects);
     if(ingested.clients)setClients(ingested.clients);
