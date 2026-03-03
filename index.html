@@ -3810,39 +3810,103 @@ const BgImg=({src,className,style,children,...props})=>{
   return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
-// FIX 3: Upload images sequentially in small batches to avoid Imgur rate-limit
-// cascades where 20 simultaneous requests all fail, each blocking for 8s timeout,
-// before the IDB fallback fires. Now we skip Imgur entirely for bulk uploads (>3 files).
+// ─── CLOUD IMAGE CONFIG ───────────────────────────────────────────────────────
+// Cloudinary (recommended): free 25 GB, no rate limits, permanent CDN URLs.
+// Set up once at https://cloudinary.com → Dashboard → Settings → Upload presets
+// (create an "Unsigned" preset). Then enter Cloud Name + Preset in Sync → Imagens.
+const CLOUD_IMG_LS_KEY='boardhub_cloud_img_cfg';
+const loadCloudImgCfg=()=>{try{return JSON.parse(localStorage.getItem(CLOUD_IMG_LS_KEY))||{};}catch{return{};}};
+const saveCloudImgCfg=cfg=>{try{localStorage.setItem(CLOUD_IMG_LS_KEY,JSON.stringify(cfg));}catch{}};
+
+// Upload to Cloudinary using an unsigned upload preset — returns CDN URL or throws
+const _uploadCloudinary=async(file,cfg)=>{
+  const fd=new FormData();
+  fd.append('file',file);
+  fd.append('upload_preset',cfg.preset);
+  if(cfg.folder)fd.append('folder',cfg.folder);
+  const ac=new AbortController();const _t=setTimeout(()=>ac.abort(),30000);
+  const res=await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`,{method:'POST',body:fd,signal:ac.signal});
+  clearTimeout(_t);
+  const json=await res.json();
+  if(json.secure_url)return json.secure_url;
+  throw new Error(json.error?.message||'Cloudinary upload failed');
+};
+
+// Imgur fallback — anonymous client-ID upload
 const IMGUR_CLIENT_ID='546c25a59c58ad7';
-const _uploadSingle=async (file, tryImgur=true)=>{
-  if(tryImgur){
-    try{
-      const b64=await readFile(file);
-      const body=new FormData();
-      body.append('image',b64.split(',')[1]);
-      body.append('type','base64');
-      const ac=new AbortController();const _t=setTimeout(()=>ac.abort(),8000);
-      const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:ac.signal});
-      clearTimeout(_t);
-      const json=await res.json();
-      if(json.success)return json.data.link;
-    }catch{/* offline or rate-limited — fall through */}
-  }
+const _uploadImgur=async(file)=>{
+  const b64=await readFile(file);
+  const body=new FormData();
+  body.append('image',b64.split(',')[1]);
+  body.append('type','base64');
+  const ac=new AbortController();const _t=setTimeout(()=>ac.abort(),15000);
+  const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:ac.signal});
+  clearTimeout(_t);
+  const json=await res.json();
+  if(json.success)return json.data.link;
+  throw new Error('Imgur upload failed');
+};
+
+// IDB local fallback — stores blob locally, not synced across devices
+const _storeIdb=async(file)=>{
   const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   await idbPut(key,file);
   return 'idb://'+key;
 };
 
-const uploadImage=file=>_uploadSingle(file,true);
+// Core upload: Cloudinary → Imgur → IDB (in priority order)
+const _uploadSingle=async(file)=>{
+  const cfg=loadCloudImgCfg();
+  if(cfg.cloudName&&cfg.preset){
+    try{ return await _uploadCloudinary(file,cfg); }catch(e){ console.warn('[BoardHub] Cloudinary failed:',e.message); }
+  }
+  try{ return await _uploadImgur(file); }catch(e){ console.warn('[BoardHub] Imgur failed:',e.message); }
+  console.warn('[BoardHub] Falling back to local IDB. Image will NOT sync across devices.');
+  return await _storeIdb(file);
+};
 
-// Bulk upload: skip Imgur to avoid rate-limit timeouts, go straight to IDB.
-// Returns array of idb:// keys in order.
-const uploadImages=async files=>{
+const uploadImage=file=>_uploadSingle(file);
+
+// Bulk upload with progress callback.
+// Uses a 1.1 s gap between requests when on Imgur path (fits ~50 req/min soft limit).
+// Cloudinary has no rate limit so no delay is added in that case.
+const BULK_UPLOAD_DELAY_MS=1100;
+const uploadImages=async(files,onProgress)=>{
   const results=[];
-  for(const file of files){
-    results.push(await _uploadSingle(file,false));
+  for(let i=0;i<files.length;i++){
+    results.push(await _uploadSingle(files[i]));
+    if(onProgress)onProgress(i+1,files.length);
+    if(i<files.length-1){
+      const cfg=loadCloudImgCfg();
+      if(!cfg.cloudName||!cfg.preset) await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
+    }
   }
   return results;
+};
+
+// Scan state for idb:// refs and re-upload them to cloud. Returns updated state object.
+const reuploadLocalImages=async(state,onProgress)=>{
+  const keys=[...collectIdbKeys(state)];
+  if(keys.length===0)return state;
+  const map={};
+  for(let i=0;i<keys.length;i++){
+    const key=keys[i];
+    try{
+      const blob=await idbGet(key);
+      if(blob){
+        const file=new File([blob],key,{type:blob.type||'image/jpeg'});
+        const cfg=loadCloudImgCfg();
+        let url=null;
+        if(cfg.cloudName&&cfg.preset){try{url=await _uploadCloudinary(file,cfg);}catch{}}
+        if(!url){try{url=await _uploadImgur(file);}catch{}}
+        if(url)map['idb://'+key]=url;
+      }
+    }catch(e){console.warn('[BoardHub] Re-upload failed for',key,e);}
+    if(onProgress)onProgress(i+1,keys.length);
+    const cfg=loadCloudImgCfg();
+    if((!cfg.cloudName||!cfg.preset)&&i<keys.length-1)await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
+  }
+  return rehydrateIdbRefs(state,map);
 };
 
 // Strip idb:// and base64 refs before Gist sync (they are local-only)
@@ -3926,19 +3990,19 @@ const rehydrateIdbRefs=(obj,map)=>{
   return obj;
 };
 
-// Build the complete Gist files object for a PATCH/POST body
-// Returns { 'boardhub-data.json': {content}, 'boardhub-imgs-0.json': {content}, … }
-// Pass prevChunkCount to null-out stale chunk files that are no longer needed
+// Build the Gist files object for a PATCH/POST body.
+// ARCHITECTURE: images are NEVER embedded in the Gist. Only CDN URLs (https://) are stored.
+// idb:// refs are stripped — those images exist only on this device and need to be
+// re-uploaded to Cloudinary/Imgur first (see SyncHub → Imagens). This keeps the
+// Gist tiny (text-only) and sync fast regardless of how many images you have.
+// prevChunkCount: null out any legacy image chunk files from old syncs.
 const buildGistFiles=async(state,prevChunkCount=0)=>{
-  const dataJson=JSON.stringify({...stripBase64(state),_v:'2.0',_exported:new Date().toISOString()});
-  const idbKeys=collectIdbKeys(state);
-  const imageMap=await resolveImageMap(idbKeys);
-  const chunks=chunkImageMap(imageMap);
+  const dataJson=JSON.stringify({...stripBase64(state),_v:'2.1',_exported:new Date().toISOString()});
   const files={'boardhub-data.json':{content:dataJson}};
-  chunks.forEach((c,i)=>{files[IMG_FILE_PREFIX+i+'.json']={content:c};});
-  // Null out stale chunk files from a previous sync that had more chunks
-  for(let i=chunks.length;i<prevChunkCount;i++)files[IMG_FILE_PREFIX+i+'.json']=null;
-  return{files,chunkCount:chunks.length,totalKB:Math.round((dataJson.length+chunks.reduce((s,c)=>s+c.length,0))/1024)};
+  // Clean up any old image chunk files left over from previous versions
+  for(let i=0;i<prevChunkCount;i++)files[IMG_FILE_PREFIX+i+'.json']=null;
+  const localCount=collectIdbKeys(state).size;
+  return{files,chunkCount:0,totalKB:Math.round(dataJson.length/1024),localCount};
 };
 
 // Fetch all chunk files from a Gist JSON response, return merged imageMap
@@ -5596,10 +5660,13 @@ const Gallery=({posts,setPosts,isMobile})=>{
     setSelected(updated);
     setPosts(prev=>prev.map(p=>p.id===updated.id?updated:p));
   };
+  const [uploadProgress,setUploadProgress]=useState(null); // {done,total}|null
   const handleAddImages=async e=>{
     const files=Array.from(e.target.files);
     setUploading(true);
-    const urls=await uploadImages(files);
+    setUploadProgress({done:0,total:files.length});
+    const urls=await uploadImages(files,(done,total)=>setUploadProgress({done,total}));
+    setUploadProgress(null);
     setUploading(false);
     const merged=[...(selected.images||[]),...urls];
     upd('images',merged);
@@ -5649,8 +5716,19 @@ const Gallery=({posts,setPosts,isMobile})=>{
             </div>
           ))}
           <div className="upload-zone" style={{aspectRatio:'16/9',minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
-            <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploading?'Enviando…':'Adicionar'}</span>
+            <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploadProgress?`${uploadProgress.done}/${uploadProgress.total} enviando…`:uploading?'Enviando…':'Adicionar'}</span>
           </div>
+          {uploadProgress&&uploadProgress.total>1&&(
+            <div style={{marginTop:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:'.72rem',color:'var(--muted)',marginBottom:4}}>
+                <span>Enviando para nuvem…</span>
+                <span>{Math.round(uploadProgress.done/uploadProgress.total*100)}%</span>
+              </div>
+              <div style={{height:4,background:'var(--border)',borderRadius:2}}>
+                <div style={{height:'100%',background:'var(--text)',borderRadius:2,transition:'width .3s',width:`${Math.round(uploadProgress.done/uploadProgress.total*100)}%`}}/>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -6126,20 +6204,30 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showConfig,setShowConfig]=useState(false);
+  const [showImgConfig,setShowImgConfig]=useState(false);
+
+  // Cloudinary config state
+  const [cloudCfg,setCloudCfg]=useState(()=>loadCloudImgCfg());
+  const [cloudNameInput,setCloudNameInput]=useState(()=>loadCloudImgCfg().cloudName||'');
+  const [presetInput,setPresetInput]=useState(()=>loadCloudImgCfg().preset||'');
+  const [folderInput,setFolderInput]=useState(()=>loadCloudImgCfg().folder||'boardhub');
+  const [reuploadProgress,setReuploadProgress]=useState(null); // {done,total} or null
+
   const importRef=useRef();
   const configured=token&&gistId;
   const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
-  const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),5000);};
+  const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
 
-  // Helper: push files to Gist, returns fetch Response
+  // Count local-only vs cloud images
+  const localImgCount=collectIdbKeys(appState).size;
+  const cloudConfigured=cloudCfg.cloudName&&cloudCfg.preset;
+
   const doPatchFiles=async(filesObj)=>fetch(`https://api.github.com/gists/${gistId}`,{
     method:'PATCH',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
     body:JSON.stringify({files:filesObj})
   });
 
-  // Fetch Gist and return { gistJson, remoteData, remoteImageMap, chunkCount }
-  // Throws on network/auth errors
   const fetchRemote=async(authToken=token)=>{
     const authHeader=`Bearer ${authToken}`;
     const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:authHeader}});
@@ -6152,40 +6240,42 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
     let content=dataFile.content;
     if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
     const remoteData=JSON.parse(content);
+    // Still read legacy image chunks for backward compatibility
     const remoteImageMap=await fetchImageChunks(gistJson,authHeader);
     const chunkCount=Object.keys(gistJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
     return{gistJson,remoteData,remoteImageMap,chunkCount};
   };
 
-  // Manual sync: check-then-write to avoid overwriting another device's changes
   const syncNow=async()=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
+    if(localImgCount>0&&!window.confirm(
+      `Atenção: ${localImgCount} imagem(ns) estão armazenadas apenas localmente e NÃO serão sincronizadas.\n\nRecomendamos ir em "Imagens na Nuvem" → "Re-enviar para Nuvem" antes de sincronizar.\n\nContinuar assim mesmo?`
+    ))return;
     setLoading(true);
     showStatus('warn','Verificando versão remota…');
     try{
       const meta=loadSyncMeta();
-      // Step 1: check remote updated_at
       if(meta.updatedAt){
         const checkRes=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`Bearer ${token}`}});
         if(checkRes.ok){
           const checkJson=await checkRes.json();
           if(checkJson.updated_at>meta.updatedAt){
-            // Remote is newer — fetch full data and surface conflict to user
-            const remoteImageMap=await fetchImageChunks(checkJson,`Bearer ${token}`);
             const dataFile=checkJson.files['boardhub-data.json'];
-            let content=dataFile.content;
-            if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:`Bearer ${token}`}});content=await r.text();}
-            const remoteData=JSON.parse(content);
-            const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
-            onConflict({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
+            if(dataFile){
+              let ct=dataFile.content;
+              if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:`Bearer ${token}`}});ct=await r.text();}
+              const remoteData=JSON.parse(ct);
+              const remoteImageMap=await fetchImageChunks(checkJson,`Bearer ${token}`);
+              const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
+              onConflict({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
+            }
             showStatus('warn','Conflito detectado — veja o banner acima.');
             return;
           }
         }
       }
-      // Step 2: no conflict — write
-      showStatus('warn','Preparando imagens para sincronização…');
-      const{files,chunkCount,totalKB}=await buildGistFiles(appState,meta.chunkCount||0);
+      showStatus('warn','Sincronizando…');
+      const{files,chunkCount,totalKB,localCount}=await buildGistFiles(appState,meta.chunkCount||0);
       let res=await doPatchFiles(files);
       if(res.status===409){await new Promise(r=>setTimeout(r,1500));res=await doPatchFiles(files);}
       if(!res.ok)throw new Error(
@@ -6194,23 +6284,23 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
         :`Erro HTTP ${res.status}`);
       const json=await res.json();
       saveSyncMeta(json.updated_at,chunkCount);
-      showStatus('ok',`✓ Sincronizado! ${totalKB}KB em ${chunkCount+1} arquivo${chunkCount!==0?'s':''} — ${new Date(json.updated_at).toLocaleString('pt-BR')}`);
+      const localWarn=localCount>0?` ⚠️ ${localCount} imagem(ns) local(is) não sincronizadas.`:'';
+      showStatus('ok',`✓ Sincronizado! ${totalKB} KB — ${new Date(json.updated_at).toLocaleString('pt-BR')}${localWarn}`);
     }catch(e){showStatus('err',`Falha na sincronização: ${e.message}`);}
     finally{setLoading(false);}
   };
 
-  // Pull: load data + image chunks from Gist into local
   const pullFromGist=async()=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
     if(!window.confirm('Isso vai substituir todos os seus dados locais pelos dados do Gist. Confirmar?'))return;
     setLoading(true);
-    showStatus('warn','Carregando dados e imagens do Gist…');
+    showStatus('warn','Carregando dados do Gist…');
     try{
       const{gistJson,remoteData,remoteImageMap,chunkCount}=await fetchRemote();
       const rehydrated=Object.keys(remoteImageMap).length>0?rehydrateIdbRefs(remoteData,remoteImageMap):remoteData;
       onImport(rehydrated);
       saveSyncMeta(gistJson.updated_at,chunkCount);
-      showStatus('ok',`✓ Carregado! Exportado em: ${remoteData._exported?new Date(remoteData._exported).toLocaleString('pt-BR'):'data desconhecida'} · ${chunkCount} chunk${chunkCount!==1?'s':''} de imagens.`);
+      showStatus('ok',`✓ Carregado! Exportado em: ${remoteData._exported?new Date(remoteData._exported).toLocaleString('pt-BR'):'data desconhecida'}`);
     }catch(e){showStatus('err',`Falha ao carregar: ${e.message}`);}
     finally{setLoading(false);}
   };
@@ -6227,9 +6317,33 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
       setGistIdInput(json.id);
       saveConfig(tokenInput,json.id);
       saveSyncMeta(json.updated_at,chunkCount);
-      showStatus('ok','✓ Gist criado e configurado com imagens!');
+      showStatus('ok','✓ Gist criado e configurado!');
       setShowConfig(false);
     }catch(e){showStatus('err',`Falha ao criar Gist: ${e.message}`);}
+    finally{setLoading(false);}
+  };
+
+  const handleReupload=async()=>{
+    const keys=[...collectIdbKeys(appState)];
+    if(keys.length===0){showStatus('ok','✓ Nenhuma imagem local encontrada — tudo já está na nuvem!');return;}
+    if(!cloudConfigured&&!window.confirm(
+      `Cloudinary não está configurado. As imagens serão enviadas para o Imgur (limite de ~50/hora).\n\nPara uploads mais rápidos e sem limite, configure o Cloudinary abaixo.\n\nContinuar com Imgur?`
+    ))return;
+    setLoading(true);
+    setReuploadProgress({done:0,total:keys.length});
+    showStatus('warn',`Enviando ${keys.length} imagem(ns) para a nuvem…`);
+    try{
+      const updatedState=await reuploadLocalImages(appState,(done,total)=>{
+        setReuploadProgress({done,total});
+        showStatus('warn',`Enviando imagens… ${done}/${total}`);
+      });
+      onImport(updatedState);
+      setReuploadProgress(null);
+      showStatus('ok',`✓ Imagens enviadas para a nuvem! Agora você pode sincronizar normalmente.`);
+    }catch(e){
+      setReuploadProgress(null);
+      showStatus('err',`Falha no re-envio: ${e.message}`);
+    }
     finally{setLoading(false);}
   };
 
@@ -6243,7 +6357,7 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=ev=>{
-      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok',`✓ Importado com sucesso!`);}
+      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok','✓ Importado com sucesso!');}
       catch{showStatus('err','Arquivo inválido.');}
     };
     reader.readAsText(file);e.target.value='';
@@ -6261,7 +6375,7 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
       <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist para usar em qualquer computador.</p>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist. Imagens ficam na nuvem (Cloudinary/Imgur).</p>
 
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:10,marginBottom:isMobile?16:24}}>
@@ -6273,11 +6387,35 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
         ))}
       </div>
 
+      {/* Local image warning banner */}
+      {localImgCount>0&&(
+        <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <Icon name="image" size={16} style={{color:'#92700b',flexShrink:0}}/>
+          <div style={{flex:1,fontSize:'.83rem',color:'#78350F'}}>
+            <strong>{localImgCount} imagem(ns)</strong> armazenada(s) apenas neste dispositivo — não sincronizarão com outros.
+            Clique em <strong>"Re-enviar para Nuvem"</strong> abaixo para corrigi-las.
+          </div>
+        </div>
+      )}
+
       {/* Status message */}
       {status&&(
         <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':status.type==='warn'?'#FEF9E7':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':status.type==='warn'?'#fde68a':'#FECACA'}`,color:status.type==='ok'?'#276b3e':status.type==='warn'?'#92700b':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':status.type==='warn'?'alert-triangle':'alert-circle'} size={16}/>{status.msg}
+          <Icon name={status.type==='ok'?'check-circle':status.type==='warn'?'loader':'alert-circle'} size={16}/>{status.msg}
           <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
+        </div>
+      )}
+
+      {/* Re-upload progress bar */}
+      {reuploadProgress&&(
+        <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 18px',marginBottom:16}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:'.82rem',fontWeight:600}}>
+            <span>Enviando imagens para a nuvem…</span>
+            <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
+          </div>
+          <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+            <div style={{height:'100%',background:'var(--text)',borderRadius:3,transition:'width .3s',width:`${Math.round(reuploadProgress.done/reuploadProgress.total*100)}%`}}/>
+          </div>
         </div>
       )}
 
@@ -6295,7 +6433,7 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
         </div>
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-dark" style={{flex:1,justifyContent:'center',padding:'10px 0',fontSize:'.9rem'}} onClick={syncNow} disabled={loading}>
-            <Icon name={loading?'loader':'upload-cloud'} size={15}/> {loading?'Sincronizando…':'Salvar no Gist'}
+            <Icon name={loading?'loader':'upload-cloud'} size={15}/> {loading?'Aguarde…':'Salvar no Gist'}
           </button>
           {configured&&(
             <button className="btn btn-outline" style={{padding:'10px 16px'}} onClick={pullFromGist} disabled={loading} title="Carregar dados do Gist para este computador">
@@ -6304,6 +6442,76 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
           )}
         </div>
         {configured&&<p style={{fontSize:'.72rem',color:'var(--muted)',marginTop:10,marginBottom:0}}>"Salvar no Gist" envia os dados deste computador. O botão <Icon name="download-cloud" size={11}/> carrega os dados do Gist (sobrescreve o local).</p>}
+      </div>
+
+      {/* ── Cloud Image Storage ─────────────────────────────────────────────── */}
+      <div className="card" style={{marginBottom:16,overflow:'hidden'}}>
+        <button onClick={()=>setShowImgConfig(!showImgConfig)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 24px',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:600,color:'var(--text)'}}>
+          <span style={{display:'flex',alignItems:'center',gap:8}}>
+            <Icon name="image" size={15}/>
+            Imagens na Nuvem
+            {localImgCount>0&&<span style={{background:'#FEF9E7',color:'#92700b',border:'1px solid #fde68a',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em'}}>{localImgCount} locais</span>}
+            {cloudConfigured&&localImgCount===0&&<span style={{background:'#E8F5EC',color:'#276b3e',border:'1px solid #bbf7d0',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em'}}>✓ Configurado</span>}
+          </span>
+          <Icon name={showImgConfig?'chevron-up':'chevron-down'} size={15} style={{color:'var(--muted)'}}/>
+        </button>
+        {showImgConfig&&(
+          <div style={{padding:'0 24px 24px',borderTop:'1px solid var(--border)'}}>
+            <div style={{paddingTop:16,marginBottom:16,fontSize:'.82rem',color:'var(--muted)',lineHeight:1.6,background:'var(--bg)',borderRadius:8,padding:'12px 14px'}}>
+              <strong style={{color:'var(--text)'}}>Como funciona:</strong> Imagens são enviadas para Cloudinary ou Imgur ao serem adicionadas.
+              Apenas a URL (<code style={{background:'var(--border)',padding:'1px 4px',borderRadius:3}}>https://</code>) fica salva no Gist, então a sincronização é sempre instantânea.
+              <br/><strong style={{color:'#92700b'}}>Cloudinary recomendado</strong> — sem limite de taxa, 25 GB grátis.
+            </div>
+
+            {/* Cloudinary config */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
+                Cloudinary <span style={{fontSize:'.7rem',fontWeight:400,color:'var(--muted)'}}>— recomendado</span>
+              </div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>
+                1. Crie conta grátis em <a href="https://cloudinary.com" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>cloudinary.com</a>.<br/>
+                2. No Dashboard → Settings → Upload, crie um preset <strong>"Unsigned"</strong>.<br/>
+                3. Copie o <strong>Cloud Name</strong> do Dashboard e o <strong>Preset Name</strong> abaixo.
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                <div>
+                  <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Cloud Name</div>
+                  <input className="input-box" value={cloudNameInput} onChange={e=>setCloudNameInput(e.target.value)} placeholder="ex: my-cloud-name" style={{fontFamily:'monospace'}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Upload Preset</div>
+                  <input className="input-box" value={presetInput} onChange={e=>setPresetInput(e.target.value)} placeholder="ex: boardhub_unsigned" style={{fontFamily:'monospace'}}/>
+                </div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Pasta (opcional)</div>
+                <input className="input-box" value={folderInput} onChange={e=>setFolderInput(e.target.value)} placeholder="boardhub" style={{fontFamily:'monospace'}}/>
+              </div>
+              <button className="btn btn-dark" onClick={()=>{
+                const cfg={cloudName:cloudNameInput.trim(),preset:presetInput.trim(),folder:folderInput.trim()||'boardhub'};
+                saveCloudImgCfg(cfg);setCloudCfg(cfg);
+                showStatus('ok','✓ Cloudinary configurado! Novas imagens serão enviadas automaticamente.');
+              }} disabled={!cloudNameInput||!presetInput}>
+                <Icon name="check" size={13}/> Salvar configuração Cloudinary
+              </button>
+              {cloudConfigured&&<button className="btn btn-ghost" style={{marginLeft:8}} onClick={()=>{saveCloudImgCfg({});setCloudCfg({});setCloudNameInput('');setPresetInput('');showStatus('warn','Cloudinary desconectado. Usando Imgur como fallback.');}}>
+                Desconectar
+              </button>}
+            </div>
+
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:4}}>
+              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:4}}>Re-enviar imagens locais para a nuvem</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:12}}>
+                {localImgCount>0
+                  ?`${localImgCount} imagem(ns) estão apenas neste dispositivo. Clique para enviá-las ao Cloudinary/Imgur e habilitá-las para sincronização.`
+                  :'Todas as imagens já estão na nuvem. ✓'}
+              </div>
+              <button className="btn btn-outline" onClick={handleReupload} disabled={loading||localImgCount===0} style={{borderColor:localImgCount>0?'var(--text)':'var(--border)',color:localImgCount>0?'var(--text)':'var(--muted)'}}>
+                <Icon name="upload-cloud" size={14}/> Re-enviar {localImgCount>0?`${localImgCount} imagem(ns)`:'(nenhuma local)'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Config section (collapsible) */}
@@ -6367,7 +6575,6 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
     </div>
   );
 };
-
 // ─── MENTORS HUB ─────────────────────────────────────────────────────────────
 const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const [form,setForm]=useState({...mentor});
