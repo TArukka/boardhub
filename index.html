@@ -180,10 +180,9 @@ const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? 
 const lsSave = s => {
   try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
   catch(e) {
-    // Quota exceeded — try stripping any accidental base64 that slipped through
+    // Quota exceeded — strip any accidental base64 that slipped through (single pass)
     try {
-      const stripped = JSON.parse(JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
-      localStorage.setItem(LS_KEY, JSON.stringify(stripped));
+      localStorage.setItem(LS_KEY, JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
     } catch { /* silent — idb:// refs and https:// URLs never cause quota issues */ }
   }
 };
@@ -268,7 +267,7 @@ const _resolveIcon=(name)=>{
     tmp.style.cssText='position:fixed;left:-9999px;top:-9999px;pointer-events:none;opacity:0';
     tmp.innerHTML='<i data-lucide="'+name+'"></i>';
     document.body.appendChild(tmp);
-    lucide.createIcons();
+    lucide.createIcons({nodes:[tmp]});
     const svg=tmp.querySelector('svg');
     if(svg)_svgCache[name]=svg.innerHTML;
     tmp.remove();
@@ -305,8 +304,7 @@ const useIsMobile=(breakpoint=768)=>{
     // UA won't change at runtime, so only listen for resize (desktop responsive testing)
     const handler=()=>{ if(!isMobileUA()) setAutoMobile(detect()); };
     mq.addEventListener('change',handler);
-    window.addEventListener('resize',handler);
-    return()=>{mq.removeEventListener('change',handler);window.removeEventListener('resize',handler);};
+    return()=>{ mq.removeEventListener('change',handler); };
   },[breakpoint]);
   return autoMobile;
 };
@@ -400,6 +398,12 @@ const Img=({src,...props})=>{
   return <img src={url} {...props}/>;
 };
 
+// BgImg: a <div> whose background-image auto-resolves idb:// refs
+const BgImg=({src,className,style,children,...props})=>{
+  const url=useIdbUrl(src);
+  return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
+};
+
 // FIX 3: Upload images sequentially in small batches to avoid Imgur rate-limit
 // cascades where 20 simultaneous requests all fail, each blocking for 8s timeout,
 // before the IDB fallback fires. Now we skip Imgur entirely for bulk uploads (>3 files).
@@ -411,7 +415,9 @@ const _uploadSingle=async (file, tryImgur=true)=>{
       const body=new FormData();
       body.append('image',b64.split(',')[1]);
       body.append('type','base64');
-      const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:AbortSignal.timeout(8000)});
+      const ac=new AbortController();const _t=setTimeout(()=>ac.abort(),8000);
+      const res=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{Authorization:`Client-ID ${IMGUR_CLIENT_ID}`},body,signal:ac.signal});
+      clearTimeout(_t);
       const json=await res.json();
       if(json.success)return json.data.link;
     }catch{/* offline or rate-limited — fall through */}
@@ -457,7 +463,7 @@ const resolveIdbRefs=async obj=>{
 // Build payload: include images but warn if > 900KB (Gist limit is 1MB)
 const buildSyncPayload=async(state,includeImages=true)=>{
   const resolved=includeImages?await resolveIdbRefs(state):stripBase64(state);
-  const json=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()},null,2);
+  const json=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()});
   return json;
 };
 
@@ -935,7 +941,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {active.map(p=>(
                 <div key={p.id} className="card card-click" onClick={()=>setView('projects')} style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
-                  <div style={{width:36,height:36,borderRadius:7,flexShrink:0,backgroundImage:`url(${p.cover})`,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                  <BgImg src={p.cover} style={{width:36,height:36,borderRadius:7,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
                     <div style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.client}</div>
@@ -959,7 +965,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
                   return(
                     <div key={p.id} className="card" style={{padding:'10px 14px'}}>
                       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,paddingBottom:6,borderBottom:'1px solid var(--border)'}}>
-                        <div style={{width:22,height:22,borderRadius:5,flexShrink:0,backgroundImage:`url(${p.cover})`,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                        <BgImg src={p.cover} style={{width:22,height:22,borderRadius:5,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                         <span style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{p.title}</span>
                         <span style={{fontSize:'.65rem',color:'var(--muted)',flexShrink:0}}>{openTasks.length} tarefa{openTasks.length!==1?'s':''}</span>
                       </div>
@@ -1041,7 +1047,7 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
         <div onClick={()=>coverRef.current.click()} style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
           onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-          {form.cover?<img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
+          {form.cover?<Img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
           {form.cover&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',gap:6,fontSize:'.82rem'}}><Icon name="camera" size={16}/>Trocar</div>}
           <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
         </div>
@@ -1147,7 +1153,8 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
                     <Icon name="trash-2" size={12}/>
                   </button>
                 )}
-                <div style={{height:140,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',position:'relative',backgroundColor:'#E8E3DC'}}>
+                <div style={{height:140,position:'relative',backgroundColor:'#E8E3DC'}}>
+                  <BgImg src={p.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',backgroundSize:'cover',backgroundPosition:'center'}}/>
                   <div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',backdropFilter:'blur(4px)',borderRadius:5,padding:'3px 8px'}}>
                     <span style={{fontSize:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)'}}>{p.type==='work'?'Trabalho':'Pessoal'}</span>
                   </div>
@@ -1198,7 +1205,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
                   return(
                     <div key={p.id} className="card" style={{padding:'14px 16px',overflow:'hidden'}}>
                       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,paddingBottom:10,borderBottom:'1px solid var(--border)'}}>
-                        <div style={{width:20,height:20,borderRadius:5,flexShrink:0,backgroundImage:p.cover?`url(${p.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                        <BgImg src={p.cover} style={{width:20,height:20,borderRadius:5,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                         <span style={{fontWeight:600,fontSize:'.78rem',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</span>
                         <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0}}>{pending.length}</span>
                       </div>
@@ -1622,7 +1629,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
 
       {/* Cover */}
       <div className="cover-wrap" style={{height:isMobile?140:260,borderRadius:isMobile?12:16,overflow:'hidden',marginBottom:isMobile?20:28}}>
-        <div style={{position:'absolute',inset:0,backgroundImage:local.cover?`url(${local.cover})`:'none',backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
+        <BgImg src={local.cover} style={{position:'absolute',inset:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
         <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.2) 60%,transparent 100%)'}}/>
         <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white'}}><Icon name="camera" size={isMobile?22:28}/><span style={{fontSize:'.82rem',fontWeight:500}}>Trocar capa</span></div>
@@ -1727,7 +1734,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                             color:on?'white':'var(--muted)',
                             fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
                           <div style={{width:22,height:22,borderRadius:'50%',background:on?'rgba(255,255,255,.2)':'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500}}>
-                            {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                            {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                           </div>
                           {m.name}
                           {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
@@ -1745,7 +1752,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                   {linkedMentors.map(m=>(
                     <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:10}}>
                       <div style={{width:28,height:28,borderRadius:'50%',background:'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,marginTop:1}}>
-                        {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                        {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:'.82rem'}}>{m.name} <span style={{fontWeight:400,color:'var(--muted)',fontSize:'.74rem'}}>· {m.area}</span></div>
@@ -1805,7 +1812,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                       }}
                         style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,border:'1px solid '+(on?'var(--text)':'var(--border)'),background:on?'var(--text)':'transparent',cursor:full?'not-allowed':'pointer',opacity:full?0.4:1,transition:'all .15s',fontFamily:'Figtree,sans-serif',textAlign:'left',width:'100%'}}>
                         <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.78rem',fontWeight:500}}>
-                          {m.photo?<img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                          {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                         </div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:'.76rem',fontWeight:600,color:on?'white':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
@@ -2501,7 +2508,7 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
         <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
           <div onClick={()=>photoRef.current.click()} style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
             onMouseEnter={e=>e.currentTarget.querySelector('.ch').style.opacity=1} onMouseLeave={e=>e.currentTarget.querySelector('.ch').style.opacity=0}>
-            {form.photo?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+            {form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
               :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{form.name.charAt(0)||'?'}</span>}
             <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
           </div>
@@ -2556,7 +2563,7 @@ const Clients=({clients,setClients,isMobile})=>{
         <div className="card" style={{overflow:'hidden',borderRadius:12}}>
           {visible.map(c=>(
             <div key={c.id} className="compact-row" onClick={()=>setSelected(c)}>
-              {c.photo?<img src={c.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+              {c.photo?<Img src={c.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:44,height:44,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
               <div className="compact-row-info">
                 <div className="compact-row-title">{c.name}</div>
@@ -2572,7 +2579,7 @@ const Clients=({clients,setClients,isMobile})=>{
         {visible.map(c=>(
           <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
             <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-              {c.photo?<img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+              {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
               <div>
                 <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
@@ -2854,7 +2861,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
             onMouseEnter={e=>e.currentTarget.querySelector('.mh').style.opacity=1}
             onMouseLeave={e=>e.currentTarget.querySelector('.mh').style.opacity=0}>
             {form.photo
-              ?<img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+              ?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
               :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{(form.name||'?').charAt(0)}</span>}
             <div className="mh" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={16} style={{color:'white'}}/></div>
           </div>
@@ -2894,7 +2901,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
                 <input ref={imgRefs[idx]} type="file" accept="image/*" style={{display:'none'}} onChange={e=>handleRefImg(idx,e)}/>
                 {photos[idx]
                   ?<>
-                    <img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                    <Img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                     <button onClick={e=>{e.stopPropagation();removeRefImg(idx);}}
                       style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,.55)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'white'}}>
                       <Icon name="x" size={10}/>
@@ -2980,7 +2987,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
           {visible.map(m=>(
             <div key={m.id} className="compact-row" onClick={()=>setSelected(m)}>
               {m.photo
-                ?<img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                ?<Img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
               }
               <div className="compact-row-info">
@@ -3003,7 +3010,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
             <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
               {photos.length>0
                 ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
-                    {photos.slice(0,4).map((img,i)=><img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
+                    {photos.slice(0,4).map((img,i)=><Img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
                   </div>
                 :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
@@ -3012,7 +3019,7 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
               <div style={{padding:'14px 16px'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
                   {m.photo
-                    ?<img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
+                    ?<Img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0,border:'2px solid var(--surface)'}}/>
                     :<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.95rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
                   }
                   <div style={{minWidth:0}}>
@@ -3142,7 +3149,7 @@ const App=()=>{
   };
 
   const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
-  const // Walk imported data: store base64 images into IDB and replace with idb:// refs
+  // Walk imported data: store base64 images into IDB and replace with idb:// refs
   const ingestImages=async obj=>{
     if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
     if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
@@ -3152,7 +3159,7 @@ const App=()=>{
     return obj;
   };
 
-  handleImport=async data=>{
+  const handleImport=async data=>{
     const ingested=await ingestImages(data);
     if(ingested.projects)setProjects(ingested.projects);
     if(ingested.clients)setClients(ingested.clients);
