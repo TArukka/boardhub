@@ -460,12 +460,114 @@ const resolveIdbRefs=async obj=>{
   }
   return obj;
 };
-// Build payload: include images but warn if > 900KB (Gist limit is 1MB)
+// Build payload for manual JSON export (single self-contained file, images embedded)
 const buildSyncPayload=async(state,includeImages=true)=>{
   const resolved=includeImages?await resolveIdbRefs(state):stripBase64(state);
-  const json=JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()});
-  return json;
+  return JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()});
 };
+
+// ─── SYNC META — version tracking for multi-device conflict detection ────────
+// Stores the Gist's updated_at timestamp and chunk count after every read/write.
+// Used to detect whether another device wrote to the Gist since our last sync.
+const SYNC_META_KEY='boardhub_sync_meta';
+const loadSyncMeta=()=>{try{return JSON.parse(localStorage.getItem(SYNC_META_KEY))||{};}catch{return{};}};
+const saveSyncMeta=(updatedAt,chunkCount)=>{try{localStorage.setItem(SYNC_META_KEY,JSON.stringify({updatedAt,chunkCount}));}catch{}};
+
+// ─── CHUNKED MULTI-FILE GIST SYNC ────────────────────────────────────────────
+// Strategy: main data file keeps lightweight idb:// refs; images are resolved to
+// base64 and split across boardhub-imgs-0.json … boardhub-imgs-N.json (≤800 KB each).
+// The PATCH call sends all files in one request — no per-file size limit problem.
+const IMG_CHUNK_BYTES = 800 * 1024;
+const IMG_FILE_PREFIX = 'boardhub-imgs-';
+
+// Collect every unique idb:// key referenced anywhere in the state object
+const collectIdbKeys=(obj,set=new Set())=>{
+  if(Array.isArray(obj)){obj.forEach(x=>collectIdbKeys(x,set));}
+  else if(obj&&typeof obj==='object'){Object.values(obj).forEach(x=>collectIdbKeys(x,set));}
+  else if(typeof obj==='string'&&obj.startsWith('idb://'))set.add(obj.slice(6));
+  return set;
+};
+
+// Resolve a set of idb keys → { 'idb://key': 'data:image/...' }
+const resolveImageMap=async keys=>{
+  const map={};
+  for(const key of keys){
+    try{const blob=await idbGet(key);if(blob)map['idb://'+key]=await blobToBase64(blob);}catch{}
+  }
+  return map;
+};
+
+// Split imageMap into chunks of ≤IMG_CHUNK_BYTES, return array of JSON strings
+const chunkImageMap=imageMap=>{
+  const chunks=[];
+  let current={};let size=0;
+  for(const [k,v] of Object.entries(imageMap)){
+    const entry=k.length+v.length+10;
+    if(size+entry>IMG_CHUNK_BYTES&&Object.keys(current).length>0){
+      chunks.push(JSON.stringify(current));current={};size=0;
+    }
+    current[k]=v;size+=entry;
+  }
+  if(Object.keys(current).length>0)chunks.push(JSON.stringify(current));
+  return chunks;
+};
+
+// Replace idb:// refs in obj using a map { 'idb://key': 'data:image/...' }
+const rehydrateIdbRefs=(obj,map)=>{
+  if(Array.isArray(obj))return obj.map(x=>rehydrateIdbRefs(x,map));
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=rehydrateIdbRefs(obj[k],map);return out;}
+  if(typeof obj==='string'&&obj.startsWith('idb://')&&map[obj])return map[obj];
+  return obj;
+};
+
+// Build the complete Gist files object for a PATCH/POST body
+// Returns { 'boardhub-data.json': {content}, 'boardhub-imgs-0.json': {content}, … }
+// Pass prevChunkCount to null-out stale chunk files that are no longer needed
+const buildGistFiles=async(state,prevChunkCount=0)=>{
+  const dataJson=JSON.stringify({...stripBase64(state),_v:'2.0',_exported:new Date().toISOString()});
+  const idbKeys=collectIdbKeys(state);
+  const imageMap=await resolveImageMap(idbKeys);
+  const chunks=chunkImageMap(imageMap);
+  const files={'boardhub-data.json':{content:dataJson}};
+  chunks.forEach((c,i)=>{files[IMG_FILE_PREFIX+i+'.json']={content:c};});
+  // Null out stale chunk files from a previous sync that had more chunks
+  for(let i=chunks.length;i<prevChunkCount;i++)files[IMG_FILE_PREFIX+i+'.json']=null;
+  return{files,chunkCount:chunks.length,totalKB:Math.round((dataJson.length+chunks.reduce((s,c)=>s+c.length,0))/1024)};
+};
+
+// Fetch all chunk files from a Gist JSON response, return merged imageMap
+const fetchImageChunks=async(gistJson,authHeader)=>{
+  const imageMap={};
+  const chunkFiles=Object.entries(gistJson.files)
+    .filter(([name])=>name.startsWith(IMG_FILE_PREFIX)&&name.endsWith('.json'))
+    .sort(([a],[b])=>a.localeCompare(b));
+  for(const [,file] of chunkFiles){
+    try{
+      let content=file.content;
+      if(file.truncated){const r=await fetch(file.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
+      Object.assign(imageMap,JSON.parse(content));
+    }catch{}
+  }
+  return imageMap;
+};
+
+// ─── CONFLICT BANNER ─────────────────────────────────────────────────────────
+const ConflictBanner=({remoteUpdatedAt,onLoad,onDismiss})=>(
+  <div style={{position:'sticky',top:0,zIndex:60,background:'#FEF9E7',borderBottom:'2px solid #F59E0B',padding:'12px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+    <Icon name="alert-triangle" size={16} style={{color:'#92700b',flexShrink:0}}/>
+    <span style={{fontSize:'.85rem',color:'#78350F',flex:1,minWidth:200}}>
+      <strong>Conflito detectado:</strong> outro dispositivo salvou alterações em {new Date(remoteUpdatedAt).toLocaleString('pt-BR')}. O que deseja fazer?
+    </span>
+    <div style={{display:'flex',gap:8,flexShrink:0}}>
+      <button onClick={onLoad} className="btn" style={{background:'#92700b',color:'white',padding:'7px 16px',fontSize:'.82rem'}}>
+        <Icon name="download-cloud" size={13}/> Carregar versão remota
+      </button>
+      <button onClick={onDismiss} className="btn btn-outline" style={{padding:'7px 12px',fontSize:'.82rem',borderColor:'#F59E0B',color:'#92700b'}}>
+        Manter local
+      </button>
+    </div>
+  </div>
+);
 
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
 const TrashBanner=({label,onExit})=>(
@@ -2608,7 +2710,7 @@ const Clients=({clients,setClients,isMobile})=>{
 };
 
 // ─── SYNC HUB (GitHub Gist) ───────────────────────────────────────────────────
-const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
+const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
   const GIST_LS_KEY='boardhub_gist_config';
   const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{return{};}};
   const [token,setToken]=useState(()=>loadConfig().token||'');
@@ -2623,62 +2725,86 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
   const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),5000);};
 
-  // Helper: push content to Gist, returns response json
-  const doPatch=async(content)=>fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content}}})});
+  // Helper: push files to Gist, returns fetch Response
+  const doPatchFiles=async(filesObj)=>fetch(`https://api.github.com/gists/${gistId}`,{
+    method:'PATCH',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({files:filesObj})
+  });
 
-  // Manual sync: push to Gist with images, auto-retry on 409 conflict
+  // Fetch Gist and return { gistJson, remoteData, remoteImageMap, chunkCount }
+  // Throws on network/auth errors
+  const fetchRemote=async(authToken=token)=>{
+    const authHeader=`Bearer ${authToken}`;
+    const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:authHeader}});
+    if(res.status===401||res.status===403)throw new Error(`Token inválido ou sem permissão (${res.status}).`);
+    if(res.status===404)throw new Error('Gist não encontrado (404). Verifique o Gist ID.');
+    if(!res.ok)throw new Error(`Erro HTTP ${res.status}`);
+    const gistJson=await res.json();
+    const dataFile=gistJson.files['boardhub-data.json'];
+    if(!dataFile)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
+    let content=dataFile.content;
+    if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
+    const remoteData=JSON.parse(content);
+    const remoteImageMap=await fetchImageChunks(gistJson,authHeader);
+    const chunkCount=Object.keys(gistJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
+    return{gistJson,remoteData,remoteImageMap,chunkCount};
+  };
+
+  // Manual sync: check-then-write to avoid overwriting another device's changes
   const syncNow=async()=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
     setLoading(true);
+    showStatus('warn','Verificando versão remota…');
     try{
-      let content=await buildSyncPayload(appState,true);
-      const sizeKB=Math.round(content.length/1024);
-      let withImages=true;
-      if(content.length>900*1024){content=await buildSyncPayload(appState,false);withImages=false;}
-      let res=await doPatch(content);
-      if(res.status===409){
-        // Conflict: another device updated the Gist — wait briefly and retry once
-        await new Promise(r=>setTimeout(r,1500));
-        res=await doPatch(content);
+      const meta=loadSyncMeta();
+      // Step 1: check remote updated_at
+      if(meta.updatedAt){
+        const checkRes=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`Bearer ${token}`}});
+        if(checkRes.ok){
+          const checkJson=await checkRes.json();
+          if(checkJson.updated_at>meta.updatedAt){
+            // Remote is newer — fetch full data and surface conflict to user
+            const remoteImageMap=await fetchImageChunks(checkJson,`Bearer ${token}`);
+            const dataFile=checkJson.files['boardhub-data.json'];
+            let content=dataFile.content;
+            if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:`Bearer ${token}`}});content=await r.text();}
+            const remoteData=JSON.parse(content);
+            const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
+            onConflict({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
+            showStatus('warn','Conflito detectado — veja o banner acima.');
+            return;
+          }
+        }
       }
-      if(!res.ok)throw new Error(res.status===409
-        ?'Conflito de versão (409) — outro dispositivo sincronizou ao mesmo tempo. Tente novamente em alguns segundos, ou use ↓ para carregar a versão mais recente primeiro.'
-        :res.status===401||res.status===403
-        ?`Token inválido ou sem permissão (${res.status}). Verifique o token em Configuração.`
-        :res.status===404
-        ?'Gist não encontrado (404). Verifique o Gist ID em Configuração.'
+      // Step 2: no conflict — write
+      showStatus('warn','Preparando imagens para sincronização…');
+      const{files,chunkCount,totalKB}=await buildGistFiles(appState,meta.chunkCount||0);
+      let res=await doPatchFiles(files);
+      if(res.status===409){await new Promise(r=>setTimeout(r,1500));res=await doPatchFiles(files);}
+      if(!res.ok)throw new Error(
+        res.status===409?'Conflito de versão. Tente novamente em instantes.'
+        :res.status===401||res.status===403?`Token inválido (${res.status}).`
         :`Erro HTTP ${res.status}`);
       const json=await res.json();
-      showStatus(withImages?'ok':'warn',withImages
-        ?`✓ Sincronizado com imagens! (${sizeKB}KB) — ${new Date(json.updated_at).toLocaleString('pt-BR')}`
-        :`⚠ Sincronizado SEM imagens (payload ${sizeKB}KB excede o limite do Gist). Use Exportar para backup completo.`);
+      saveSyncMeta(json.updated_at,chunkCount);
+      showStatus('ok',`✓ Sincronizado! ${totalKB}KB em ${chunkCount+1} arquivo${chunkCount!==0?'s':''} — ${new Date(json.updated_at).toLocaleString('pt-BR')}`);
     }catch(e){showStatus('err',`Falha na sincronização: ${e.message}`);}
     finally{setLoading(false);}
   };
 
-  // Pull: load data from Gist into local
+  // Pull: load data + image chunks from Gist into local
   const pullFromGist=async()=>{
     if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
     if(!window.confirm('Isso vai substituir todos os seus dados locais pelos dados do Gist. Confirmar?'))return;
     setLoading(true);
+    showStatus('warn','Carregando dados e imagens do Gist…');
     try{
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`Bearer ${token}`}});
-      if(res.status===401||res.status===403)throw new Error(`Token inválido ou sem permissão (${res.status}). Verifique o token em Configuração.`);
-      if(res.status===404)throw new Error('Gist não encontrado (404). Verifique o Gist ID.');
-      if(!res.ok)throw new Error(`Erro HTTP ${res.status}`);
-      const json=await res.json();
-      const file=json.files['boardhub-data.json'];
-      if(!file)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
-      // GitHub truncates large files — fetch raw content if needed
-      let content=file.content;
-      if(file.truncated){
-        const rawRes=await fetch(file.raw_url,{headers:{Authorization:`Bearer ${token}`}});
-        if(!rawRes.ok)throw new Error(`Erro ao buscar conteúdo raw: ${rawRes.status}`);
-        content=await rawRes.text();
-      }
-      const data=JSON.parse(content);
-      onImport(data);
-      showStatus('ok',`✓ Dados carregados do Gist! Exportado em: ${data._exported?new Date(data._exported).toLocaleString('pt-BR'):'data desconhecida'}.`);
+      const{gistJson,remoteData,remoteImageMap,chunkCount}=await fetchRemote();
+      const rehydrated=Object.keys(remoteImageMap).length>0?rehydrateIdbRefs(remoteData,remoteImageMap):remoteData;
+      onImport(rehydrated);
+      saveSyncMeta(gistJson.updated_at,chunkCount);
+      showStatus('ok',`✓ Carregado! Exportado em: ${remoteData._exported?new Date(remoteData._exported).toLocaleString('pt-BR'):'data desconhecida'} · ${chunkCount} chunk${chunkCount!==1?'s':''} de imagens.`);
     }catch(e){showStatus('err',`Falha ao carregar: ${e.message}`);}
     finally{setLoading(false);}
   };
@@ -2687,13 +2813,15 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
     if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
     setLoading(true);
     try{
-      const content=await buildSyncPayload(appState,true);
-      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`Bearer ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content}}})});
+      const{files,chunkCount}=await buildGistFiles(appState,0);
+      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`Bearer ${tokenInput}`,'Content-Type':'application/json'},
+        body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
       setGistIdInput(json.id);
       saveConfig(tokenInput,json.id);
-      showStatus('ok',`✓ Gist criado e configurado!`);
+      saveSyncMeta(json.updated_at,chunkCount);
+      showStatus('ok','✓ Gist criado e configurado com imagens!');
       setShowConfig(false);
     }catch(e){showStatus('err',`Falha ao criar Gist: ${e.message}`);}
     finally{setLoading(false);}
@@ -3065,6 +3193,9 @@ const App=()=>{
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
   const [saveFlash,setSaveFlash]=useState(false);
+  const [conflictPending,setConflictPending]=useState(null);
+  const conflictPendingRef=useRef(null);
+  conflictPendingRef.current=conflictPending;
 
   // Initialize from localStorage if available, else seed
   const [projects,setProjects]=useState(()=>persisted?.projects||SEED.projects);
@@ -3078,6 +3209,46 @@ const App=()=>{
 
   // Persist pomoData whenever it changes
   useEffect(()=>{ pomoSave(pomoData); },[pomoData]);
+
+  // visibilitychange: when user switches back to this tab, quietly check if
+  // another device wrote to the Gist. If so, show the conflict banner.
+  useEffect(()=>{
+    const handleVisibility=async()=>{
+      if(document.visibilityState!=='visible')return;
+      if(conflictPendingRef.current)return;
+      const cfg=loadGistCfg();
+      if(!cfg.token||!cfg.gistId)return;
+      try{
+        const authHeader='Bearer '+cfg.token;
+        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
+        if(!res.ok)return;
+        const gistJson=await res.json();
+        const meta=loadSyncMeta();
+        if(!meta.updatedAt||gistJson.updated_at<=meta.updatedAt)return;
+        // Remote is newer — fetch full data and show conflict banner
+        const dataFile=gistJson.files['boardhub-data.json'];
+        if(!dataFile)return;
+        let content=dataFile.content;
+        if(dataFile.truncated){const r2=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r2.text();}
+        const remoteData=JSON.parse(content);
+        const remoteImageMap=await fetchImageChunks(gistJson,authHeader);
+        const chunkCount=Object.keys(gistJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
+        setConflictPending({remoteData,remoteImageMap,remoteUpdatedAt:gistJson.updated_at,chunkCount});
+      }catch{}
+    };
+    document.addEventListener('visibilitychange',handleVisibility);
+    return()=>document.removeEventListener('visibilitychange',handleVisibility);
+  },[]);
+
+  const resolveConflictLoad=async()=>{
+    if(!conflictPending)return;
+    const{remoteData,remoteImageMap,remoteUpdatedAt,chunkCount}=conflictPending;
+    const rehydrated=Object.keys(remoteImageMap).length>0?rehydrateIdbRefs(remoteData,remoteImageMap):remoteData;
+    await handleImport(rehydrated);
+    saveSyncMeta(remoteUpdatedAt,chunkCount);
+    setConflictPending(null);
+  };
+  const resolveConflictDismiss=()=>setConflictPending(null);
 
   // Auto-save to localStorage — debounced to avoid thrashing on every keystroke
   const saveFlashTimer=useRef(null);
@@ -3093,15 +3264,19 @@ const App=()=>{
     if(!cfg.token||!cfg.gistId)return;
     (async()=>{
       try{
-        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:'Bearer '+cfg.token}});
+        const authHeader='Bearer '+cfg.token;
+        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
         if(!res.ok)return;
-        const json=await res.json();
-        const file=json.files['boardhub-data.json'];
-        if(!file)return;
-        let content=file.content;
-        if(file.truncated){const r2=await fetch(file.raw_url,{headers:{Authorization:'Bearer '+cfg.token}});content=await r2.text();}
+        const gistJson=await res.json();
+        const dataFile=gistJson.files['boardhub-data.json'];
+        if(!dataFile)return;
+        let content=dataFile.content;
+        if(dataFile.truncated){const r2=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r2.text();}
         const data=JSON.parse(content);
-        const ingested=await ingestImages(data);
+        // Load image chunks and rehydrate before ingest
+        const imageMap=await fetchImageChunks(gistJson,authHeader);
+        const rehydrated=Object.keys(imageMap).length>0?rehydrateIdbRefs(data,imageMap):data;
+        const ingested=await ingestImages(rehydrated);
         if(ingested.projects)setProjects(ingested.projects);
         if(ingested.clients)setClients(ingested.clients);
         if(ingested.mentors)setMentors(ingested.mentors);
@@ -3109,6 +3284,7 @@ const App=()=>{
         if(ingested.tasks)setTasks(ingested.tasks);
         if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
         if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
+        saveSyncMeta(gistJson.updated_at,chunkCount);
       }catch{}
     })();
   },[]);
@@ -3125,15 +3301,40 @@ const App=()=>{
       gistSyncTimer.current=setTimeout(async()=>{
         const cfg=loadGistCfg();
         if(!cfg.token||!cfg.gistId)return;
+        if(conflictPendingRef.current)return; // don't overwrite while conflict is pending
         try{
-          const content=await buildSyncPayload(state,false);
+          const authHeader='Bearer '+cfg.token;
+          const meta=loadSyncMeta();
+          // Check if remote was updated by another device before writing
+          if(meta.updatedAt){
+            const checkRes=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
+            if(checkRes.ok){
+              const checkJson=await checkRes.json();
+              if(checkJson.updated_at>meta.updatedAt){
+                // Remote is newer — surface conflict and skip write
+                const dataFile=checkJson.files['boardhub-data.json'];
+                if(dataFile){
+                  let content=dataFile.content;
+                  if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
+                  const remoteData=JSON.parse(content);
+                  const remoteImageMap=await fetchImageChunks(checkJson,authHeader);
+                  const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
+                  setConflictPending({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
+                }
+                return;
+              }
+            }
+          }
+          // No conflict — safe to write
+          const{files,chunkCount}=await buildGistFiles(state,meta.chunkCount||0);
           const doPatch=()=>fetch('https://api.github.com/gists/'+cfg.gistId,{
             method:'PATCH',
-            headers:{Authorization:'Bearer '+cfg.token,'Content-Type':'application/json'},
-            body:JSON.stringify({files:{'boardhub-data.json':{content}}})
+            headers:{Authorization:authHeader,'Content-Type':'application/json'},
+            body:JSON.stringify({files})
           });
           let r=await doPatch();
-          if(r.status===409){await new Promise(x=>setTimeout(x,2000+Math.random()*2000));await doPatch();}
+          if(r.status===409){await new Promise(x=>setTimeout(x,2000+Math.random()*2000));r=await doPatch();}
+          if(r.ok){const json=await r.json();saveSyncMeta(json.updated_at,chunkCount);}
         }catch{}
       },4000);
     },800);
@@ -3185,6 +3386,7 @@ const App=()=>{
         : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
+        {conflictPending&&<ConflictBanner remoteUpdatedAt={conflictPending.remoteUpdatedAt} onLoad={resolveConflictLoad} onDismiss={resolveConflictDismiss}/>}
         {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
         {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
@@ -3193,7 +3395,7 @@ const App=()=>{
         {view==='mentors'       && <MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        && <Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} isMobile={isMobile}/>}
+        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onConflict={setConflictPending} onClearSave={clearSave} isMobile={isMobile}/>}
       </main>
     </div>
   );
