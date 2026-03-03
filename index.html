@@ -2624,7 +2624,7 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),5000);};
 
   // Helper: push content to Gist, returns response json
-  const doPatch=async(content)=>fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content}}})});
+  const doPatch=async(content)=>fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'boardhub-data.json':{content}}})});
 
   // Manual sync: push to Gist with images, auto-retry on 409 conflict
   const syncNow=async()=>{
@@ -2643,7 +2643,11 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
       }
       if(!res.ok)throw new Error(res.status===409
         ?'Conflito de versão (409) — outro dispositivo sincronizou ao mesmo tempo. Tente novamente em alguns segundos, ou use ↓ para carregar a versão mais recente primeiro.'
-        :`Erro ${res.status}`);
+        :res.status===401||res.status===403
+        ?`Token inválido ou sem permissão (${res.status}). Verifique o token em Configuração.`
+        :res.status===404
+        ?'Gist não encontrado (404). Verifique o Gist ID em Configuração.'
+        :`Erro HTTP ${res.status}`);
       const json=await res.json();
       showStatus(withImages?'ok':'warn',withImages
         ?`✓ Sincronizado com imagens! (${sizeKB}KB) — ${new Date(json.updated_at).toLocaleString('pt-BR')}`
@@ -2658,15 +2662,17 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
     if(!window.confirm('Isso vai substituir todos os seus dados locais pelos dados do Gist. Confirmar?'))return;
     setLoading(true);
     try{
-      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${token}`}});
-      if(!res.ok)throw new Error(`Erro ${res.status}`);
+      const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.status===401||res.status===403)throw new Error(`Token inválido ou sem permissão (${res.status}). Verifique o token em Configuração.`);
+      if(res.status===404)throw new Error('Gist não encontrado (404). Verifique o Gist ID.');
+      if(!res.ok)throw new Error(`Erro HTTP ${res.status}`);
       const json=await res.json();
       const file=json.files['boardhub-data.json'];
       if(!file)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
       // GitHub truncates large files — fetch raw content if needed
       let content=file.content;
       if(file.truncated){
-        const rawRes=await fetch(file.raw_url,{headers:{Authorization:`token ${token}`}});
+        const rawRes=await fetch(file.raw_url,{headers:{Authorization:`Bearer ${token}`}});
         if(!rawRes.ok)throw new Error(`Erro ao buscar conteúdo raw: ${rawRes.status}`);
         content=await rawRes.text();
       }
@@ -2682,7 +2688,7 @@ const SyncHub=({appState,onImport,onClearSave,isMobile})=>{
     setLoading(true);
     try{
       const content=await buildSyncPayload(appState,true);
-      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`token ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content}}})});
+      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`Bearer ${tokenInput}`,'Content-Type':'application/json'},body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files:{'boardhub-data.json':{content}}})});
       if(!res.ok)throw new Error(`Erro ${res.status}`);
       const json=await res.json();
       setGistIdInput(json.id);
@@ -3087,13 +3093,13 @@ const App=()=>{
     if(!cfg.token||!cfg.gistId)return;
     (async()=>{
       try{
-        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:'token '+cfg.token}});
+        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:'Bearer '+cfg.token}});
         if(!res.ok)return;
         const json=await res.json();
         const file=json.files['boardhub-data.json'];
         if(!file)return;
         let content=file.content;
-        if(file.truncated){const r2=await fetch(file.raw_url,{headers:{Authorization:'token '+cfg.token}});content=await r2.text();}
+        if(file.truncated){const r2=await fetch(file.raw_url,{headers:{Authorization:'Bearer '+cfg.token}});content=await r2.text();}
         const data=JSON.parse(content);
         const ingested=await ingestImages(data);
         if(ingested.projects)setProjects(ingested.projects);
@@ -3123,7 +3129,7 @@ const App=()=>{
           const content=await buildSyncPayload(state,false);
           const doPatch=()=>fetch('https://api.github.com/gists/'+cfg.gistId,{
             method:'PATCH',
-            headers:{Authorization:'token '+cfg.token,'Content-Type':'application/json'},
+            headers:{Authorization:'Bearer '+cfg.token,'Content-Type':'application/json'},
             body:JSON.stringify({files:{'boardhub-data.json':{content}}})
           });
           let r=await doPatch();
