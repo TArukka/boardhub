@@ -1271,7 +1271,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
             <span className="label" style={{display:'flex',alignItems:'center',gap:6}}><Icon name="graduation-cap" size={12}/> Mentores Principais</span>
             <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
             {mentors.filter(m=>!m.deleted&&m.main).slice(0,3).map(m=>(
               <div key={m.id} className="card" style={{padding:'16px 18px',display:'flex',alignItems:'center',gap:14}}>
                 <div style={{width:44,height:44,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,color:'var(--muted)'}}>
@@ -2848,12 +2848,8 @@ const Clients=({clients,setClients,isMobile})=>{
   );
 };
 
-// ─── SYNC HUB (Firebase) ─────────────────────────────────────────────────────
+// ─── SYNC HUB ────────────────────────────────────────────────────────────────
 const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
-  const [cfgInput,setCfgInput]=useState(()=>{
-    const cfg=loadFbCfg();
-    return cfg.apiKey?JSON.stringify(cfg,null,2):'';
-  });
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -2861,23 +2857,10 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
 
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
   const localImgCount=collectIdbKeys(appState).size;
-  const configured=!!loadFbCfg().apiKey;
-
-  const saveFirebaseConfig=()=>{
-    try{
-      const cfg=JSON.parse(cfgInput);
-      if(!cfg.apiKey||!cfg.projectId)throw new Error('Campos obrigatórios ausentes: apiKey, projectId');
-      saveFbCfg(cfg);
-      _fbReady=false;
-      const ok=initFirebase();
-      if(ok)showStatus('ok','✓ Firebase configurado! Clique em "Entrar com Google" para ativar o sync.');
-      else showStatus('err','Firebase não inicializou. Verifique o JSON.');
-    }catch(e){showStatus('err','JSON inválido: '+e.message);}
-  };
 
   const signIn=async()=>{
-    if(!initFirebase()){showStatus('err','Configure o Firebase primeiro.');return;}
     try{
+      initFirebase();
       const provider=new firebase.auth.GoogleAuthProvider();
       await _fbAuth.signInWithPopup(provider);
       showStatus('ok','✓ Conectado! Dados sincronizarão em tempo real entre todos os dispositivos.');
@@ -2895,7 +2878,7 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
     setLoading(true);
     try{
       await pushState(appState,fbUser.uid);
-      showStatus('ok','✓ Dados enviados ao Firebase!');
+      showStatus('ok','✓ Dados enviados!');
     }catch(e){showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
   };
@@ -2903,14 +2886,14 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
   const handleReupload=async()=>{
     const keys=[...collectIdbKeys(appState)];
     if(keys.length===0){showStatus('ok','✓ Nenhuma imagem local — tudo já está na nuvem!');return;}
-    if(!fbUser&&!window.confirm(`${keys.length} imagem(ns) local(is). Sem Firebase ativo, serão enviadas ao Imgur (limite de taxa). Continuar?`))return;
+    if(!fbUser&&!window.confirm(`${keys.length} imagem(ns) local(is). Sem login ativo, serão enviadas ao Imgur. Continuar?`))return;
     setLoading(true);
     setReuploadProgress({done:0,total:keys.length});
     try{
       const updatedState=await reuploadLocalImages(appState,(done,total)=>setReuploadProgress({done,total}));
       onImport(updatedState);
       setReuploadProgress(null);
-      showStatus('ok','✓ Imagens enviadas para Firebase Storage!');
+      showStatus('ok','✓ Imagens enviadas para a nuvem!');
     }catch(e){setReuploadProgress(null);showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
   };
@@ -2941,15 +2924,14 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
   ];
 
   const syncColor={'synced':'#276b3e','syncing':'#92700b','error':'#9B1C1C','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
-  const syncLabel={'synced':'Sincronizado em tempo real ✓','syncing':'Sincronizando…','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
+  const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando…','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
   const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
 
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
       <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Firebase — sync em tempo real entre todos os dispositivos, sem conflitos.</p>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Sync em tempo real entre dispositivos via Google.</p>
 
-      {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:10,marginBottom:isMobile?16:24}}>
         {counts.map(s=>(
           <div key={s.label} className="card" style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -2959,7 +2941,6 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
         ))}
       </div>
 
-      {/* Local image warning */}
       {localImgCount>0&&(
         <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <Icon name="image" size={16} style={{color:'#92700b',flexShrink:0}}/>
@@ -2969,19 +2950,17 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
         </div>
       )}
 
-      {/* Status */}
       {status&&(
-        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':status.type==='warn'?'#FEF9E7':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':status.type==='warn'?'#fde68a':'#FECACA'}`,color:status.type==='ok'?'#276b3e':status.type==='warn'?'#92700b':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
+        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
           <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
           <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
         </div>
       )}
 
-      {/* Re-upload progress */}
       {reuploadProgress&&(
         <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 18px',marginBottom:16}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:'.82rem',fontWeight:600}}>
-            <span>Enviando para Firebase Storage…</span>
+            <span>Enviando imagens…</span>
             <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
           </div>
           <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
@@ -2990,145 +2969,68 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
         </div>
       )}
 
-      {/* ── Conexão Firebase ─────────────────────────────────────────────── */}
-      <div className="card" style={{padding:24,marginBottom:16}}>
-        <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:16}}>
-          <div style={{width:52,height:52,borderRadius:'50%',overflow:'hidden',flexShrink:0,background:fbUser?'var(--text)':'var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            {fbUser?.photoURL
-              ?<img src={fbUser.photoURL} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
-              :<Icon name="user" size={22} style={{color:fbUser?'white':'var(--muted)'}}/>}
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:600,fontSize:'1rem',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-              {fbUser?fbUser.displayName||fbUser.email:'Não conectado ao Firebase'}
+      {/* Google Account Card */}
+      <div className="card" style={{padding:28,marginBottom:16,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
+        {fbUser ? (
+          <>
+            <div style={{display:'flex',alignItems:'center',gap:16,width:'100%'}}>
+              <div style={{width:56,height:56,borderRadius:'50%',overflow:'hidden',flexShrink:0,background:'var(--bg)',border:'2px solid var(--border)'}}>
+                {fbUser.photoURL
+                  ?<img src={fbUser.photoURL} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+                  :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.4rem',fontWeight:500,color:'var(--muted)'}}>{(fbUser.displayName||fbUser.email||'?').charAt(0)}</div>
+                }
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:'1rem',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fbUser.displayName||fbUser.email}</div>
+                <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
+                  <Icon name={syncIcon} size={12}/>{syncLabel}
+                </div>
+              </div>
             </div>
-            <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
-              <Icon name={syncIcon} size={12}/>{syncLabel}
-            </div>
-          </div>
-          {fbUser&&(
-            <button className="btn btn-outline" style={{padding:'7px 14px',fontSize:'.8rem',flexShrink:0}} onClick={handleManualPush} disabled={loading}>
-              <Icon name="upload-cloud" size={13}/> Forçar push
-            </button>
-          )}
-        </div>
-        {!fbUser&&configured&&(
-          <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',padding:'13px',fontSize:'.95rem'}} onClick={signIn}>
-            <svg width="18" height="18" viewBox="0 0 24 24" style={{flexShrink:0}}>
-              <path fill="white" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="white" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="white" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-              <path fill="white" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            Entrar com Google
-          </button>
-        )}
-        {!fbUser&&!configured&&(
-          <div style={{textAlign:'center',padding:'8px 0',fontSize:'.83rem',color:'var(--muted)'}}>
-            Configure o Firebase abaixo para ativar o sync.
-          </div>
-        )}
-        {fbUser&&(
-          <button className="btn btn-ghost" style={{fontSize:'.8rem',color:'var(--muted)'}} onClick={signOut}>
-            <Icon name="log-out" size={13}/> Sair da conta ({fbUser.email})
-          </button>
-        )}
-      </div>
-
-      {/* ── Setup Firebase ────────────────────────────────────────────────── */}
-      <div className="card" style={{marginBottom:16,overflow:'hidden'}}>
-        <details open={!configured}>
-          <summary style={{display:'flex',alignItems:'center',gap:8,padding:'18px 24px',cursor:'pointer',fontWeight:600,fontSize:'.88rem',listStyle:'none',userSelect:'none',WebkitAppearance:'none'}}>
-            <Icon name="settings" size={15}/>
-            Configurar Firebase
-            {configured
-              ?<span style={{background:'#E8F5EC',color:'#276b3e',border:'1px solid #bbf7d0',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em',marginLeft:4}}>✓ Ativo</span>
-              :<span style={{background:'#FEF9E7',color:'#92700b',border:'1px solid #fde68a',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em',marginLeft:4}}>Necessário</span>
-            }
-          </summary>
-          <div style={{padding:'0 24px 24px',borderTop:'1px solid var(--border)'}}>
-            <div style={{paddingTop:16,fontSize:'.82rem',lineHeight:1.75,color:'var(--muted)',background:'var(--bg)',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
-              <strong style={{color:'var(--text)',display:'block',marginBottom:4}}>Setup (5 minutos, gratuito):</strong>
-              1. <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>console.firebase.google.com</a> → Criar projeto<br/>
-              2. <strong>Authentication</strong> → Sign-in method → ativar <strong>Google</strong><br/>
-              3. <strong>Firestore Database</strong> → Criar banco → Modo produção → escolher região<br/>
-              4. <strong>Storage</strong> → Começar → Modo produção<br/>
-              5. ⚙ Configurações → Seus apps → <strong>Adicionar app Web</strong> → copiar o <code style={{background:'var(--border)',padding:'1px 5px',borderRadius:3}}>firebaseConfig</code><br/>
-              6. Em <strong>Firestore → Regras</strong> e <strong>Storage → Regras</strong>, cole e publique:
-            </div>
-            <div style={{background:'#1C1917',borderRadius:10,padding:'14px 16px',marginBottom:14,fontFamily:'monospace',fontSize:'.72rem',color:'#A8A29E',overflowX:'auto'}}>
-              <div style={{color:'#78716C',marginBottom:8}}>{'// Firestore Rules'}</div>
-              <div style={{color:'#E8E3DC'}}>{'rules_version = \'2\';'}<br/>{'service cloud.firestore {'}<br/>{'  match /databases/{database}/documents {'}<br/>{'    match /users/{uid}/{document=**} {'}<br/>{'      allow read, write: if request.auth.uid == uid;'}<br/>{'    }'}<br/>{'  }'}<br/>{'}'}</div>
-              <div style={{color:'#78716C',margin:'12px 0 8px'}}>{'// Storage Rules (mesma lógica)'}</div>
-              <div style={{color:'#E8E3DC'}}>{'rules_version = \'2\';'}<br/>{'service firebase.storage {'}<br/>{'  match /b/{bucket}/o {'}<br/>{'    match /users/{uid}/{path=**} {'}<br/>{'      allow read, write: if request.auth.uid == uid;'}<br/>{'    }'}<br/>{'  }'}<br/>{'}'}</div>
-            </div>
-            <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:8}}>Cole seu <code style={{fontWeight:400,background:'var(--border)',padding:'1px 5px',borderRadius:3}}>firebaseConfig</code> aqui:</div>
-            <textarea
-              className="input-box"
-              rows={9}
-              value={cfgInput}
-              onChange={e=>setCfgInput(e.target.value)}
-              placeholder={'{\n  "apiKey": "AIza...",\n  "authDomain": "seu-projeto.firebaseapp.com",\n  "projectId": "seu-projeto",\n  "storageBucket": "seu-projeto.appspot.com",\n  "messagingSenderId": "123...",\n  "appId": "1:123...:web:abc..."\n}'}
-              style={{fontFamily:'monospace',fontSize:'.78rem',marginBottom:12,resize:'vertical'}}
-            />
-            <div style={{display:'flex',gap:8}}>
-              <button className="btn btn-dark" style={{flex:1,justifyContent:'center'}} onClick={saveFirebaseConfig} disabled={!cfgInput.trim()}>
-                <Icon name="check" size={13}/> Salvar e conectar
+            <div style={{display:'flex',gap:8,width:'100%'}}>
+              <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={handleManualPush} disabled={loading}>
+                <Icon name="upload-cloud" size={14}/> Forçar sync
               </button>
-              {configured&&(
-                <button className="btn btn-ghost" onClick={()=>{saveFbCfg({});setCfgInput('');showStatus('ok','Firebase desconectado.');}}>
-                  Desconectar
-                </button>
-              )}
+              <button className="btn btn-ghost" style={{fontSize:'.8rem',color:'var(--muted)'}} onClick={signOut}>
+                <Icon name="log-out" size={13}/> Sair
+              </button>
             </div>
-          </div>
-        </details>
-      </div>
-
-      {/* ── Imagens locais ────────────────────────────────────────────────── */}
-      {localImgCount>0&&(
-        <div className="card" style={{padding:'18px 24px',marginBottom:16}}>
-          <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
-            <Icon name="image" size={18} style={{color:'var(--muted)',flexShrink:0}}/>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Re-enviar imagens locais</div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{localImgCount} imagem(ns) armazenada(s) só neste dispositivo → Firebase Storage</div>
+          </>
+        ) : (
+          <>
+            <div style={{textAlign:'center'}}>
+              <div style={{width:64,height:64,borderRadius:'50%',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}>
+                <Icon name="cloud" size={26} style={{color:'var(--muted)'}}/>
+              </div>
+              <div style={{fontWeight:600,fontSize:'1rem',marginBottom:6}}>Entre com sua conta Google</div>
+              <div style={{fontSize:'.82rem',color:'var(--muted)',maxWidth:340,lineHeight:1.6}}>Seus dados ficam sincronizados automaticamente em todos os seus dispositivos.</div>
             </div>
-            <button className="btn btn-outline" onClick={handleReupload} disabled={loading} style={{flexShrink:0}}>
-              <Icon name="upload-cloud" size={13}/> Re-enviar {localImgCount}
+            <button style={{
+              display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+              width:'100%',maxWidth:320,padding:'13px 20px',borderRadius:10,
+              border:'1px solid var(--border)',background:'white',cursor:'pointer',
+              fontFamily:'Figtree,sans-serif',fontSize:'.95rem',fontWeight:600,color:'#1C1917',
+              boxShadow:'0 1px 4px rgba(0,0,0,.08)',transition:'box-shadow .15s',
+            }}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'}
+            onMouseLeave={e=>e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.08)'}
+            onClick={signIn}>
+              <svg width="20" height="20" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Entrar com Google
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Backup manual ─────────────────────────────────────────────────── */}
-      <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
-      <div className="card" style={{padding:'18px 24px',marginBottom:16,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
-        <Icon name="hard-drive" size={18} style={{color:'var(--muted)',flexShrink:0}}/>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Backup local</div>
-          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Exportar JSON com todas as imagens embutidas (backup offline completo).</div>
-        </div>
-        <div style={{display:'flex',gap:8,flexShrink:0}}>
-          <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={exportData}><Icon name="download" size={13}/> Exportar</button>
-          <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={13}/> Importar</button>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* ── Danger ───────────────────────────────────────────────────────── */}
-      <div className="card" style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
-        <Icon name="alert-triangle" size={16} style={{color:'#9B1C1C',flexShrink:0}}/>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:1}}>Limpar dados locais</div>
-          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Apaga tudo e restaura os exemplos. Dados no Firebase permanecem intactos.</div>
-        </div>
-        <button className="btn btn-danger" style={{flexShrink:0,padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados locais. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
-          <Icon name="trash-2" size={13}/> Limpar
-        </button>
-      </div>
     </div>
   );
 };
+
 // ─── MENTORS HUB ─────────────────────────────────────────────────────────────
 const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const [form,setForm]=useState({...mentor});
