@@ -3822,9 +3822,19 @@ const saveFbCfg=cfg=>{try{localStorage.setItem(FB_CFG_LS,JSON.stringify(cfg));}c
 let _fbReady=false;
 let _fbAuth=null,_fbDb=null,_fbStorage=null;
 
+const DEFAULT_FB_CFG={
+  apiKey:"AIzaSyBJ-CK1s_ySQqvM98sJbi15SejsIoicVvo",
+  authDomain:"webapps-cbefa.firebaseapp.com",
+  projectId:"webapps-cbefa",
+  storageBucket:"webapps-cbefa.firebasestorage.app",
+  messagingSenderId:"817788828725",
+  appId:"1:817788828725:web:612f5d62662b88274d457c"
+};
+
 const initFirebase=()=>{
   if(_fbReady)return true;
-  const cfg=loadFbCfg();
+  const saved=loadFbCfg();
+  const cfg=saved.apiKey?saved:DEFAULT_FB_CFG;
   if(!cfg.apiKey)return false;
   try{
     if(!firebase.apps.length)firebase.initializeApp(cfg);
