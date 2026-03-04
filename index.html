@@ -3427,6 +3427,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -3810,26 +3814,54 @@ const BgImg=({src,className,style,children,...props})=>{
   return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
-// ─── CLOUD IMAGE CONFIG ───────────────────────────────────────────────────────
-// Cloudinary (recommended): free 25 GB, no rate limits, permanent CDN URLs.
-// Set up once at https://cloudinary.com → Dashboard → Settings → Upload presets
-// (create an "Unsigned" preset). Then enter Cloud Name + Preset in Sync → Imagens.
-const CLOUD_IMG_LS_KEY='boardhub_cloud_img_cfg';
-const loadCloudImgCfg=()=>{try{return JSON.parse(localStorage.getItem(CLOUD_IMG_LS_KEY))||{};}catch{return{};}};
-const saveCloudImgCfg=cfg=>{try{localStorage.setItem(CLOUD_IMG_LS_KEY,JSON.stringify(cfg));}catch{}};
+// ─── FIREBASE CONFIG & INIT ──────────────────────────────────────────────────
+const FB_CFG_LS='boardhub_firebase_cfg';
+const loadFbCfg=()=>{try{return JSON.parse(localStorage.getItem(FB_CFG_LS))||{};}catch{return{};}};
+const saveFbCfg=cfg=>{try{localStorage.setItem(FB_CFG_LS,JSON.stringify(cfg));}catch{}};
 
-// Upload to Cloudinary using an unsigned upload preset — returns CDN URL or throws
-const _uploadCloudinary=async(file,cfg)=>{
-  const fd=new FormData();
-  fd.append('file',file);
-  fd.append('upload_preset',cfg.preset);
-  if(cfg.folder)fd.append('folder',cfg.folder);
-  const ac=new AbortController();const _t=setTimeout(()=>ac.abort(),30000);
-  const res=await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`,{method:'POST',body:fd,signal:ac.signal});
-  clearTimeout(_t);
-  const json=await res.json();
-  if(json.secure_url)return json.secure_url;
-  throw new Error(json.error?.message||'Cloudinary upload failed');
+let _fbReady=false;
+let _fbAuth=null,_fbDb=null,_fbStorage=null;
+
+const initFirebase=()=>{
+  if(_fbReady)return true;
+  const cfg=loadFbCfg();
+  if(!cfg.apiKey)return false;
+  try{
+    if(!firebase.apps.length)firebase.initializeApp(cfg);
+    _fbAuth=firebase.auth();
+    _fbDb=firebase.firestore();
+    _fbStorage=firebase.storage();
+    // Enable offline persistence (multi-tab aware)
+    _fbDb.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+    _fbReady=true;
+    return true;
+  }catch(e){console.error('[BoardHub] Firebase init:',e);return false;}
+};
+
+// Attempt to init on load (if config already saved from a previous session)
+initFirebase();
+
+// Firestore state doc ref for a user
+const getStateRef=uid=>{
+  if(!_fbDb)return null;
+  return _fbDb.collection('users').doc(uid).collection('boardhub').doc('state');
+};
+
+// Push stripped state to Firestore
+const pushState=async(state,uid)=>{
+  const ref=getStateRef(uid);
+  if(!ref)throw new Error('Firebase not initialized');
+  await ref.set({...stripBase64(state),_v:'3.0',_updated:firebase.firestore.FieldValue.serverTimestamp()});
+};
+
+// Upload a file to Firebase Storage, return permanent CDN URL
+const uploadToFirebaseStorage=async(file,uid)=>{
+  if(!_fbStorage||!uid)throw new Error('Firebase Storage not available');
+  const ext=(file.name||'img').split('.').pop()||'jpg';
+  const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2)+'.'+ext;
+  const ref=_fbStorage.ref(`users/${uid}/images/${key}`);
+  await ref.put(file,{contentType:file.type||'image/jpeg'});
+  return await ref.getDownloadURL();
 };
 
 // Imgur fallback — anonymous client-ID upload
@@ -3847,44 +3879,41 @@ const _uploadImgur=async(file)=>{
   throw new Error('Imgur upload failed');
 };
 
-// IDB local fallback — stores blob locally, not synced across devices
+// IDB local fallback
 const _storeIdb=async(file)=>{
   const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
   await idbPut(key,file);
   return 'idb://'+key;
 };
 
-// Core upload: Cloudinary → Imgur → IDB (in priority order)
+// Core upload: Firebase Storage → Imgur → IDB
 const _uploadSingle=async(file)=>{
-  const cfg=loadCloudImgCfg();
-  if(cfg.cloudName&&cfg.preset){
-    try{ return await _uploadCloudinary(file,cfg); }catch(e){ console.warn('[BoardHub] Cloudinary failed:',e.message); }
+  if(_fbReady&&_fbAuth?.currentUser){
+    try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
+    catch(e){console.warn('[BoardHub] Firebase Storage failed:',e.message);}
   }
-  try{ return await _uploadImgur(file); }catch(e){ console.warn('[BoardHub] Imgur failed:',e.message); }
+  try{return await _uploadImgur(file);}catch(e){console.warn('[BoardHub] Imgur failed:',e.message);}
   console.warn('[BoardHub] Falling back to local IDB. Image will NOT sync across devices.');
   return await _storeIdb(file);
 };
 
 const uploadImage=file=>_uploadSingle(file);
 
-// Bulk upload with progress callback.
-// Uses a 1.1 s gap between requests when on Imgur path (fits ~50 req/min soft limit).
-// Cloudinary has no rate limit so no delay is added in that case.
 const BULK_UPLOAD_DELAY_MS=1100;
 const uploadImages=async(files,onProgress)=>{
   const results=[];
   for(let i=0;i<files.length;i++){
     results.push(await _uploadSingle(files[i]));
     if(onProgress)onProgress(i+1,files.length);
-    if(i<files.length-1){
-      const cfg=loadCloudImgCfg();
-      if(!cfg.cloudName||!cfg.preset) await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
+    // Only delay on Imgur path (Firebase has no rate limit)
+    if(i<files.length-1&&(!_fbReady||!_fbAuth?.currentUser)){
+      await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
     }
   }
   return results;
 };
 
-// Scan state for idb:// refs and re-upload them to cloud. Returns updated state object.
+// Re-upload all local IDB images to the cloud, return updated state
 const reuploadLocalImages=async(state,onProgress)=>{
   const keys=[...collectIdbKeys(state)];
   if(keys.length===0)return state;
@@ -3895,21 +3924,20 @@ const reuploadLocalImages=async(state,onProgress)=>{
       const blob=await idbGet(key);
       if(blob){
         const file=new File([blob],key,{type:blob.type||'image/jpeg'});
-        const cfg=loadCloudImgCfg();
         let url=null;
-        if(cfg.cloudName&&cfg.preset){try{url=await _uploadCloudinary(file,cfg);}catch{}}
+        if(_fbReady&&_fbAuth?.currentUser){try{url=await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}catch{}}
         if(!url){try{url=await _uploadImgur(file);}catch{}}
         if(url)map['idb://'+key]=url;
       }
     }catch(e){console.warn('[BoardHub] Re-upload failed for',key,e);}
     if(onProgress)onProgress(i+1,keys.length);
-    const cfg=loadCloudImgCfg();
-    if((!cfg.cloudName||!cfg.preset)&&i<keys.length-1)await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
+    if(!(_fbReady&&_fbAuth?.currentUser)&&i<keys.length-1){
+      await new Promise(r=>setTimeout(r,BULK_UPLOAD_DELAY_MS));
+    }
   }
   return rehydrateIdbRefs(state,map);
 };
-
-// Strip idb:// and base64 refs before Gist sync (they are local-only)
+// Strip idb:// and base64 refs — these are local-only and never go to Firebase/Gist
 const isLocalImg=v=>typeof v==='string'&&(v.startsWith('data:image')||v.startsWith('idb://'));
 const stripBase64=obj=>{
   if(Array.isArray(obj))return obj.map(stripBase64);
@@ -3918,8 +3946,7 @@ const stripBase64=obj=>{
   return obj;
 };
 
-
-// Resolve idb:// keys → base64 data URLs for export/sync
+// Resolve idb:// keys → base64 data URLs (used for manual JSON export)
 const blobToBase64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
 const resolveIdbRefs=async obj=>{
   if(Array.isArray(obj))return Promise.all(obj.map(resolveIdbRefs));
@@ -3930,27 +3957,14 @@ const resolveIdbRefs=async obj=>{
   }
   return obj;
 };
-// Build payload for manual JSON export (single self-contained file, images embedded)
+
+// Build a self-contained JSON export (images embedded as base64)
 const buildSyncPayload=async(state,includeImages=true)=>{
   const resolved=includeImages?await resolveIdbRefs(state):stripBase64(state);
-  return JSON.stringify({...resolved,_v:'2.0',_exported:new Date().toISOString()});
+  return JSON.stringify({...resolved,_v:'3.0',_exported:new Date().toISOString()});
 };
 
-// ─── SYNC META — version tracking for multi-device conflict detection ────────
-// Stores the Gist's updated_at timestamp and chunk count after every read/write.
-// Used to detect whether another device wrote to the Gist since our last sync.
-const SYNC_META_KEY='boardhub_sync_meta';
-const loadSyncMeta=()=>{try{return JSON.parse(localStorage.getItem(SYNC_META_KEY))||{};}catch{return{};}};
-const saveSyncMeta=(updatedAt,chunkCount)=>{try{localStorage.setItem(SYNC_META_KEY,JSON.stringify({updatedAt,chunkCount}));}catch{}};
-
-// ─── CHUNKED MULTI-FILE GIST SYNC ────────────────────────────────────────────
-// Strategy: main data file keeps lightweight idb:// refs; images are resolved to
-// base64 and split across boardhub-imgs-0.json … boardhub-imgs-N.json (≤800 KB each).
-// The PATCH call sends all files in one request — no per-file size limit problem.
-const IMG_CHUNK_BYTES = 800 * 1024;
-const IMG_FILE_PREFIX = 'boardhub-imgs-';
-
-// Collect every unique idb:// key referenced anywhere in the state object
+// Collect every unique idb:// key referenced in the state tree
 const collectIdbKeys=(obj,set=new Set())=>{
   if(Array.isArray(obj)){obj.forEach(x=>collectIdbKeys(x,set));}
   else if(obj&&typeof obj==='object'){Object.values(obj).forEach(x=>collectIdbKeys(x,set));}
@@ -3958,31 +3972,7 @@ const collectIdbKeys=(obj,set=new Set())=>{
   return set;
 };
 
-// Resolve a set of idb keys → { 'idb://key': 'data:image/...' }
-const resolveImageMap=async keys=>{
-  const map={};
-  for(const key of keys){
-    try{const blob=await idbGet(key);if(blob)map['idb://'+key]=await blobToBase64(blob);}catch{}
-  }
-  return map;
-};
-
-// Split imageMap into chunks of ≤IMG_CHUNK_BYTES, return array of JSON strings
-const chunkImageMap=imageMap=>{
-  const chunks=[];
-  let current={};let size=0;
-  for(const [k,v] of Object.entries(imageMap)){
-    const entry=k.length+v.length+10;
-    if(size+entry>IMG_CHUNK_BYTES&&Object.keys(current).length>0){
-      chunks.push(JSON.stringify(current));current={};size=0;
-    }
-    current[k]=v;size+=entry;
-  }
-  if(Object.keys(current).length>0)chunks.push(JSON.stringify(current));
-  return chunks;
-};
-
-// Replace idb:// refs in obj using a map { 'idb://key': 'data:image/...' }
+// Replace idb:// refs in obj using a { 'idb://key': 'https://...' } map
 const rehydrateIdbRefs=(obj,map)=>{
   if(Array.isArray(obj))return obj.map(x=>rehydrateIdbRefs(x,map));
   if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=rehydrateIdbRefs(obj[k],map);return out;}
@@ -3990,54 +3980,7 @@ const rehydrateIdbRefs=(obj,map)=>{
   return obj;
 };
 
-// Build the Gist files object for a PATCH/POST body.
-// ARCHITECTURE: images are NEVER embedded in the Gist. Only CDN URLs (https://) are stored.
-// idb:// refs are stripped — those images exist only on this device and need to be
-// re-uploaded to Cloudinary/Imgur first (see SyncHub → Imagens). This keeps the
-// Gist tiny (text-only) and sync fast regardless of how many images you have.
-// prevChunkCount: null out any legacy image chunk files from old syncs.
-const buildGistFiles=async(state,prevChunkCount=0)=>{
-  const dataJson=JSON.stringify({...stripBase64(state),_v:'2.1',_exported:new Date().toISOString()});
-  const files={'boardhub-data.json':{content:dataJson}};
-  // Clean up any old image chunk files left over from previous versions
-  for(let i=0;i<prevChunkCount;i++)files[IMG_FILE_PREFIX+i+'.json']=null;
-  const localCount=collectIdbKeys(state).size;
-  return{files,chunkCount:0,totalKB:Math.round(dataJson.length/1024),localCount};
-};
 
-// Fetch all chunk files from a Gist JSON response, return merged imageMap
-const fetchImageChunks=async(gistJson,authHeader)=>{
-  const imageMap={};
-  const chunkFiles=Object.entries(gistJson.files)
-    .filter(([name])=>name.startsWith(IMG_FILE_PREFIX)&&name.endsWith('.json'))
-    .sort(([a],[b])=>a.localeCompare(b));
-  for(const [,file] of chunkFiles){
-    try{
-      let content=file.content;
-      if(file.truncated){const r=await fetch(file.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
-      Object.assign(imageMap,JSON.parse(content));
-    }catch{}
-  }
-  return imageMap;
-};
-
-// ─── CONFLICT BANNER ─────────────────────────────────────────────────────────
-const ConflictBanner=({remoteUpdatedAt,onLoad,onDismiss})=>(
-  <div style={{position:'sticky',top:0,zIndex:60,background:'#FEF9E7',borderBottom:'2px solid #F59E0B',padding:'12px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-    <Icon name="alert-triangle" size={16} style={{color:'#92700b',flexShrink:0}}/>
-    <span style={{fontSize:'.85rem',color:'#78350F',flex:1,minWidth:200}}>
-      <strong>Conflito detectado:</strong> outro dispositivo salvou alterações em {new Date(remoteUpdatedAt).toLocaleString('pt-BR')}. O que deseja fazer?
-    </span>
-    <div style={{display:'flex',gap:8,flexShrink:0}}>
-      <button onClick={onLoad} className="btn" style={{background:'#92700b',color:'white',padding:'7px 16px',fontSize:'.82rem'}}>
-        <Icon name="download-cloud" size={13}/> Carregar versão remota
-      </button>
-      <button onClick={onDismiss} className="btn btn-outline" style={{padding:'7px 12px',fontSize:'.82rem',borderColor:'#F59E0B',color:'#92700b'}}>
-        Manter local
-      </button>
-    </div>
-  </div>
-);
 
 // ─── TRASH BANNER ─────────────────────────────────────────────────────────────
 const TrashBanner=({label,onExit})=>(
@@ -6193,157 +6136,70 @@ const Clients=({clients,setClients,isMobile})=>{
   );
 };
 
-// ─── SYNC HUB (GitHub Gist) ───────────────────────────────────────────────────
-const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
-  const GIST_LS_KEY='boardhub_gist_config';
-  const loadConfig=()=>{try{return JSON.parse(localStorage.getItem(GIST_LS_KEY))||{};}catch{return{};}};
-  const [token,setToken]=useState(()=>loadConfig().token||'');
-  const [gistId,setGistId]=useState(()=>loadConfig().gistId||'');
-  const [tokenInput,setTokenInput]=useState(()=>loadConfig().token||'');
-  const [gistIdInput,setGistIdInput]=useState(()=>loadConfig().gistId||'');
+// ─── SYNC HUB (Firebase) ─────────────────────────────────────────────────────
+const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
+  const [cfgInput,setCfgInput]=useState(()=>{
+    const cfg=loadFbCfg();
+    return cfg.apiKey?JSON.stringify(cfg,null,2):'';
+  });
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
-  const [showConfig,setShowConfig]=useState(false);
-  const [showImgConfig,setShowImgConfig]=useState(false);
-
-  // Cloudinary config state
-  const [cloudCfg,setCloudCfg]=useState(()=>loadCloudImgCfg());
-  const [cloudNameInput,setCloudNameInput]=useState(()=>loadCloudImgCfg().cloudName||'');
-  const [presetInput,setPresetInput]=useState(()=>loadCloudImgCfg().preset||'');
-  const [folderInput,setFolderInput]=useState(()=>loadCloudImgCfg().folder||'boardhub');
-  const [reuploadProgress,setReuploadProgress]=useState(null); // {done,total} or null
-
+  const [reuploadProgress,setReuploadProgress]=useState(null);
   const importRef=useRef();
-  const configured=token&&gistId;
-  const saveConfig=(t,g)=>{localStorage.setItem(GIST_LS_KEY,JSON.stringify({token:t,gistId:g}));setToken(t);setGistId(g);};
+
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
-
-  // Count local-only vs cloud images
   const localImgCount=collectIdbKeys(appState).size;
-  const cloudConfigured=cloudCfg.cloudName&&cloudCfg.preset;
+  const configured=!!loadFbCfg().apiKey;
 
-  const doPatchFiles=async(filesObj)=>fetch(`https://api.github.com/gists/${gistId}`,{
-    method:'PATCH',
-    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-    body:JSON.stringify({files:filesObj})
-  });
-
-  const fetchRemote=async(authToken=token)=>{
-    const authHeader=`Bearer ${authToken}`;
-    const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:authHeader}});
-    if(res.status===401||res.status===403)throw new Error(`Token inválido ou sem permissão (${res.status}).`);
-    if(res.status===404)throw new Error('Gist não encontrado (404). Verifique o Gist ID.');
-    if(!res.ok)throw new Error(`Erro HTTP ${res.status}`);
-    const gistJson=await res.json();
-    const dataFile=gistJson.files['boardhub-data.json'];
-    if(!dataFile)throw new Error('Arquivo boardhub-data.json não encontrado no Gist.');
-    let content=dataFile.content;
-    if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
-    const remoteData=JSON.parse(content);
-    // Still read legacy image chunks for backward compatibility
-    const remoteImageMap=await fetchImageChunks(gistJson,authHeader);
-    const chunkCount=Object.keys(gistJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
-    return{gistJson,remoteData,remoteImageMap,chunkCount};
+  const saveFirebaseConfig=()=>{
+    try{
+      const cfg=JSON.parse(cfgInput);
+      if(!cfg.apiKey||!cfg.projectId)throw new Error('Campos obrigatórios ausentes: apiKey, projectId');
+      saveFbCfg(cfg);
+      _fbReady=false;
+      const ok=initFirebase();
+      if(ok)showStatus('ok','✓ Firebase configurado! Clique em "Entrar com Google" para ativar o sync.');
+      else showStatus('err','Firebase não inicializou. Verifique o JSON.');
+    }catch(e){showStatus('err','JSON inválido: '+e.message);}
   };
 
-  const syncNow=async()=>{
-    if(!configured){showStatus('err','Configure o token e o Gist ID antes de sincronizar.');setShowConfig(true);return;}
-    if(localImgCount>0&&!window.confirm(
-      `Atenção: ${localImgCount} imagem(ns) estão armazenadas apenas localmente e NÃO serão sincronizadas.\n\nRecomendamos ir em "Imagens na Nuvem" → "Re-enviar para Nuvem" antes de sincronizar.\n\nContinuar assim mesmo?`
-    ))return;
-    setLoading(true);
-    showStatus('warn','Verificando versão remota…');
+  const signIn=async()=>{
+    if(!initFirebase()){showStatus('err','Configure o Firebase primeiro.');return;}
     try{
-      const meta=loadSyncMeta();
-      if(meta.updatedAt){
-        const checkRes=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`Bearer ${token}`}});
-        if(checkRes.ok){
-          const checkJson=await checkRes.json();
-          if(checkJson.updated_at>meta.updatedAt){
-            const dataFile=checkJson.files['boardhub-data.json'];
-            if(dataFile){
-              let ct=dataFile.content;
-              if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:`Bearer ${token}`}});ct=await r.text();}
-              const remoteData=JSON.parse(ct);
-              const remoteImageMap=await fetchImageChunks(checkJson,`Bearer ${token}`);
-              const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
-              onConflict({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
-            }
-            showStatus('warn','Conflito detectado — veja o banner acima.');
-            return;
-          }
-        }
-      }
-      showStatus('warn','Sincronizando…');
-      const{files,chunkCount,totalKB,localCount}=await buildGistFiles(appState,meta.chunkCount||0);
-      let res=await doPatchFiles(files);
-      if(res.status===409){await new Promise(r=>setTimeout(r,1500));res=await doPatchFiles(files);}
-      if(!res.ok)throw new Error(
-        res.status===409?'Conflito de versão. Tente novamente em instantes.'
-        :res.status===401||res.status===403?`Token inválido (${res.status}).`
-        :`Erro HTTP ${res.status}`);
-      const json=await res.json();
-      saveSyncMeta(json.updated_at,chunkCount);
-      const localWarn=localCount>0?` ⚠️ ${localCount} imagem(ns) local(is) não sincronizadas.`:'';
-      showStatus('ok',`✓ Sincronizado! ${totalKB} KB — ${new Date(json.updated_at).toLocaleString('pt-BR')}${localWarn}`);
-    }catch(e){showStatus('err',`Falha na sincronização: ${e.message}`);}
-    finally{setLoading(false);}
+      const provider=new firebase.auth.GoogleAuthProvider();
+      await _fbAuth.signInWithPopup(provider);
+      showStatus('ok','✓ Conectado! Dados sincronizarão em tempo real entre todos os dispositivos.');
+    }catch(e){showStatus('err','Falha no login: '+e.message);}
   };
 
-  const pullFromGist=async()=>{
-    if(!configured){showStatus('err','Configure o token e o Gist ID primeiro.');return;}
-    if(!window.confirm('Isso vai substituir todos os seus dados locais pelos dados do Gist. Confirmar?'))return;
-    setLoading(true);
-    showStatus('warn','Carregando dados do Gist…');
-    try{
-      const{gistJson,remoteData,remoteImageMap,chunkCount}=await fetchRemote();
-      const rehydrated=Object.keys(remoteImageMap).length>0?rehydrateIdbRefs(remoteData,remoteImageMap):remoteData;
-      onImport(rehydrated);
-      saveSyncMeta(gistJson.updated_at,chunkCount);
-      showStatus('ok',`✓ Carregado! Exportado em: ${remoteData._exported?new Date(remoteData._exported).toLocaleString('pt-BR'):'data desconhecida'}`);
-    }catch(e){showStatus('err',`Falha ao carregar: ${e.message}`);}
-    finally{setLoading(false);}
+  const signOut=async()=>{
+    if(!window.confirm('Sair? Seus dados continuarão salvos localmente.'))return;
+    await _fbAuth.signOut();
+    showStatus('ok','Desconectado.');
   };
 
-  const createGist=async()=>{
-    if(!tokenInput){showStatus('err','Insira o token antes de criar o Gist.');return;}
+  const handleManualPush=async()=>{
+    if(!fbUser){showStatus('err','Faça login com Google primeiro.');return;}
     setLoading(true);
     try{
-      const{files,chunkCount}=await buildGistFiles(appState,0);
-      const res=await fetch('https://api.github.com/gists',{method:'POST',headers:{Authorization:`Bearer ${tokenInput}`,'Content-Type':'application/json'},
-        body:JSON.stringify({description:'BoardHub — Storyboard OS data backup',public:false,files})});
-      if(!res.ok)throw new Error(`Erro ${res.status}`);
-      const json=await res.json();
-      setGistIdInput(json.id);
-      saveConfig(tokenInput,json.id);
-      saveSyncMeta(json.updated_at,chunkCount);
-      showStatus('ok','✓ Gist criado e configurado!');
-      setShowConfig(false);
-    }catch(e){showStatus('err',`Falha ao criar Gist: ${e.message}`);}
+      await pushState(appState,fbUser.uid);
+      showStatus('ok','✓ Dados enviados ao Firebase!');
+    }catch(e){showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
   };
 
   const handleReupload=async()=>{
     const keys=[...collectIdbKeys(appState)];
-    if(keys.length===0){showStatus('ok','✓ Nenhuma imagem local encontrada — tudo já está na nuvem!');return;}
-    if(!cloudConfigured&&!window.confirm(
-      `Cloudinary não está configurado. As imagens serão enviadas para o Imgur (limite de ~50/hora).\n\nPara uploads mais rápidos e sem limite, configure o Cloudinary abaixo.\n\nContinuar com Imgur?`
-    ))return;
+    if(keys.length===0){showStatus('ok','✓ Nenhuma imagem local — tudo já está na nuvem!');return;}
+    if(!fbUser&&!window.confirm(`${keys.length} imagem(ns) local(is). Sem Firebase ativo, serão enviadas ao Imgur (limite de taxa). Continuar?`))return;
     setLoading(true);
     setReuploadProgress({done:0,total:keys.length});
-    showStatus('warn',`Enviando ${keys.length} imagem(ns) para a nuvem…`);
     try{
-      const updatedState=await reuploadLocalImages(appState,(done,total)=>{
-        setReuploadProgress({done,total});
-        showStatus('warn',`Enviando imagens… ${done}/${total}`);
-      });
+      const updatedState=await reuploadLocalImages(appState,(done,total)=>setReuploadProgress({done,total}));
       onImport(updatedState);
       setReuploadProgress(null);
-      showStatus('ok',`✓ Imagens enviadas para a nuvem! Agora você pode sincronizar normalmente.`);
-    }catch(e){
-      setReuploadProgress(null);
-      showStatus('err',`Falha no re-envio: ${e.message}`);
-    }
+      showStatus('ok','✓ Imagens enviadas para Firebase Storage!');
+    }catch(e){setReuploadProgress(null);showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
   };
 
@@ -6357,7 +6213,7 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=ev=>{
-      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok','✓ Importado com sucesso!');}
+      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok','✓ Importado!');}
       catch{showStatus('err','Arquivo inválido.');}
     };
     reader.readAsText(file);e.target.value='';
@@ -6372,10 +6228,14 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
     {label:'Posts',value:(appState.socialPosts||[]).filter(p=>!p.deleted).length},
   ];
 
+  const syncColor={'synced':'#276b3e','syncing':'#92700b','error':'#9B1C1C','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
+  const syncLabel={'synced':'Sincronizado em tempo real ✓','syncing':'Sincronizando…','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
+  const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
+
   return(
     <div className="fade-up" style={{maxWidth:680,margin:'0 auto'}}>
       <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'2.6rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:4}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Salve e carregue seus dados via GitHub Gist. Imagens ficam na nuvem (Cloudinary/Imgur).</p>
+      <p style={{color:'var(--muted)',fontSize:'.85rem',marginBottom:isMobile?20:28}}>Firebase — sync em tempo real entre todos os dispositivos, sem conflitos.</p>
 
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:10,marginBottom:isMobile?16:24}}>
@@ -6387,30 +6247,29 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
         ))}
       </div>
 
-      {/* Local image warning banner */}
+      {/* Local image warning */}
       {localImgCount>0&&(
         <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <Icon name="image" size={16} style={{color:'#92700b',flexShrink:0}}/>
           <div style={{flex:1,fontSize:'.83rem',color:'#78350F'}}>
-            <strong>{localImgCount} imagem(ns)</strong> armazenada(s) apenas neste dispositivo — não sincronizarão com outros.
-            Clique em <strong>"Re-enviar para Nuvem"</strong> abaixo para corrigi-las.
+            <strong>{localImgCount} imagem(ns)</strong> armazenada(s) apenas localmente. Use <strong>"Re-enviar Imagens"</strong> abaixo para sincronizá-las.
           </div>
         </div>
       )}
 
-      {/* Status message */}
+      {/* Status */}
       {status&&(
         <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':status.type==='warn'?'#FEF9E7':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':status.type==='warn'?'#fde68a':'#FECACA'}`,color:status.type==='ok'?'#276b3e':status.type==='warn'?'#92700b':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':status.type==='warn'?'loader':'alert-circle'} size={16}/>{status.msg}
+          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
           <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
         </div>
       )}
 
-      {/* Re-upload progress bar */}
+      {/* Re-upload progress */}
       {reuploadProgress&&(
         <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 18px',marginBottom:16}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:'.82rem',fontWeight:600}}>
-            <span>Enviando imagens para a nuvem…</span>
+            <span>Enviando para Firebase Storage…</span>
             <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
           </div>
           <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
@@ -6419,156 +6278,139 @@ const SyncHub=({appState,onImport,onClearSave,onConflict,isMobile})=>{
         </div>
       )}
 
-      {/* Main sync button */}
-      <div className="card" style={{padding:28,marginBottom:16}}>
-        <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20}}>
-          <div style={{width:48,height:48,borderRadius:12,background:configured?'var(--text)':'var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <Icon name="refresh-cw" size={20} style={{color:configured?'white':'var(--muted)'}}/>
+      {/* ── Conexão Firebase ─────────────────────────────────────────────── */}
+      <div className="card" style={{padding:24,marginBottom:16}}>
+        <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:16}}>
+          <div style={{width:52,height:52,borderRadius:'50%',overflow:'hidden',flexShrink:0,background:fbUser?'var(--text)':'var(--border)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {fbUser?.photoURL
+              ?<img src={fbUser.photoURL} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+              :<Icon name="user" size={22} style={{color:fbUser?'white':'var(--muted)'}}/>}
           </div>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:600,fontSize:'1rem',marginBottom:2}}>Sincronizar com GitHub Gist</div>
-            <div style={{fontSize:'.78rem',color:'var(--muted)'}}>{configured?`Gist configurado · ID: ${gistId.slice(0,12)}…`:'Nenhum Gist configurado ainda.'}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:'1rem',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {fbUser?fbUser.displayName||fbUser.email:'Não conectado ao Firebase'}
+            </div>
+            <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
+              <Icon name={syncIcon} size={12}/>{syncLabel}
+            </div>
           </div>
-          {configured&&<a href={`https://gist.github.com/${gistId}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--muted)',display:'flex',alignItems:'center',gap:4,fontSize:'.75rem',textDecoration:'none'}} className="text-link"><Icon name="external-link" size={13}/></a>}
-        </div>
-        <div style={{display:'flex',gap:10}}>
-          <button className="btn btn-dark" style={{flex:1,justifyContent:'center',padding:'10px 0',fontSize:'.9rem'}} onClick={syncNow} disabled={loading}>
-            <Icon name={loading?'loader':'upload-cloud'} size={15}/> {loading?'Aguarde…':'Salvar no Gist'}
-          </button>
-          {configured&&(
-            <button className="btn btn-outline" style={{padding:'10px 16px'}} onClick={pullFromGist} disabled={loading} title="Carregar dados do Gist para este computador">
-              <Icon name="download-cloud" size={15}/>
+          {fbUser&&(
+            <button className="btn btn-outline" style={{padding:'7px 14px',fontSize:'.8rem',flexShrink:0}} onClick={handleManualPush} disabled={loading}>
+              <Icon name="upload-cloud" size={13}/> Forçar push
             </button>
           )}
         </div>
-        {configured&&<p style={{fontSize:'.72rem',color:'var(--muted)',marginTop:10,marginBottom:0}}>"Salvar no Gist" envia os dados deste computador. O botão <Icon name="download-cloud" size={11}/> carrega os dados do Gist (sobrescreve o local).</p>}
+        {!fbUser&&configured&&(
+          <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',padding:'13px',fontSize:'.95rem'}} onClick={signIn}>
+            <svg width="18" height="18" viewBox="0 0 24 24" style={{flexShrink:0}}>
+              <path fill="white" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="white" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="white" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+              <path fill="white" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Entrar com Google
+          </button>
+        )}
+        {!fbUser&&!configured&&(
+          <div style={{textAlign:'center',padding:'8px 0',fontSize:'.83rem',color:'var(--muted)'}}>
+            Configure o Firebase abaixo para ativar o sync.
+          </div>
+        )}
+        {fbUser&&(
+          <button className="btn btn-ghost" style={{fontSize:'.8rem',color:'var(--muted)'}} onClick={signOut}>
+            <Icon name="log-out" size={13}/> Sair da conta ({fbUser.email})
+          </button>
+        )}
       </div>
 
-      {/* ── Cloud Image Storage ─────────────────────────────────────────────── */}
+      {/* ── Setup Firebase ────────────────────────────────────────────────── */}
       <div className="card" style={{marginBottom:16,overflow:'hidden'}}>
-        <button onClick={()=>setShowImgConfig(!showImgConfig)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 24px',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:600,color:'var(--text)'}}>
-          <span style={{display:'flex',alignItems:'center',gap:8}}>
-            <Icon name="image" size={15}/>
-            Imagens na Nuvem
-            {localImgCount>0&&<span style={{background:'#FEF9E7',color:'#92700b',border:'1px solid #fde68a',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em'}}>{localImgCount} locais</span>}
-            {cloudConfigured&&localImgCount===0&&<span style={{background:'#E8F5EC',color:'#276b3e',border:'1px solid #bbf7d0',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em'}}>✓ Configurado</span>}
-          </span>
-          <Icon name={showImgConfig?'chevron-up':'chevron-down'} size={15} style={{color:'var(--muted)'}}/>
-        </button>
-        {showImgConfig&&(
+        <details open={!configured}>
+          <summary style={{display:'flex',alignItems:'center',gap:8,padding:'18px 24px',cursor:'pointer',fontWeight:600,fontSize:'.88rem',listStyle:'none',userSelect:'none',WebkitAppearance:'none'}}>
+            <Icon name="settings" size={15}/>
+            Configurar Firebase
+            {configured
+              ?<span style={{background:'#E8F5EC',color:'#276b3e',border:'1px solid #bbf7d0',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em',marginLeft:4}}>✓ Ativo</span>
+              :<span style={{background:'#FEF9E7',color:'#92700b',border:'1px solid #fde68a',borderRadius:20,fontSize:'.65rem',fontWeight:700,padding:'1px 7px',letterSpacing:'.04em',marginLeft:4}}>Necessário</span>
+            }
+          </summary>
           <div style={{padding:'0 24px 24px',borderTop:'1px solid var(--border)'}}>
-            <div style={{paddingTop:16,marginBottom:16,fontSize:'.82rem',color:'var(--muted)',lineHeight:1.6,background:'var(--bg)',borderRadius:8,padding:'12px 14px'}}>
-              <strong style={{color:'var(--text)'}}>Como funciona:</strong> Imagens são enviadas para Cloudinary ou Imgur ao serem adicionadas.
-              Apenas a URL (<code style={{background:'var(--border)',padding:'1px 4px',borderRadius:3}}>https://</code>) fica salva no Gist, então a sincronização é sempre instantânea.
-              <br/><strong style={{color:'#92700b'}}>Cloudinary recomendado</strong> — sem limite de taxa, 25 GB grátis.
+            <div style={{paddingTop:16,fontSize:'.82rem',lineHeight:1.75,color:'var(--muted)',background:'var(--bg)',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
+              <strong style={{color:'var(--text)',display:'block',marginBottom:4}}>Setup (5 minutos, gratuito):</strong>
+              1. <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>console.firebase.google.com</a> → Criar projeto<br/>
+              2. <strong>Authentication</strong> → Sign-in method → ativar <strong>Google</strong><br/>
+              3. <strong>Firestore Database</strong> → Criar banco → Modo produção → escolher região<br/>
+              4. <strong>Storage</strong> → Começar → Modo produção<br/>
+              5. ⚙ Configurações → Seus apps → <strong>Adicionar app Web</strong> → copiar o <code style={{background:'var(--border)',padding:'1px 5px',borderRadius:3}}>firebaseConfig</code><br/>
+              6. Em <strong>Firestore → Regras</strong> e <strong>Storage → Regras</strong>, cole e publique:
             </div>
-
-            {/* Cloudinary config */}
-            <div style={{marginBottom:14}}>
-              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
-                Cloudinary <span style={{fontSize:'.7rem',fontWeight:400,color:'var(--muted)'}}>— recomendado</span>
-              </div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>
-                1. Crie conta grátis em <a href="https://cloudinary.com" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>cloudinary.com</a>.<br/>
-                2. No Dashboard → Settings → Upload, crie um preset <strong>"Unsigned"</strong>.<br/>
-                3. Copie o <strong>Cloud Name</strong> do Dashboard e o <strong>Preset Name</strong> abaixo.
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-                <div>
-                  <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Cloud Name</div>
-                  <input className="input-box" value={cloudNameInput} onChange={e=>setCloudNameInput(e.target.value)} placeholder="ex: my-cloud-name" style={{fontFamily:'monospace'}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Upload Preset</div>
-                  <input className="input-box" value={presetInput} onChange={e=>setPresetInput(e.target.value)} placeholder="ex: boardhub_unsigned" style={{fontFamily:'monospace'}}/>
-                </div>
-              </div>
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:'.7rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Pasta (opcional)</div>
-                <input className="input-box" value={folderInput} onChange={e=>setFolderInput(e.target.value)} placeholder="boardhub" style={{fontFamily:'monospace'}}/>
-              </div>
-              <button className="btn btn-dark" onClick={()=>{
-                const cfg={cloudName:cloudNameInput.trim(),preset:presetInput.trim(),folder:folderInput.trim()||'boardhub'};
-                saveCloudImgCfg(cfg);setCloudCfg(cfg);
-                showStatus('ok','✓ Cloudinary configurado! Novas imagens serão enviadas automaticamente.');
-              }} disabled={!cloudNameInput||!presetInput}>
-                <Icon name="check" size={13}/> Salvar configuração Cloudinary
-              </button>
-              {cloudConfigured&&<button className="btn btn-ghost" style={{marginLeft:8}} onClick={()=>{saveCloudImgCfg({});setCloudCfg({});setCloudNameInput('');setPresetInput('');showStatus('warn','Cloudinary desconectado. Usando Imgur como fallback.');}}>
-                Desconectar
-              </button>}
+            <div style={{background:'#1C1917',borderRadius:10,padding:'14px 16px',marginBottom:14,fontFamily:'monospace',fontSize:'.72rem',color:'#A8A29E',overflowX:'auto'}}>
+              <div style={{color:'#78716C',marginBottom:8}}>{'// Firestore Rules'}</div>
+              <div style={{color:'#E8E3DC'}}>{'rules_version = \'2\';'}<br/>{'service cloud.firestore {'}<br/>{'  match /databases/{database}/documents {'}<br/>{'    match /users/{uid}/{document=**} {'}<br/>{'      allow read, write: if request.auth.uid == uid;'}<br/>{'    }'}<br/>{'  }'}<br/>{'}'}</div>
+              <div style={{color:'#78716C',margin:'12px 0 8px'}}>{'// Storage Rules (mesma lógica)'}</div>
+              <div style={{color:'#E8E3DC'}}>{'rules_version = \'2\';'}<br/>{'service firebase.storage {'}<br/>{'  match /b/{bucket}/o {'}<br/>{'    match /users/{uid}/{path=**} {'}<br/>{'      allow read, write: if request.auth.uid == uid;'}<br/>{'    }'}<br/>{'  }'}<br/>{'}'}</div>
             </div>
-
-            <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:4}}>
-              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:4}}>Re-enviar imagens locais para a nuvem</div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:12}}>
-                {localImgCount>0
-                  ?`${localImgCount} imagem(ns) estão apenas neste dispositivo. Clique para enviá-las ao Cloudinary/Imgur e habilitá-las para sincronização.`
-                  :'Todas as imagens já estão na nuvem. ✓'}
-              </div>
-              <button className="btn btn-outline" onClick={handleReupload} disabled={loading||localImgCount===0} style={{borderColor:localImgCount>0?'var(--text)':'var(--border)',color:localImgCount>0?'var(--text)':'var(--muted)'}}>
-                <Icon name="upload-cloud" size={14}/> Re-enviar {localImgCount>0?`${localImgCount} imagem(ns)`:'(nenhuma local)'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Config section (collapsible) */}
-      <div className="card" style={{marginBottom:16,overflow:'hidden'}}>
-        <button onClick={()=>setShowConfig(!showConfig)} style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 24px',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:600,color:'var(--text)'}}>
-          <span style={{display:'flex',alignItems:'center',gap:8}}><Icon name="settings" size={15}/> Configuração do Gist</span>
-          <Icon name={showConfig?'chevron-up':'chevron-down'} size={15} style={{color:'var(--muted)'}}/>
-        </button>
-        {showConfig&&(
-          <div style={{padding:'0 24px 24px',display:'flex',flexDirection:'column',gap:14,borderTop:'1px solid var(--border)'}}>
-            <div style={{paddingTop:16}}>
-              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6}}>Token do GitHub</div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>Gere em <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{color:'var(--text)'}}>github.com/settings/tokens</a> com escopo <code style={{background:'var(--border)',padding:'1px 5px',borderRadius:4}}>gist</code>.</div>
-              <input type="password" className="input-box" value={tokenInput} onChange={e=>setTokenInput(e.target.value)} placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" style={{fontFamily:'monospace'}}/>
-            </div>
-            <div>
-              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:6}}>Gist ID</div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:10}}>Se já tem um Gist do BoardHub, cole o ID. Senão, clique "Criar Gist".</div>
-              <input className="input-box" value={gistIdInput} onChange={e=>setGistIdInput(e.target.value)} placeholder="abc123def456..." style={{fontFamily:'monospace'}}/>
-            </div>
+            <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:8}}>Cole seu <code style={{fontWeight:400,background:'var(--border)',padding:'1px 5px',borderRadius:3}}>firebaseConfig</code> aqui:</div>
+            <textarea
+              className="input-box"
+              rows={9}
+              value={cfgInput}
+              onChange={e=>setCfgInput(e.target.value)}
+              placeholder={'{\n  "apiKey": "AIza...",\n  "authDomain": "seu-projeto.firebaseapp.com",\n  "projectId": "seu-projeto",\n  "storageBucket": "seu-projeto.appspot.com",\n  "messagingSenderId": "123...",\n  "appId": "1:123...:web:abc..."\n}'}
+              style={{fontFamily:'monospace',fontSize:'.78rem',marginBottom:12,resize:'vertical'}}
+            />
             <div style={{display:'flex',gap:8}}>
-              <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={createGist} disabled={loading}>
-                <Icon name="plus-circle" size={13}/> {loading?'Criando…':'Criar novo Gist'}
+              <button className="btn btn-dark" style={{flex:1,justifyContent:'center'}} onClick={saveFirebaseConfig} disabled={!cfgInput.trim()}>
+                <Icon name="check" size={13}/> Salvar e conectar
               </button>
-              <button className="btn btn-dark" style={{flex:1,justifyContent:'center'}} onClick={()=>{saveConfig(tokenInput,gistIdInput);showStatus('ok','✓ Configuração salva!');setShowConfig(false);}}>
-                <Icon name="check" size={13}/> Salvar
-              </button>
+              {configured&&(
+                <button className="btn btn-ghost" onClick={()=>{saveFbCfg({});setCfgInput('');showStatus('ok','Firebase desconectado.');}}>
+                  Desconectar
+                </button>
+              )}
             </div>
-            {configured&&<button className="btn btn-danger" style={{alignSelf:'flex-start'}} onClick={()=>{localStorage.removeItem(GIST_LS_KEY);setToken('');setGistId('');setTokenInput('');setGistIdInput('');}}>
-              <Icon name="trash-2" size={13}/> Desconectar Gist
-            </button>}
           </div>
-        )}
+        </details>
       </div>
 
-      {/* Manual backup */}
+      {/* ── Imagens locais ────────────────────────────────────────────────── */}
+      {localImgCount>0&&(
+        <div className="card" style={{padding:'18px 24px',marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+            <Icon name="image" size={18} style={{color:'var(--muted)',flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Re-enviar imagens locais</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{localImgCount} imagem(ns) armazenada(s) só neste dispositivo → Firebase Storage</div>
+            </div>
+            <button className="btn btn-outline" onClick={handleReupload} disabled={loading} style={{flexShrink:0}}>
+              <Icon name="upload-cloud" size={13}/> Re-enviar {localImgCount}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Backup manual ─────────────────────────────────────────────────── */}
       <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
-      <div className="card" style={{padding:'18px 24px',marginBottom:16,display:'flex',alignItems:'center',gap:16}}>
+      <div className="card" style={{padding:'18px 24px',marginBottom:16,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
         <Icon name="hard-drive" size={18} style={{color:'var(--muted)',flexShrink:0}}/>
         <div style={{flex:1}}>
-          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Backup manual</div>
-          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Exportar ou importar um arquivo JSON local.</div>
+          <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:2}}>Backup local</div>
+          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Exportar JSON com todas as imagens embutidas (backup offline completo).</div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,flexShrink:0}}>
           <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={exportData}><Icon name="download" size={13}/> Exportar</button>
           <button className="btn btn-outline" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>importRef.current.click()}><Icon name="upload" size={13}/> Importar</button>
         </div>
       </div>
 
-      {/* Danger zone */}
+      {/* ── Danger ───────────────────────────────────────────────────────── */}
       <div className="card" style={{padding:'16px 24px',display:'flex',alignItems:'center',gap:16}}>
         <Icon name="alert-triangle" size={16} style={{color:'#9B1C1C',flexShrink:0}}/>
         <div style={{flex:1}}>
           <div style={{fontWeight:600,fontSize:'.85rem',marginBottom:1}}>Limpar dados locais</div>
-          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Apaga tudo e restaura os exemplos.</div>
+          <div style={{fontSize:'.75rem',color:'var(--muted)'}}>Apaga tudo e restaura os exemplos. Dados no Firebase permanecem intactos.</div>
         </div>
-        <button className="btn btn-danger" style={{flexShrink:0,padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
+        <button className="btn btn-danger" style={{flexShrink:0,padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{if(window.confirm('Isso apagará todos os seus dados locais. Confirmar?')){localStorage.removeItem(LS_KEY);onClearSave();}}}>
           <Icon name="trash-2" size={13}/> Limpar
         </button>
       </div>
@@ -6792,23 +6634,17 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
   const autoMobile=useIsMobile();
-  const [forceMobile,setForceMobileRaw]=useState(null); // null = auto
-  const isMobile = forceMobile !== null ? forceMobile : autoMobile;
+  const [forceMobile,setForceMobileRaw]=useState(null);
+  const isMobile=forceMobile!==null?forceMobile:autoMobile;
+  useEffect(()=>{ if(autoMobile)setForceMobileRaw(null); },[autoMobile]);
+  const setForceMobile=val=>setForceMobileRaw(val);
 
-  // When screen resizes to mobile, clear any desktop-forced override
-  useEffect(()=>{ if(autoMobile) setForceMobileRaw(null); },[autoMobile]);
-
-  const setForceMobile=(val)=>{
-    // val=true → force mobile, val=false → force desktop, null → auto
-    setForceMobileRaw(val);
-  };
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
   const [showNewProject,setShowNewProject]=useState(false);
   const [saveFlash,setSaveFlash]=useState(false);
-  const [conflictPending,setConflictPending]=useState(null);
-  const conflictPendingRef=useRef(null);
-  conflictPendingRef.current=conflictPending;
+  const [fbUser,setFbUser]=useState(null);
+  const [syncStatus,setSyncStatus]=useState('idle'); // 'idle'|'syncing'|'synced'|'error'
 
   // Initialize from localStorage if available, else seed
   const [projects,setProjects]=useState(()=>persisted?.projects||SEED.projects);
@@ -6820,89 +6656,47 @@ const App=()=>{
   const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
   const [pomoData,setPomoData]=useState(()=>pomoLoad());
 
-  // Persist pomoData whenever it changes
   useEffect(()=>{ pomoSave(pomoData); },[pomoData]);
 
-  // visibilitychange: when user switches back to this tab, quietly check if
-  // another device wrote to the Gist. If so, show the conflict banner.
+  // Firebase auth state listener — tracks sign-in across all devices
   useEffect(()=>{
-    const handleVisibility=async()=>{
-      if(document.visibilityState!=='visible')return;
-      if(conflictPendingRef.current)return;
-      const cfg=loadGistCfg();
-      if(!cfg.token||!cfg.gistId)return;
-      try{
-        const authHeader='Bearer '+cfg.token;
-        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
-        if(!res.ok)return;
-        const gistJson=await res.json();
-        const meta=loadSyncMeta();
-        if(!meta.updatedAt||gistJson.updated_at<=meta.updatedAt)return;
-        // Remote is newer — fetch full data and show conflict banner
-        const dataFile=gistJson.files['boardhub-data.json'];
-        if(!dataFile)return;
-        let content=dataFile.content;
-        if(dataFile.truncated){const r2=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r2.text();}
-        const remoteData=JSON.parse(content);
-        const remoteImageMap=await fetchImageChunks(gistJson,authHeader);
-        const chunkCount=Object.keys(gistJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
-        setConflictPending({remoteData,remoteImageMap,remoteUpdatedAt:gistJson.updated_at,chunkCount});
-      }catch{}
-    };
-    document.addEventListener('visibilitychange',handleVisibility);
-    return()=>document.removeEventListener('visibilitychange',handleVisibility);
+    if(!_fbReady&&!initFirebase())return;
+    const unsub=_fbAuth.onAuthStateChanged(user=>setFbUser(user||null));
+    return unsub;
   },[]);
 
-  const resolveConflictLoad=async()=>{
-    if(!conflictPending)return;
-    const{remoteData,remoteImageMap,remoteUpdatedAt,chunkCount}=conflictPending;
-    const rehydrated=Object.keys(remoteImageMap).length>0?rehydrateIdbRefs(remoteData,remoteImageMap):remoteData;
-    await handleImport(rehydrated);
-    saveSyncMeta(remoteUpdatedAt,chunkCount);
-    setConflictPending(null);
-  };
-  const resolveConflictDismiss=()=>setConflictPending(null);
+  // Firestore real-time listener — fires instantly when any device saves
+  const _isApplyingRemote=useRef(false);
+  useEffect(()=>{
+    if(!fbUser)return;
+    const ref=getStateRef(fbUser.uid);
+    if(!ref)return;
+    setSyncStatus('syncing');
+    const unsub=ref.onSnapshot(snap=>{
+      if(!snap.exists)return;
+      const data=snap.data();
+      if(!data)return;
+      _isApplyingRemote.current=true;
+      if(data.projects)setProjects(data.projects);
+      if(data.clients)setClients(data.clients);
+      if(data.mentors)setMentors(data.mentors);
+      if(data.notes)setNotes(data.notes);
+      if(data.tasks)setTasks(data.tasks);
+      if(data.socialPosts)setSocialPosts(data.socialPosts);
+      if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
+      if(data.pomoData)setPomoData(data.pomoData);
+      setSyncStatus('synced');
+      setTimeout(()=>{ _isApplyingRemote.current=false; },600);
+    },err=>{
+      console.error('[BoardHub] Firestore listener:',err);
+      setSyncStatus('error');
+    });
+    return unsub;
+  },[fbUser]);
 
-  // Auto-save to localStorage — debounced to avoid thrashing on every keystroke
+  // Auto-save localStorage + debounced push to Firestore
   const saveFlashTimer=useRef(null);
-  const gistSyncTimer=useRef(null);
-  const loadGistCfg=()=>{try{return JSON.parse(localStorage.getItem('boardhub_gist_config'))||{};}catch{return{};}};
-  const hasSynced=useRef(false);
-
-  // Auto-pull once on mount
-  useEffect(()=>{
-    if(hasSynced.current)return;
-    hasSynced.current=true;
-    const cfg=loadGistCfg();
-    if(!cfg.token||!cfg.gistId)return;
-    (async()=>{
-      try{
-        const authHeader='Bearer '+cfg.token;
-        const res=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
-        if(!res.ok)return;
-        const gistJson=await res.json();
-        const dataFile=gistJson.files['boardhub-data.json'];
-        if(!dataFile)return;
-        let content=dataFile.content;
-        if(dataFile.truncated){const r2=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r2.text();}
-        const data=JSON.parse(content);
-        // Load image chunks and rehydrate before ingest
-        const imageMap=await fetchImageChunks(gistJson,authHeader);
-        const rehydrated=Object.keys(imageMap).length>0?rehydrateIdbRefs(data,imageMap):data;
-        const ingested=await ingestImages(rehydrated);
-        if(ingested.projects)setProjects(ingested.projects);
-        if(ingested.clients)setClients(ingested.clients);
-        if(ingested.mentors)setMentors(ingested.mentors);
-        if(ingested.notes)setNotes(ingested.notes);
-        if(ingested.tasks)setTasks(ingested.tasks);
-        if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
-        if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
-        saveSyncMeta(gistJson.updated_at,chunkCount);
-      }catch{}
-    })();
-  },[]);
-
-  // Auto-save localStorage + debounced auto-push to Gist (no images for speed)
+  const fbPushTimer=useRef(null);
   useEffect(()=>{
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
@@ -6910,51 +6704,21 @@ const App=()=>{
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
       saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
-      clearTimeout(gistSyncTimer.current);
-      gistSyncTimer.current=setTimeout(async()=>{
-        const cfg=loadGistCfg();
-        if(!cfg.token||!cfg.gistId)return;
-        if(conflictPendingRef.current)return; // don't overwrite while conflict is pending
+      if(!fbUser||_isApplyingRemote.current)return;
+      clearTimeout(fbPushTimer.current);
+      fbPushTimer.current=setTimeout(async()=>{
         try{
-          const authHeader='Bearer '+cfg.token;
-          const meta=loadSyncMeta();
-          // Check if remote was updated by another device before writing
-          if(meta.updatedAt){
-            const checkRes=await fetch('https://api.github.com/gists/'+cfg.gistId,{headers:{Authorization:authHeader}});
-            if(checkRes.ok){
-              const checkJson=await checkRes.json();
-              if(checkJson.updated_at>meta.updatedAt){
-                // Remote is newer — surface conflict and skip write
-                const dataFile=checkJson.files['boardhub-data.json'];
-                if(dataFile){
-                  let content=dataFile.content;
-                  if(dataFile.truncated){const r=await fetch(dataFile.raw_url,{headers:{Authorization:authHeader}});content=await r.text();}
-                  const remoteData=JSON.parse(content);
-                  const remoteImageMap=await fetchImageChunks(checkJson,authHeader);
-                  const chunkCount=Object.keys(checkJson.files).filter(n=>n.startsWith(IMG_FILE_PREFIX)).length;
-                  setConflictPending({remoteData,remoteImageMap,remoteUpdatedAt:checkJson.updated_at,chunkCount});
-                }
-                return;
-              }
-            }
-          }
-          // No conflict — safe to write
-          const{files,chunkCount}=await buildGistFiles(state,meta.chunkCount||0);
-          const doPatch=()=>fetch('https://api.github.com/gists/'+cfg.gistId,{
-            method:'PATCH',
-            headers:{Authorization:authHeader,'Content-Type':'application/json'},
-            body:JSON.stringify({files})
-          });
-          let r=await doPatch();
-          if(r.status===409){await new Promise(x=>setTimeout(x,2000+Math.random()*2000));r=await doPatch();}
-          if(r.ok){const json=await r.json();saveSyncMeta(json.updated_at,chunkCount);}
-        }catch{}
-      },4000);
+          setSyncStatus('syncing');
+          await pushState(state,fbUser.uid);
+          setSyncStatus('synced');
+        }catch(e){
+          console.error('[BoardHub] Firestore push:',e);
+          setSyncStatus('error');
+        }
+      },2000);
     },800);
     return ()=>clearTimeout(timer);
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
-
-  // Lucide icons: no longer needed — Icon component caches SVG paths on first use
 
   const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
@@ -6969,7 +6733,8 @@ const App=()=>{
   };
 
   const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
-  // Walk imported data: store base64 images into IDB and replace with idb:// refs
+
+  // When importing data: store any base64 images in IDB, replace with idb:// refs
   const ingestImages=async obj=>{
     if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
     if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
@@ -6995,25 +6760,23 @@ const App=()=>{
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ? <SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile}/>
-        : <SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile}/>
+        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile}/>
+        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'48px 40px',overflowY:'auto',minHeight:'100vh'}}>
-        {conflictPending&&<ConflictBanner remoteUpdatedAt={conflictPending.remoteUpdatedAt} onLoad={resolveConflictLoad} onDismiss={resolveConflictDismiss}/>}
-        {view==='dashboard'      && <Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
-        {view==='projects'       && <ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
-        {view==='project-detail' && selectedProject && <ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
-        {view==='gallery'        && <Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
-        {view==='ideas'          && <IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks} isMobile={isMobile}/>}
-        {view==='mentors'       && <MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
-        {view==='social'         && <Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
-        {view==='clients'        && <Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           && <SyncHub appState={appState} onImport={handleImport} onConflict={setConflictPending} onClearSave={clearSave} isMobile={isMobile}/>}
+        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
+        {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
+        {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
+        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks} isMobile={isMobile}/>}
+        {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
+        {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
+        {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile}/>}
       </main>
     </div>
   );
 };
-
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
