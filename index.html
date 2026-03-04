@@ -839,127 +839,104 @@ const pomoFmtMonth = function(mk) {
 
 // - POMODORO TIMER (with built-in stats panel) -
 // - DRAGGABLE POMO WIDGET -
-const PomoWidget = React.memo(({ timeStr, isActive, isFocus, pct, toggle, reset, onClose }) => {
-  const [pos, setPos] = useState({ x: window.innerWidth - 260, y: window.innerHeight - 200 });
-  const dragging = useRef(false);
-  const offset = useRef({ x: 0, y: 0 });
-  const widgetRef = useRef(null);
-  const r = 28;
-  const circ = 2 * Math.PI * r;
-  const strokeOffset = circ * (1 - pct);
 
-  const onMouseDown = e => {
-    if (e.target.closest('button')) return;
-    dragging.current = true;
-    offset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
-    e.preventDefault();
-  };
 
-  useEffect(() => {
-    const onMove = e => {
-      if (!dragging.current) return;
-      const clientX=e.touches?e.touches[0].clientX:e.clientX;
-      const clientY=e.touches?e.touches[0].clientY:e.clientY;
-      const el = widgetRef.current;
-      const maxX = window.innerWidth - (el ? el.offsetWidth : 220);
-      const maxY = window.innerHeight - (el ? el.offsetHeight : 140);
-      setPos({
-        x: Math.max(0, Math.min(clientX - offset.current.x, maxX)),
-        y: Math.max(0, Math.min(clientY - offset.current.y, maxY)),
+const POMO_TIMER_LS = 'boardhub_pomo_timer_v1';
+const pomoTimerSave = d => { try { localStorage.setItem(POMO_TIMER_LS, JSON.stringify(d)); } catch(e) {} };
+const pomoTimerLoad = () => { try { const s = localStorage.getItem(POMO_TIMER_LS); return s ? JSON.parse(s) : null; } catch(e) { return null; } };
+const pomoTimerClear = () => { try { localStorage.removeItem(POMO_TIMER_LS); } catch(e) {} };
+
+// Web Audio sounds
+const playPomoSound = (type) => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (type === 'work_end') {
+      // Three ascending chimes — warm bell sound
+      const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+      notes.forEach((freq, i) => {
+        const t = ctx.currentTime + i * 0.28;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.38, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 1.1);
+        osc.start(t); osc.stop(t + 1.15);
       });
-    };
-    const onUp = () => { dragging.current = false; };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove, {passive:true});
-    window.addEventListener('touchend', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
-    };
-  }, []);
-
-  return ReactDOM.createPortal(
-    <div ref={widgetRef} style={{
-      position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999,
-      background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 18, boxShadow: '0 8px 32px rgba(28,25,23,.2)',
-      width: 220, padding: '12px 16px', userSelect: 'none',
-      fontFamily: 'Figtree, sans-serif',
-    }}>
-      <div onMouseDown={onMouseDown} style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 10, cursor: 'grab',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="grip-horizontal" size={13} style={{ color: 'var(--muted)' }}/>
-          <span style={{ fontSize: '.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>
-            {isFocus ? ' Foco' : '☕ Pausa'}
-          </span>
-        </div>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--muted)', borderRadius: 4, lineHeight: 1, display:'flex',alignItems:'center' }}>
-          <Icon name="x" size={13}/>
-        </button>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ position: 'relative', width: 70, height: 70, flexShrink: 0 }}>
-          <svg width="70" height="70" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
-            <circle cx="35" cy="35" r={r} fill="none" stroke="var(--border)" strokeWidth="4"/>
-            <circle cx="35" cy="35" r={r} fill="none" stroke={isFocus ? 'var(--text)' : '#276b3e'} strokeWidth="4"
-              strokeDasharray={circ} strokeDashoffset={strokeOffset} strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 1s linear, stroke .4s' }}/>
-          </svg>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', fontWeight: 500 }}>{timeStr}</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button onClick={toggle} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
-            borderRadius: 8, border: '1px solid var(--border)',
-            background: isActive ? 'var(--text)' : 'transparent',
-            color: isActive ? 'white' : 'var(--text)', cursor: 'pointer',
-            fontFamily: 'Figtree, sans-serif', fontSize: '.8rem', fontWeight: 600, transition: 'all .15s',
-          }}>
-            <Icon name={isActive ? 'pause' : 'play'} size={13}/>
-            {isActive ? 'Pausar' : 'Iniciar'}
-          </button>
-          <button onClick={reset} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px',
-            borderRadius: 8, border: 'none', background: 'transparent',
-            color: 'var(--muted)', cursor: 'pointer',
-            fontFamily: 'Figtree, sans-serif', fontSize: '.78rem', fontWeight: 500,
-          }}>
-            <Icon name="rotate-ccw" size={12}/>
-            Reiniciar
-          </button>
-        </div>
-      </div>
-    </div>
-  , document.body);
-});
+    } else if (type === 'break_end') {
+      // Two soft descending tones
+      const notes = [659.25, 523.25];
+      notes.forEach((freq, i) => {
+        const t = ctx.currentTime + i * 0.3;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.28, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+        osc.start(t); osc.stop(t + 0.95);
+      });
+    } else if (type === 'pause') {
+      // Single soft low click
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(392, ctx.currentTime); // G4
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+    }
+  } catch(e) {}
+};
 
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const FOCUS_SECS = 25 * 60;
   const BREAK_SECS = 5 * 60;
-  const [timeLeft, setTimeLeft] = useState(FOCUS_SECS);
-  const [isActive, setIsActive] = useState(false);
-  const [mode, setMode] = useState('focus');
+
+  // Restore persisted timer state (survives tab switches and browser minimize)
+  const _initState = () => {
+    const saved = pomoTimerLoad();
+    if (saved && saved.isActive && saved.endTimestamp) {
+      const remaining = Math.max(0, Math.round((saved.endTimestamp - Date.now()) / 1000));
+      return { timeLeft: remaining, isActive: remaining > 0, mode: saved.mode || 'focus' };
+    }
+    if (saved) return { timeLeft: saved.timeLeft ?? FOCUS_SECS, isActive: false, mode: saved.mode || 'focus' };
+    return { timeLeft: FOCUS_SECS, isActive: false, mode: 'focus' };
+  };
+  const _init = _initState();
+
+  const [timeLeft, setTimeLeft] = useState(_init.timeLeft);
+  const [isActive, setIsActive] = useState(_init.isActive);
+  const [mode, setMode] = useState(_init.mode);
   const [showStats, setShowStats] = useState(false);
-  const [showWidget, setShowWidget] = useState(false);
-  const modeRef = useRef('focus');
-  const timeLeftRef = useRef(FOCUS_SECS);
+  const modeRef = useRef(mode);
+  const timeLeftRef = useRef(_init.timeLeft);
+  const isActiveRef = useRef(_init.isActive);
   const unsavedSecsRef = useRef(0);
+  const endTimestampRef = useRef(_init.isActive ? (_init.timeLeft * 1000 + Date.now()) : null);
   modeRef.current = mode;
   timeLeftRef.current = timeLeft;
+  isActiveRef.current = isActive;
 
   const requestNotifPermission = () => {
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
   };
   const fireNotification = (title, body) => {
-    if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body });
+    if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body, icon: '' });
+  };
+
+  // Persist timer state to localStorage so background tabs stay in sync
+  const persistTimerState = (active, tLeft, m) => {
+    if (active && tLeft > 0) {
+      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft * 1000, timeLeft: tLeft });
+    } else {
+      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft });
+    }
   };
 
   // Flush unsaved seconds to state
@@ -981,38 +958,99 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     return () => flushPomoSecs();
   }, [isActive]);
 
+  // Recalculate elapsed time when tab becomes visible again
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && isActiveRef.current && endTimestampRef.current) {
+        const remaining = Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        timeLeftRef.current = remaining;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   useEffect(() => {
     if (!isActive) return;
+    // Set/refresh the end anchor whenever we start
+    endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
+    persistTimerState(true, timeLeftRef.current, modeRef.current);
+
     const id = setInterval(() => {
-      const current = timeLeftRef.current;
-      if (current <= 1) {
+      // Always derive time from wall clock — immune to tab throttling
+      const remaining = endTimestampRef.current
+        ? Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000))
+        : timeLeftRef.current - 1;
+
+      if (remaining <= 0) {
         clearInterval(id);
         setTimeLeft(0);
         if (modeRef.current === 'focus') {
           flushPomoSecs();
+          playPomoSound('work_end');
           fireNotification('Pomodoro', 'Sessão de foco encerrada! Hora de pausar. ☕');
           setMode('break');
+          modeRef.current = 'break';
           setTimeLeft(BREAK_SECS);
+          timeLeftRef.current = BREAK_SECS;
+          endTimestampRef.current = Date.now() + BREAK_SECS * 1000;
+          persistTimerState(true, BREAK_SECS, 'break');
         } else {
+          playPomoSound('break_end');
           fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar? ');
           setMode('focus');
+          modeRef.current = 'focus';
           setTimeLeft(FOCUS_SECS);
+          timeLeftRef.current = FOCUS_SECS;
           setIsActive(false);
+          endTimestampRef.current = null;
+          persistTimerState(false, FOCUS_SECS, 'focus');
         }
         return;
       }
-      setTimeLeft(t => t - 1);
+
+      setTimeLeft(remaining);
       if (modeRef.current === 'focus') {
-        unsavedSecsRef.current += 1;
-        // Batch: flush to state every 30 seconds instead of every tick
+        const prev = timeLeftRef.current;
+        const delta = Math.max(0, prev - remaining);
+        unsavedSecsRef.current += delta;
         if (unsavedSecsRef.current >= 30) flushPomoSecs();
       }
-    }, 1000);
+      timeLeftRef.current = remaining;
+      // Refresh persist every ~10s
+      if (remaining % 10 === 0) persistTimerState(true, remaining, modeRef.current);
+    }, 500); // Poll every 500ms for snappy display; wall-clock corrects drift
     return () => clearInterval(id);
   }, [isActive]);
 
-  const toggle = () => { requestNotifPermission(); setIsActive(a => !a); };
-  const reset  = () => { setIsActive(false); setTimeLeft(mode === 'focus' ? FOCUS_SECS : BREAK_SECS); };
+  const toggle = () => {
+    requestNotifPermission();
+    setIsActive(a => {
+      const next = !a;
+      if (next) {
+        // Starting — set end anchor
+        endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
+        persistTimerState(true, timeLeftRef.current, modeRef.current);
+      } else {
+        // Pausing
+        playPomoSound('pause');
+        endTimestampRef.current = null;
+        persistTimerState(false, timeLeftRef.current, modeRef.current);
+        flushPomoSecs();
+      }
+      return next;
+    });
+  };
+  const reset = () => {
+    setIsActive(false);
+    endTimestampRef.current = null;
+    const t = mode === 'focus' ? FOCUS_SECS : BREAK_SECS;
+    setTimeLeft(t);
+    timeLeftRef.current = t;
+    persistTimerState(false, t, mode);
+    flushPomoSecs();
+  };
 
   const mins = Math.floor(timeLeft / 60);
   const secs = timeLeft % 60;
@@ -1052,13 +1090,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
   return (
     <div style={{marginBottom:0}}>
-      {showWidget && (
-        <PomoWidget
-          timeStr={timeStr} isActive={isActive} isFocus={isFocus} pct={pct}
-          toggle={toggle} reset={reset}
-          onClose={() => setShowWidget(false)}
-        />
-      )}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7}}>
         <span className="label">Pomodoro</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1066,14 +1097,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
             {isFocus ? 'Foco' : 'Pausa'}
           </div>
-          <button
-            className="btn btn-ghost"
-            onClick={() => setShowWidget(w => !w)}
-            title="Widget flutuante"
-            style={{padding:'4px 8px',borderRadius:6,background:showWidget?'var(--text)':'transparent',color:showWidget?'white':'var(--muted)'}}
-          >
-            <Icon name="layout" size={14}/>
-          </button>
           <button
             className="btn btn-ghost"
             onClick={()=>setShowStats(s=>!s)}
