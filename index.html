@@ -3,39 +3,38 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,viewport-fit=cover">
 <title>BoardHub — Storyboard OS</title>
+<!-- Preconnect FIRST — browser starts DNS/TLS before any scripts -->
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
 <!--
-  BoardHub v17 — Responsive Build
-  Inherits all v16 optimizations plus:
-  • Auto-detects mobile via matchMedia hook (768px breakpoint)
-  • Desktop: fixed sidebar, full layouts
-  • Mobile: hamburger drawer, stacked columns, list→detail navigation
-  • All grids collapse to 1-column on mobile
-  • Gantt chart wraps in horizontal scroll container
-  • ProjectDetail cover compact, Animatics/Research use list→editor pattern
-  • IdeasLab: note list + tasks stack vertically, detail replaces list
-  • All modals slide up as bottom sheets on mobile
-  • Tab bars scroll horizontally on mobile
-  • Touch-friendly: larger tap targets via CSS media queries
+  BoardHub v18 — Performance Build
+  • Instant CSS loading screen (renders before any JS)
+  • Firebase lazy-loaded after first paint (~400KB off critical path)
+  • Babel runs JSX-only transform (skips unnecessary env polyfills)
+  • Preconnect hints at top of <head> for parallel DNS/TLS
 -->
+<!-- Critical render-path scripts only -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<!-- Firebase loaded LAZILY after first paint — see _lazyFirebase() below -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;}
 *,*::before,*::after{box-sizing:border-box;}
+/* Offscreen rendering optimization - browser skips layout/paint for non-visible content */
+main>div{content-visibility:auto;contain-intrinsic-size:auto 500px;}
 body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;}
 h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
-img{loading:lazy;}
+img{max-width:100%;}
 ::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
+.card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
+.card:hover .card-delete-btn{opacity:1;}
 .card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;}
 .btn-dark{background:var(--text);color:white;}.btn-dark:hover{opacity:.85;transform:translateY(-1px);}
@@ -48,6 +47,7 @@ img{loading:lazy;}
 .tag-green{background:#E8F5EC;color:#276b3e;}.tag-yellow{background:#FEF9E7;color:#92700b;}.tag-gray{background:#F0EDE9;color:var(--muted);}.tag-red{background:#FDEDED;color:#9B1C1C;}.tag-blue{background:#EFF6FF;color:#1e40af;}
 .input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;color:var(--text);transition:border-color .2s;}.input-bare:focus{border-color:var(--text);}
 .input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Figtree',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s;width:100%;}.input-box:focus{border-color:var(--text);}
+input[type="date"]{font-family:'Figtree',sans-serif;}
 .label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
 .tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
@@ -55,7 +55,6 @@ img{loading:lazy;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 .overlay{position:fixed;inset:0;height:100vh;background:transparent;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
-.overlay-offset{position:fixed;inset:0;height:100vh;background:transparent;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
 .modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:95vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
@@ -76,7 +75,7 @@ img{loading:lazy;}
 .gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
 .gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
 
-/* Hover utilities — replaces onMouseEnter/Leave JS handlers */
+/* Hover utilities - replaces onMouseEnter/Leave JS handlers */
 .hover-text:hover{color:var(--text)!important;}
 .hover-danger:hover{color:#DC2626!important;}
 .hover-surface:hover{background:var(--surface);}
@@ -87,7 +86,7 @@ img{loading:lazy;}
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 
-/* ─── BOTTOM TAB BAR ────────────────────────────────────────────────────── */
+/* - BOTTOM TAB BAR - */
 .bottom-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:80;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:stretch;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
 .bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
 .bottom-tab-item.active{color:var(--text);}
@@ -107,7 +106,7 @@ img{loading:lazy;}
 .fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:70;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
 .fab:active{transform:scale(.92);}
 
-/* ─── MOBILE-LAYOUT COMPONENT STYLES (always applied — used whenever isMobile=true) ── */
+/* - MOBILE-LAYOUT COMPONENT STYLES (always applied - used whenever isMobile=true) - */
 /* Compact list rows */
 .compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s;min-height:64px;}
 .compact-row:active{background:var(--bg);}
@@ -128,11 +127,11 @@ img{loading:lazy;}
 .vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
 .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
 
-/* ─── RESPONSIVE ────────────────────────────────────────────────────────── */
+/* - RESPONSIVE - */
 @media(max-width:768px){
   /* Prevent horizontal scroll */
   html,body{overflow-x:hidden!important;max-width:100vw!important;}
-  /* Global spacing — room for bottom tab */
+  /* Global spacing - room for bottom tab */
   .main-mobile{margin-left:0!important;padding:16px 16px 72px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;overflow-x:hidden!important;width:100%!important;box-sizing:border-box!important;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
@@ -140,46 +139,67 @@ img{loading:lazy;}
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
   
-  /* Save toast — above tab bar */
+  /* Save toast - above tab bar */
   .save-toast{left:50%!important;bottom:72px!important;}
   
   /* Cards */
   .card{border-radius:12px;overflow:hidden;}
   
-  /* Tag — readable on mobile */
+  /* Tag - readable on mobile */
   .tag{padding:5px 10px;font-size:.72rem;}
   
-  /* Buttons — 48px touch targets */
+  /* Buttons - 48px touch targets */
   .btn{padding:12px 18px;font-size:.9rem;min-height:44px;}
   .btn-ghost{padding:10px 12px;min-height:44px;}
   .nav-item{padding:14px 16px;font-size:.95rem;}
   
-  /* Input — 16px prevents iOS zoom */
+  /* Input - 16px prevents iOS zoom */
   .input-box{padding:12px 14px;font-size:16px!important;min-height:48px;}
   textarea{font-size:16px!important;}
   select{font-size:16px!important;min-height:44px;}
   input{font-size:16px!important;}
   
-  /* Label — readable */
+  /* Label - readable */
   .label{font-size:.72rem;}
   
-  /* Tab buttons — larger tap area */
+  /* Tab buttons - larger tap area */
   .tab-btn{margin-right:0;font-size:.88rem;padding:12px 16px;}
   
   /* Upload zone */
   .upload-zone{padding:20px;}
   
-  /* Cover edit — always show on mobile (no hover) */
+  /* Cover edit - always show on mobile (no hover) */
   .cover-wrap .cover-edit-overlay{background:rgba(0,0,0,.3)!important;opacity:1!important;}
 }
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
+<div id="root">
+  <!-- Instant loading screen — pure CSS, renders before any JS loads -->
+  <div id="splash" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#F4F1ED;font-family:serif;gap:10px">
+    <div style="font-size:2.4rem;font-weight:500;letter-spacing:-0.02em;color:#1C1917">Board<span style="font-style:italic;font-weight:300">Hub</span></div>
+    <div style="font-size:.65rem;color:#78716C;letter-spacing:.1em;text-transform:uppercase">Carregando...</div>
+    <div style="width:120px;height:3px;background:#E8E3DC;border-radius:3px;overflow:hidden;margin-top:8px">
+      <div style="width:40%;height:100%;background:#1C1917;border-radius:3px;animation:splashBar 1.2s ease infinite"></div>
+    </div>
+  </div>
+  <style>#splash{transition:opacity .3s}@keyframes splashBar{0%{transform:translateX(-100%)}50%{transform:translateX(150%)}100%{transform:translateX(250%)}}</style>
+  <script>
+    window.__splashTimeout=setTimeout(function(){
+      var s=document.getElementById('splash');if(!s)return;
+      s.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:sans-serif;padding:24px;text-align:center"><div style="font-size:2.4rem;font-weight:500;font-family:serif;color:#1C1917">BoardHub</div><div style="font-size:.8rem;color:#DC2626">Erro ao carregar. Verifique sua conexao e recarregue.</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#1C1917;color:white;border:none;border-radius:8px;cursor:pointer">Recarregar</button></div>';
+    },12000);
+    window.addEventListener('error',function(e){
+      clearTimeout(window.__splashTimeout);
+      var s=document.getElementById('splash');if(!s)return;
+      s.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:sans-serif;padding:24px;text-align:center"><div style="font-size:2.4rem;font-weight:500;font-family:serif;color:#1C1917">BoardHub</div><div style="font-size:.8rem;color:#DC2626;max-width:400px">Erro: '+e.message+'</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#1C1917;color:white;border:none;border-radius:8px;cursor:pointer">Recarregar</button></div>';
+    });
+  </script>
+</div>
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef, useMemo } = React;
 
-// ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
+// - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
 const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 const lsSave = s => {
@@ -188,12 +208,12 @@ const lsSave = s => {
     // Quota exceeded — strip any accidental base64 that slipped through (single pass)
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
-    } catch { /* silent — idb:// refs and https:// URLs never cause quota issues */ }
+    } catch { /* silent - idb:// refs and https:// URLs never cause quota issues */ }
   }
 };
 const persisted = lsLoad();
 
-// ─── SEED DATA ────────────────────────────────────────────────────────────────
+// - SEED DATA -
 const SEED = {
   projects:[
     {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:"2024-11-01",deadline:"2024-11-22",deleted:false,
@@ -240,12 +260,12 @@ const SEED = {
 };
 
 const socialTemplates=[
-  {label:"Bastidores",text:"🎬 Bastidores do projeto de hoje. Do rascunho à arte final.\n\nCada quadro é uma decisão de câmera.\n\n#storyboard #bastidores #artprocess"},
-  {label:"Novo Job",text:"🔥 Novo projeto saindo do forno!\n\nFiquei responsável por visualizar essa história incrível. Mais em breve.\n\n#storyboard #directiondesign"},
-  {label:"Estudo Diário",text:"📚 Estudo do dia — [FILME/LIVRO].\n\nO que aprendi: [INSIGHT]\n\n#estudos #filmanalysis #visualdevelopment"}
+  {label:"Bastidores",text:" Bastidores do projeto de hoje. Do rascunho à arte final.\n\nCada quadro é uma decisão de câmera.\n\n#storyboard #bastidores #artprocess"},
+  {label:"Novo Job",text:" Novo projeto saindo do forno!\n\nFiquei responsável por visualizar essa história incrível. Mais em breve.\n\n#storyboard #directiondesign"},
+  {label:"Estudo Diário",text:" Estudo do dia — [FILME/LIVRO].\n\nO que aprendi: [INSIGHT]\n\n#estudos #filmanalysis #visualdevelopment"}
 ];
 
-// ─── UTILS ────────────────────────────────────────────────────────────────────
+// - UTILS -
 const statusTag=s=>({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluído':'tag-gray','Cancelado':'tag-red'}[s]||'tag-gray');
 
 // Icon: renders lucide icons as pure React SVGs with one-time caching per icon name.
@@ -286,7 +306,7 @@ const Icon=({name,size=16,style={}})=>{
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
-// ─── RESPONSIVE HOOK ─────────────────────────────────────────────────────────
+// - RESPONSIVE HOOK -
 // isMobileUA: true if the browser is on a phone/tablet, regardless of viewport.
 // This is the reliable ground-truth when served over HTTPS (e.g. GitHub Pages),
 // where some Android browsers report a larger layout viewport on first paint.
@@ -314,37 +334,41 @@ const useIsMobile=(breakpoint=768)=>{
   return autoMobile;
 };
 
-// ─── INDEXEDDB IMAGE STORE (unlimited local storage) ─────────────────────────
+// - INDEXEDDB IMAGE STORE (unlimited local storage) -
 // Images are stored as Blobs in IndexedDB (no 5 MB quota like localStorage).
 // The app state only holds a lightweight reference: "idb://<key>".
 // At render time, useIdbUrl() resolves these references to object URLs.
 const IDB_NAME='boardhub_images';
 const IDB_STORE='images';
 let _idb=null;
+let _idbPending=null;
 
 // FIX 1: Reset the cached IDB connection whenever it closes unexpectedly.
-// Without this, openIdb() returns a closed/invalid DB handle forever, causing
-// all subsequent image reads to silently fail.
-const _resetIdb=()=>{ _idb=null; };
+const _resetIdb=()=>{ _idb=null; _idbPending=null; };
 
-const openIdb=()=>new Promise((res,rej)=>{
+const openIdb=()=>{
   // If we have a valid open connection, reuse it
   if(_idb && _idb.objectStoreNames){
-    try{ _idb.transaction(IDB_STORE,'readonly').abort(); return res(_idb); }
-    catch{ _idb=null; /* connection was stale — fall through to re-open */ }
+    try{ _idb.transaction(IDB_STORE,'readonly').abort(); return Promise.resolve(_idb); }
+    catch{ _idb=null; /* connection was stale - fall through to re-open */ }
   }
-  const req=indexedDB.open(IDB_NAME,1);
-  req.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);
-  req.onsuccess=e=>{
-    _idb=e.target.result;
-    // Listen for browser-initiated close (memory pressure, page unload, etc.)
-    _idb.onclose=_resetIdb;
-    _idb.onerror=()=>_resetIdb();
-    _idb.onversionchange=()=>{ _idb.close(); _resetIdb(); };
-    res(_idb);
-  };
-  req.onerror=e=>{ _resetIdb(); rej(e.target.error); };
-});
+  // Coalesce concurrent open requests
+  if(_idbPending)return _idbPending;
+  _idbPending=new Promise((res,rej)=>{
+    const req=indexedDB.open(IDB_NAME,1);
+    req.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);
+    req.onsuccess=e=>{
+      _idb=e.target.result;
+      _idbPending=null;
+      _idb.onclose=_resetIdb;
+      _idb.onerror=()=>_resetIdb();
+      _idb.onversionchange=()=>{ _idb.close(); _resetIdb(); };
+      res(_idb);
+    };
+    req.onerror=e=>{ _resetIdb(); rej(e.target.error); };
+  });
+  return _idbPending;
+};
 
 const idbPut=(key,blob)=>openIdb().then(db=>new Promise((res,rej)=>{
   try{
@@ -409,7 +433,7 @@ const BgImg=({src,className,style,children,...props})=>{
   return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
-// ─── FIREBASE CONFIG & INIT ──────────────────────────────────────────────────
+// - FIREBASE CONFIG & INIT -
 const FB_CFG_LS='boardhub_firebase_cfg';
 const loadFbCfg=()=>{try{return JSON.parse(localStorage.getItem(FB_CFG_LS))||{};}catch{return{};}};
 const saveFbCfg=cfg=>{try{localStorage.setItem(FB_CFG_LS,JSON.stringify(cfg));}catch{}};
@@ -426,8 +450,38 @@ const DEFAULT_FB_CFG={
   appId:"1:817788828725:web:612f5d62662b88274d457c"
 };
 
-const initFirebase=()=>{
+// - LAZY FIREBASE LOADER -
+// Firebase SDK (~400KB) is loaded AFTER first paint to avoid blocking render.
+let _fbScriptsLoaded=false;
+let _fbScriptsPromise=null;
+
+const _loadFirebaseScripts=()=>{
+  if(_fbScriptsLoaded)return Promise.resolve();
+  if(_fbScriptsPromise)return _fbScriptsPromise;
+  const urls=[
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js',
+  ];
+  // Load sequentially — each script depends on the previous
+  _fbScriptsPromise=urls.reduce((chain,src)=>
+    chain.then(()=>new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src=src;s.onload=res;s.onerror=rej;
+      document.head.appendChild(s);
+    }))
+  ,Promise.resolve()).then(()=>{_fbScriptsLoaded=true;}).catch(e=>{
+    console.warn('[BoardHub] Firebase scripts failed to load:',e);
+    _fbScriptsPromise=null; // allow retry
+  });
+  return _fbScriptsPromise;
+};
+
+const initFirebase=async()=>{
   if(_fbReady)return true;
+  await _loadFirebaseScripts();
+  if(typeof firebase==='undefined')return false;
   const saved=loadFbCfg();
   const cfg=saved.apiKey?saved:DEFAULT_FB_CFG;
   if(!cfg.apiKey)return false;
@@ -436,15 +490,14 @@ const initFirebase=()=>{
     _fbAuth=firebase.auth();
     _fbDb=firebase.firestore();
     _fbStorage=firebase.storage();
-    // Enable offline persistence (multi-tab aware)
     _fbDb.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     _fbReady=true;
     return true;
   }catch(e){console.error('[BoardHub] Firebase init:',e);return false;}
 };
 
-// Attempt to init on load (if config already saved from a previous session)
-initFirebase();
+// Start loading Firebase scripts in background immediately (but don't block)
+_loadFirebaseScripts();
 
 // Firestore state doc ref for a user
 const getStateRef=uid=>{
@@ -491,7 +544,7 @@ const _storeIdb=async(file)=>{
   return 'idb://'+key;
 };
 
-// Core upload: Firebase Storage → Imgur → IDB
+// Core upload: Firebase Storage \u2192 Imgur \u2192 IDB
 const _uploadSingle=async(file)=>{
   if(_fbReady&&_fbAuth?.currentUser){
     try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
@@ -551,7 +604,7 @@ const stripBase64=obj=>{
   return obj;
 };
 
-// Resolve idb:// keys → base64 data URLs (used for manual JSON export)
+// Resolve idb:// keys \u2192 base64 data URLs (used for manual JSON export)
 const blobToBase64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
 const resolveIdbRefs=async obj=>{
   if(Array.isArray(obj))return Promise.all(obj.map(resolveIdbRefs));
@@ -587,7 +640,7 @@ const rehydrateIdbRefs=(obj,map)=>{
 
 
 
-// ─── TRASH BANNER ─────────────────────────────────────────────────────────────
+// - TRASH BANNER -
 const TrashBanner=({label,onExit})=>(
   <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'#991B1B'}}>
     <Icon name="trash-2" size={14}/>
@@ -596,8 +649,14 @@ const TrashBanner=({label,onExit})=>(
   </div>
 );
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
-const Modal=({title,onClose,children,width=480})=>(
+// - MODAL -
+const Modal=({title,onClose,children,width=480})=>{
+  useEffect(()=>{
+    const h=e=>{if(e.key==='Escape')onClose();};
+    document.addEventListener('keydown',h);
+    return()=>document.removeEventListener('keydown',h);
+  },[onClose]);
+  return(
   <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal" style={{maxWidth:width}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
@@ -607,9 +666,9 @@ const Modal=({title,onClose,children,width=480})=>(
       {children}
     </div>
   </div>
-);
+);};
 
-// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+// - SIDEBAR -
 const NAV_ITEMS=[
   {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
   {id:'projects', icon:'folder-open',     label:'Projetos'},
@@ -630,16 +689,15 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
     </div>
     <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
       {NAV_ITEMS.map(item=>(
-        <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)?'active':''}`}>
+        <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)||(item.id==='projects'&&activeView==='project-detail')?'active':''}`}>
           <Icon name={item.icon} size={15}/>{item.label}
         </button>
       ))}
     </nav>
     <div style={{borderTop:'1px solid var(--border)',paddingTop:14,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
       <button onClick={()=>setForceMobile(true)}
-        style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}
-        onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--text)';e.currentTarget.style.color='var(--text)';}}
-        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--muted)';}}>
+        className="hover-border-text hover-text"
+        style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
         <Icon name="smartphone" size={13}/> Visualização Mobile
       </button>
       <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.72rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)'}}>
@@ -683,7 +741,7 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile})=>
       {/* Bottom tab bar */}
       <nav className="bottom-tab-bar">
         {TAB_ITEMS.map(item=>(
-          <button key={item.id} onClick={()=>go(item.id)} className={`bottom-tab-item ${activeView.startsWith(item.id)?'active':''}`}>
+          <button key={item.id} onClick={()=>go(item.id)} className={`bottom-tab-item ${activeView.startsWith(item.id)||(item.id==='projects'&&activeView==='project-detail')?'active':''}`}>
             <Icon name={item.icon} size={22}/>{item.label}
           </button>
         ))}
@@ -719,7 +777,7 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile})=>
   );
 });
 
-// ─── POMODORO ─────────────────────────────────────────────────────────────────
+// - POMODORO -
 const POMO_LS = 'boardhub_pomo_v3';
 
 const pomoLoad = function() {
@@ -779,9 +837,9 @@ const pomoFmtMonth = function(mk) {
   } catch(e) { return mk; }
 };
 
-// ─── POMODORO TIMER (with built-in stats panel) ───────────────────────────────
-// ─── DRAGGABLE POMO WIDGET ───────────────────────────────────────────────────
-const PomoWidget = ({ timeStr, isActive, isFocus, pct, toggle, reset, onClose }) => {
+// - POMODORO TIMER (with built-in stats panel) -
+// - DRAGGABLE POMO WIDGET -
+const PomoWidget = React.memo(({ timeStr, isActive, isFocus, pct, toggle, reset, onClose }) => {
   const [pos, setPos] = useState({ x: window.innerWidth - 260, y: window.innerHeight - 200 });
   const dragging = useRef(false);
   const offset = useRef({ x: 0, y: 0 });
@@ -800,20 +858,26 @@ const PomoWidget = ({ timeStr, isActive, isFocus, pct, toggle, reset, onClose })
   useEffect(() => {
     const onMove = e => {
       if (!dragging.current) return;
+      const clientX=e.touches?e.touches[0].clientX:e.clientX;
+      const clientY=e.touches?e.touches[0].clientY:e.clientY;
       const el = widgetRef.current;
       const maxX = window.innerWidth - (el ? el.offsetWidth : 220);
       const maxY = window.innerHeight - (el ? el.offsetHeight : 140);
       setPos({
-        x: Math.max(0, Math.min(e.clientX - offset.current.x, maxX)),
-        y: Math.max(0, Math.min(e.clientY - offset.current.y, maxY)),
+        x: Math.max(0, Math.min(clientX - offset.current.x, maxX)),
+        y: Math.max(0, Math.min(clientY - offset.current.y, maxY)),
       });
     };
     const onUp = () => { dragging.current = false; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, {passive:true});
+    window.addEventListener('touchend', onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
     };
   }, []);
 
@@ -832,7 +896,7 @@ const PomoWidget = ({ timeStr, isActive, isFocus, pct, toggle, reset, onClose })
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Icon name="grip-horizontal" size={13} style={{ color: 'var(--muted)' }}/>
           <span style={{ fontSize: '.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>
-            {isFocus ? '🧠 Foco' : '☕ Pausa'}
+            {isFocus ? ' Foco' : '☕ Pausa'}
           </span>
         </div>
         <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--muted)', borderRadius: 4, lineHeight: 1, display:'flex',alignItems:'center' }}>
@@ -875,7 +939,7 @@ const PomoWidget = ({ timeStr, isActive, isFocus, pct, toggle, reset, onClose })
       </div>
     </div>
   , document.body);
-};
+});
 
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const FOCUS_SECS = 25 * 60;
@@ -930,7 +994,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
           setMode('break');
           setTimeLeft(BREAK_SECS);
         } else {
-          fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar? 🧠');
+          fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar? ');
           setMode('focus');
           setTimeLeft(FOCUS_SECS);
           setIsActive(false);
@@ -961,7 +1025,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
   const todayDisplay = todaySecs + unsavedSecsRef.current;
 
-  // ── Stats data ──
+  // - Stats data -
   const dayEntries = useMemo(() => {
     const entries = Object.entries(pomoData.days || {});
     const filtered = entries.filter(e => e[0] !== '_total' && e[0].length === 10 && e[1] > 0);
@@ -1048,7 +1112,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         </div>
       )}
 
-      {/* Stats panel — replaces timer card inline */}
+      {/* Stats panel - replaces timer card inline */}
       {showStats && (
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
@@ -1125,8 +1189,8 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   );
 };
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile})=>{
+// - DASHBOARD -
+const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
   const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
@@ -1188,7 +1252,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
               ))}
             </div>
           </div>
-          {/* Tarefas de projetos — agrupadas por projeto */}
+          {/* Tarefas de projetos - agrupadas por projeto */}
           {active.some(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído'))&&(
             <div>
               <div style={{marginBottom:12}}><span className="label">Tarefas Abertas dos Projetos</span></div>
@@ -1264,7 +1328,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
         </div>
       </div>
 
-      {/* ── Mentores Principais ── */}
+      {/* - Mentores Principais - */}
       {mentors.filter(m=>!m.deleted&&m.main).length>0&&(
         <div style={{marginTop:32}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
@@ -1279,7 +1343,7 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                  <div style={{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?` — ${m.medium}`:''}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' — '+m.medium:''}</div>
                   {m.notes&&<div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',lineHeight:1.4}}>{m.notes}</div>}
                 </div>
               </div>
@@ -1290,9 +1354,9 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
 
     </div>
   );
-};
+});
 
-// ─── NEW PROJECT MODAL ────────────────────────────────────────────────────────
+// - NEW PROJECT MODAL -
 const NewProjectModal=({onSave,onClose,isMobile})=>{
   const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -1328,8 +1392,8 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
   );
 };
 
-// ─── PROJECTS LIST ────────────────────────────────────────────────────────────
-const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
+// - PROJECTS LIST -
+const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>{
   const [filterType,setFilterType]=useState('all');
   const [onlyActive,setOnlyActive]=useState(false);
   const [trash,setTrash]=useState(false);
@@ -1404,9 +1468,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
                 onClick={()=>!trash&&onSelect(p)}>
                 {!trash&&(
                   <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
-                    style={{position:'absolute',top:8,left:8,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:6,padding:'4px 6px',cursor:'pointer',color:'white',opacity:0,transition:'opacity .2s',zIndex:2}}
-                    onMouseEnter={e=>{e.currentTarget.style.opacity=1;}}
-                    onMouseLeave={e=>{e.currentTarget.style.opacity=0;}}>
+                    className="card-delete-btn">
                     <Icon name="trash-2" size={12}/>
                   </button>
                 )}
@@ -1440,7 +1502,7 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
           )}
         </div>
 
-        {/* RIGHT: tasks sidebar hub — hidden on mobile */}
+        {/* RIGHT: tasks sidebar hub - hidden on mobile */}
         {!trash&&!isMobile&&(
           <div style={{width:280,flexShrink:0,position:'sticky',top:48}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
@@ -1486,9 +1548,9 @@ const ProjectsList=({projects,setProjects,onSelect,onAdd,isMobile})=>{
       </div>
     </div>
   );
-};
+});
 
-// ─── ADD MENTOR INLINE ────────────────────────────────────────────────────────
+// - ADD MENTOR INLINE -
 const AddMentorInline=({onAdd})=>{
   const [open,setOpen]=useState(false);
   const [name,setName]=useState('');
@@ -1517,7 +1579,7 @@ const AddMentorInline=({onAdd})=>{
   );
 };
 
-// ─── GANTT TIMELINE ───────────────────────────────────────────────────────────
+// - GANTT TIMELINE -
 const PTASK_STATUSES=['Pendente','Fazendo','Concluído','Atrasado'];
 const PTASK_NEXT={'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
 
@@ -1541,7 +1603,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   const dragRef=useRef(null);
   const [, forceUpdate]=useState(0);
 
-  // ── Compute chart bounds ──────────────────────────────────────────────────
+  // - Compute chart bounds -
   let chartStart=projectStart||today;
   let chartEnd=projectEnd||addDays(today,45);
   tasks.forEach(t=>{
@@ -1556,7 +1618,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   const HEADER_H=52;
   const LEFT_W=220;
 
-  // ── Month + week header data ──────────────────────────────────────────────
+  // - Month + week header data -
   const months=[];
   let cur=new Date(chartStart+'T12:00:00');
   const endDt=new Date(chartEnd+'T12:00:00');
@@ -1579,7 +1641,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   const todayOffset=daysBetween(chartStart,today)*DAY_W;
   const gridW=totalDays*DAY_W;
 
-  // ── Bar geometry ───────────────────────────────────────────────────────────
+  // - Bar geometry -
   const barGeom=t=>{
     const s=t.startDate||(projectStart||today);
     const e=t.dueDate||(projectEnd||addDays(today,7));
@@ -1588,7 +1650,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
     return{left,width};
   };
 
-  // ── Drag ──────────────────────────────────────────────────────────────────
+  // - Drag -
   const startDrag=(e,taskId,type)=>{
     e.preventDefault();e.stopPropagation();
     const t=tasks.find(x=>x.id===taskId);if(!t)return;
@@ -1611,7 +1673,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
     window.addEventListener('mouseup',onUp);
   };
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // - Edit -
   const selectTask=t=>{setSelectedId(t.id);setEditDraft({...t,startDate:t.startDate||(projectStart||today),dueDate:t.dueDate||(projectEnd||addDays(today,7)),notes:t.notes||''});};
   const saveEdit=()=>{if(!editDraft)return;onUpdateTasks(tasks.map(t=>t.id===editDraft.id?{...editDraft}:t));setSelectedId(null);setEditDraft(null);};
   const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));setSelectedId(null);setEditDraft(null);};
@@ -1707,7 +1769,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
                   <div
                     onMouseDown={e=>startDrag(e,t.id,'move')}
                     onClick={e=>{e.stopPropagation();isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t);}}
-                    title={`${t.text}\n${fmtShort(t.startDate)} → ${fmtShort(t.dueDate)}`}
+                    title={`${t.text}\n${fmtShort(t.startDate)} \u2192 ${fmtShort(t.dueDate)}`}
                     style={{
                       position:'absolute',left,width,height:28,top:(ROW_H-28)/2,
                       background:colors.bar,border:`1.5px solid ${isSelected?'var(--text)':colors.border}`,borderRadius:7,
@@ -1776,7 +1838,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   );
 };
 
-// ─── PROJECT DETAIL ───────────────────────────────────────────────────────────
+// - PROJECT DETAIL -
 
 // Auto-mark tasks as Atrasado if past their dueDate and not Concluído
 const applyAutoLate=tasks=>{
@@ -1790,27 +1852,29 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,isMobile})=>{
-  const [local,setLocal]=useState(()=>({...project,projectTasks:applyAutoLate(project.projectTasks)}));
+const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,isMobile})=>{
+  const [local,setLocal]=useState(()=>{
+    const tasks=applyAutoLate(project.projectTasks);
+    return{...project,projectTasks:tasks};
+  });
   const [tab,setTab]=useState('Visão Geral');
   const coverRef=useRef();
 
+  const projectRef=useRef(project);
   useEffect(()=>{
-    const updated={...project,projectTasks:applyAutoLate(project.projectTasks)};
-    setLocal(updated);
-  },[project.id]);
+    // Only update local if the project changed externally (not from our own upd())
+    if(projectRef.current!==project){
+      const updated={...project,projectTasks:applyAutoLate(project.projectTasks)};
+      setLocal(updated);
+      projectRef.current=project;
+    }
+  },[project]);
 
   // Safe update using functional setState to avoid stale closures
   const upd=(field,value)=>{
     setLocal(prev=>{
       const updated={...prev,[field]:value};
-      onUpdate(updated);
-      return updated;
-    });
-  };
-  const updMany=patch=>{
-    setLocal(prev=>{
-      const updated={...prev,...patch};
+      projectRef.current=updated;
       onUpdate(updated);
       return updated;
     });
@@ -1912,7 +1976,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
         </div>
       </div>
 
-      {/* Timeline — vertical on mobile, Gantt on desktop */}
+      {/* Timeline - vertical on mobile, Gantt on desktop */}
       {isMobile?(
         <div style={{marginBottom:16}}>
           {(local.timelineEvents||[]).length>0?(
@@ -2265,7 +2329,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 <textarea value={activeResearch.content} onChange={e=>updateResearch('content',e.target.value)}
                   placeholder="Notas, análises, referências..."
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
-                {/* Images — 3 column grid */}
+                {/* Images - 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i)=>(
@@ -2292,10 +2356,10 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
       )}
     </div>
   );
-};
+});
 
-// ─── GALLERY ─────────────────────────────────────────────────────────────────
-const Gallery=({posts,setPosts,isMobile})=>{
+// - GALLERY -
+const Gallery=React.memo(({posts,setPosts,isMobile})=>{
   const FOLDERS=[
     {id:'work',        label:'Work'},
     {id:'movie-studies',label:'Movie Studies'},
@@ -2308,8 +2372,8 @@ const Gallery=({posts,setPosts,isMobile})=>{
   const [trash,setTrash]=useState(false);
   const [uploading,setUploading]=useState(false);
   const addImgRef=useRef();
-  const active=posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder));
-  const grouped=active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
+  const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
+  const grouped=useMemo(()=>active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{}),[active]);
   const upd=(field,value)=>{
     const updated={...selected,[field]:value};
     setSelected(updated);
@@ -2331,6 +2395,14 @@ const Gallery=({posts,setPosts,isMobile})=>{
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
+
+  // Keyboard escape for lightbox
+  useEffect(()=>{
+    if(!lightbox)return;
+    const handleKeyDown=e=>{if(e.key==='Escape')setLightbox(null);};
+    document.addEventListener('keydown',handleKeyDown);
+    return()=>document.removeEventListener('keydown',handleKeyDown);
+  },[lightbox]);
 
   if(lightbox)return(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
@@ -2371,12 +2443,12 @@ const Gallery=({posts,setPosts,isMobile})=>{
             </div>
           ))}
           <div className="upload-zone" style={{aspectRatio:'16/9',minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
-            <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploadProgress?`${uploadProgress.done}/${uploadProgress.total} enviando…`:uploading?'Enviando…':'Adicionar'}</span>
+            <Icon name={uploading?'loader':'plus'} size={20} style={{marginBottom:6}}/><span style={{fontSize:'.75rem'}}>{uploadProgress?`${uploadProgress.done}/${uploadProgress.total} enviando...`:uploading?'Enviando...':'Adicionar'}</span>
           </div>
           {uploadProgress&&uploadProgress.total>1&&(
             <div style={{marginTop:8}}>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:'.72rem',color:'var(--muted)',marginBottom:4}}>
-                <span>Enviando para nuvem…</span>
+                <span>Enviando para nuvem...</span>
                 <span>{Math.round(uploadProgress.done/uploadProgress.total*100)}%</span>
               </div>
               <div style={{height:4,background:'var(--border)',borderRadius:2}}>
@@ -2411,10 +2483,10 @@ const Gallery=({posts,setPosts,isMobile})=>{
       {Object.entries(grouped).map(([month,monthPosts])=>(
         <div key={month} style={{marginBottom:isMobile?24:36}}>
           <div style={{borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:16}}><span className="label">{month}</span></div>
-          <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(180px,1fr))',gap:isMobile?10:14}}>
+          <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(280px,1fr))',gap:isMobile?10:14}}>
             {monthPosts.map(post=>(
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
-                <div style={{aspectRatio:'4/5',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                   {post.images.length>0
                     ?<Img src={post.images[0]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
                     :<Icon name="image" size={28} style={{opacity:.2}}/>}
@@ -2436,20 +2508,52 @@ const Gallery=({posts,setPosts,isMobile})=>{
       ))}
     </div>
   );
-};
+});
 
-// ─── IDEAS ────────────────────────────────────────────────────────────────────
-const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
+// - IDEAS -
+const IdeasLab=React.memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
   const [folder,setFolder]=useState('notes');
   const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
   const [newTask,setNewTask]=useState('');
+  // Local draft state — avoids flushing to global on every keystroke (fixes mobile cursor reset)
+  const [localTitle,setLocalTitle]=useState('');
+  const [localContent,setLocalContent]=useState('');
+  const flushTitleRef=useRef(null);
+  const flushContentRef=useRef(null);
   const visible=useMemo(()=>notes.filter(n=>folder==='notes'?!n.deleted:n.deleted),[notes,folder]);
-  // Guard: only treat a note as active if it actually lives in the current folder
   const active=useMemo(()=>notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null,[notes,activeId,folder]);
-  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
+
+  // Sync local drafts when switching notes OR when external data changes for the active note
+  const activeTitle=active?.title;
+  const activeContent=active?.content;
+  useEffect(()=>{
+    if(active){setLocalTitle(active.title);setLocalContent(active.content||'');}
+  },[activeId,activeTitle,activeContent]);
+
+  const flushToGlobal=(field,value)=>{
+    setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
+  };
+
+  const handleTitleChange=e=>{
+    const v=e.target.value;setLocalTitle(v);
+    clearTimeout(flushTitleRef.current);
+    flushTitleRef.current=setTimeout(()=>flushToGlobal('title',v),1500);
+  };
+  const handleContentChange=e=>{
+    const v=e.target.value;setLocalContent(v);
+    clearTimeout(flushContentRef.current);
+    flushContentRef.current=setTimeout(()=>flushToGlobal('content',v),1500);
+  };
+  // Flush immediately on blur
+  const handleBlur=(field,value)=>{
+    clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);
+    flushToGlobal(field,value);
+  };
+
   const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
   const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);};
   const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);}};
+  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
   const noteToTask=()=>{if(!active)return;setTasks(p=>[...p,{id:Date.now(),text:active.title,done:false,noteId:active.id}]);};
   const isAlreadyTask=active&&tasks.some(t=>t.noteId===active.id);
   const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
@@ -2494,7 +2598,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
         {active?(
           <>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
-              <input value={active.title} onChange={e=>update('title',e.target.value)} disabled={folder==='trash'}
+              <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleBlur('title',localTitle)} disabled={folder==='trash'}
                 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
               <div style={{display:'flex',gap:4,flexShrink:0}}>
                 {folder==='notes'&&<button onClick={noteToTask} disabled={isAlreadyTask} title={isAlreadyTask?"Já na lista":"Adicionar à lista"} className="btn btn-ghost" style={{padding:6,opacity:isAlreadyTask?.4:1}}><Icon name="check-square" size={16}/></button>}
@@ -2505,7 +2609,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
                 {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost text-link-danger" style={{padding:6}} title="Excluir permanentemente"><Icon name="trash" size={17}/></button>}
               </div>
             </div>
-            <textarea value={active.content} onChange={e=>update('content',e.target.value)} disabled={folder==='trash'} placeholder="Comece a escrever..."
+            <textarea value={localContent} onChange={handleContentChange} onBlur={()=>handleBlur('content',localContent)} disabled={folder==='trash'} placeholder="Comece a escrever..."
               style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1}}/>
           </>
         ):(
@@ -2516,7 +2620,7 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
         )}
       </div>
       )}
-      {/* Right tasks — below on mobile, sidebar on desktop */}
+      {/* Right tasks - below on mobile, sidebar on desktop */}
       {(!isMobile||!activeId)&&(
       <div style={{width:isMobile?'100%':260,flexShrink:0,marginTop:isMobile?16:0}}>
         <div className="card" style={{height:isMobile?'auto':'100%',padding:20,display:'flex',flexDirection:'column'}}>
@@ -2544,12 +2648,12 @@ const IdeasLab=({notes,setNotes,tasks,setTasks,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
-// ─── SOCIAL ───────────────────────────────────────────────────────────────────
+// - SOCIAL -
 const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
 
-const Social=({posts,setPosts,isMobile})=>{
+const Social=React.memo(({posts,setPosts,isMobile})=>{
   const [text,setText]=useState('');
   const [platform,setPlatform]=useState('Instagram');
   const [editId,setEditId]=useState(null);
@@ -2693,7 +2797,7 @@ const Social=({posts,setPosts,isMobile})=>{
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{margin:0,fontSize:'.88rem',lineHeight:1.7,color:'var(--text)',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.text}</p>
                   <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                    {/* Platform badge — clickable when not in trash */}
+                    {/* Platform badge - clickable when not in trash */}
                     {!trash?(
                       isMobile?(
                         <select value={p.platform||'Instagram'} onChange={e=>changePostPlatform(p.id,e.target.value)}
@@ -2733,9 +2837,9 @@ const Social=({posts,setPosts,isMobile})=>{
       {trash&&trashedPosts.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.85rem'}}>Lixeira vazia.</div>}
     </div>
   );
-};
+});
 
-// ─── CLIENT DETAIL ────────────────────────────────────────────────────────────
+// - CLIENT DETAIL -
 const ClientDetail=({client,onBack,onSave,onDelete})=>{
   const [form,setForm]=useState(client);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -2775,8 +2879,8 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
   );
 };
 
-// ─── CLIENTS ──────────────────────────────────────────────────────────────────
-const Clients=({clients,setClients,isMobile})=>{
+// - CLIENTS -
+const Clients=React.memo(({clients,setClients,isMobile})=>{
   const [selected,setSelected]=useState(null);
   const [trash,setTrash]=useState(false);
   const tagColor=s=>({'Ativo':'tag-green','Lead':'tag-yellow','Inativo':'tag-gray','Arquivado':'tag-gray'}[s]||'tag-gray');
@@ -2846,10 +2950,10 @@ const Clients=({clients,setClients,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
-// ─── SYNC HUB ────────────────────────────────────────────────────────────────
-const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
+// - SYNC HUB -
+const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -2860,7 +2964,8 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
 
   const signIn=async()=>{
     try{
-      initFirebase();
+      await initFirebase();
+      if(!_fbReady){showStatus('err','Firebase não carregou. Tente de novo em instantes.');return;}
       const provider=new firebase.auth.GoogleAuthProvider();
       await _fbAuth.signInWithPopup(provider);
       showStatus('ok','✓ Conectado! Dados sincronizarão em tempo real entre todos os dispositivos.');
@@ -2924,7 +3029,7 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
   ];
 
   const syncColor={'synced':'#276b3e','syncing':'#92700b','error':'#9B1C1C','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
-  const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando…','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
+  const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando...','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
   const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
 
   return(
@@ -2960,7 +3065,7 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
       {reuploadProgress&&(
         <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 18px',marginBottom:16}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:'.82rem',fontWeight:600}}>
-            <span>Enviando imagens…</span>
+            <span>Enviando imagens...</span>
             <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
           </div>
           <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
@@ -3027,11 +3132,40 @@ const SyncHub=({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
         )}
       </div>
 
+      {/* Actions */}
+      <div className="card" style={{padding:isMobile?20:28,marginBottom:16}}>
+        <span className="label" style={{display:'block',marginBottom:16}}>Backup Manual</span>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={exportData} disabled={loading}>
+              <Icon name="download" size={14}/> Exportar JSON
+            </button>
+            <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={()=>importRef.current.click()} disabled={loading}>
+              <Icon name="upload" size={14}/> Importar JSON
+            </button>
+            <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
+          </div>
+          {localImgCount>0&&(
+            <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={handleReupload} disabled={loading}>
+              <Icon name="cloud-upload" size={14}/> Re-enviar Imagens ({localImgCount})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Danger zone */}
+      <div style={{borderTop:'1px solid var(--border)',paddingTop:20}}>
+        <span className="label" style={{display:'block',marginBottom:12,color:'#9B1C1C'}}>Zona Perigosa</span>
+        <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
+          <Icon name="alert-triangle" size={14}/> Resetar tudo
+        </button>
+      </div>
+
     </div>
   );
-};
+});
 
-// ─── MENTORS HUB ─────────────────────────────────────────────────────────────
+// - MENTORS HUB -
 const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const [form,setForm]=useState({...mentor});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -3130,7 +3264,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   );
 };
 
-const MentorsHub=({mentors,setMentors,isMobile})=>{
+const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
   const [selected,setSelected]=useState(null);
   const [search,setSearch]=useState('');
 
@@ -3243,15 +3377,22 @@ const MentorsHub=({mentors,setMentors,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+// - APP -
 const App=()=>{
   const autoMobile=useIsMobile();
   const [forceMobile,setForceMobileRaw]=useState(null);
   const isMobile=forceMobile!==null?forceMobile:autoMobile;
   useEffect(()=>{ if(autoMobile)setForceMobileRaw(null); },[autoMobile]);
   const setForceMobile=val=>setForceMobileRaw(val);
+
+  // Remove splash screen as soon as App mounts
+  useEffect(()=>{
+    clearTimeout(window.__splashTimeout);
+    const splash=document.getElementById('splash');
+    if(splash){splash.style.opacity='0';setTimeout(()=>splash.remove(),350);}
+  },[]);
 
   const [view,setView]=useState('dashboard');
   const [selectedProject,setSelectedProject]=useState(null);
@@ -3274,9 +3415,12 @@ const App=()=>{
 
   // Firebase auth state listener — tracks sign-in across all devices
   useEffect(()=>{
-    if(!_fbReady&&!initFirebase())return;
-    const unsub=_fbAuth.onAuthStateChanged(user=>setFbUser(user||null));
-    return unsub;
+    let unsub=null;
+    initFirebase().then(ok=>{
+      if(!ok)return;
+      unsub=_fbAuth.onAuthStateChanged(user=>setFbUser(user||null));
+    });
+    return ()=>{if(unsub)unsub();};
   },[]);
 
   // Firestore real-time listener — fires instantly when any device saves
@@ -3313,7 +3457,7 @@ const App=()=>{
   const fbPushTimer=useRef(null);
   useEffect(()=>{
     const timer=setTimeout(()=>{
-      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts};
+      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
       lsSave(state);
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
@@ -3330,9 +3474,9 @@ const App=()=>{
           setSyncStatus('error');
         }
       },2000);
-    },800);
-    return ()=>clearTimeout(timer);
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts]);
+    },2500);
+    return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData]);
 
   const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
