@@ -1161,7 +1161,7 @@ const Dashboard=memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,po
 
     </div>
   );
-};
+});
 
 // ─── NEW PROJECT MODAL ────────────────────────────────────────────────────────
 const NewProjectModal=({onSave,onClose,isMobile})=>{
@@ -1197,7 +1197,7 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
       </div>
     </Modal>
   );
-};
+});
 
 // ─── PROJECTS LIST ────────────────────────────────────────────────────────────
 const ProjectsList=memo(({projects,setProjects,onSelect,onAdd,isMobile})=>{
@@ -2193,7 +2193,7 @@ const ProjectDetail=memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,on
       )}
     </div>
   );
-};
+});
 
 // ─── GALLERY ─────────────────────────────────────────────────────────────────
 const Gallery=memo(({posts,setPosts,isMobile})=>{
@@ -2337,7 +2337,7 @@ const Gallery=memo(({posts,setPosts,isMobile})=>{
       ))}
     </div>
   );
-};
+});
 
 // ─── IDEAS ────────────────────────────────────────────────────────────────────
 const IdeasLab=memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
@@ -2445,7 +2445,7 @@ const IdeasLab=memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
 // ─── SOCIAL ───────────────────────────────────────────────────────────────────
 const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
@@ -2674,7 +2674,7 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
       </div>
     </div>
   );
-};
+});
 
 // ─── CLIENTS ──────────────────────────────────────────────────────────────────
 const Clients=memo(({clients,setClients,isMobile})=>{
@@ -2747,7 +2747,7 @@ const Clients=memo(({clients,setClients,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
 // ─── SYNC HUB (Firebase) ─────────────────────────────────────────────────────
 const SyncHub=memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
@@ -3029,7 +3029,7 @@ const SyncHub=memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=
       </div>
     </div>
   );
-};
+});
 // ─── MENTORS HUB ─────────────────────────────────────────────────────────────
 const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const [form,setForm]=useState({...mentor});
@@ -3242,7 +3242,7 @@ const MentorsHub=memo(({mentors,setMentors,isMobile})=>{
       )}
     </div>
   );
-};
+});
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 const App=()=>{
