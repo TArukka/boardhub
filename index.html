@@ -54,9 +54,9 @@ img{loading:lazy;}
 .fade-up{animation:fadeUp .35s ease both;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
-.overlay{position:fixed;inset:0;background:rgba(28,25,23,.55);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;}
-.overlay-offset{position:fixed;inset:0;background:rgba(28,25,23,.55);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:20px;padding-left:calc(220px + 20px);}
-.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:32px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:90vh;overflow-y:auto;}
+.overlay{position:fixed;inset:0;height:100vh;background:transparent;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
+.overlay-offset{position:fixed;inset:0;height:100vh;background:transparent;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
+.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:95vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
 .cover-wrap{position:relative;}.cover-edit-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .25s;cursor:pointer;}
@@ -780,6 +780,103 @@ const pomoFmtMonth = function(mk) {
 };
 
 // ─── POMODORO TIMER (with built-in stats panel) ───────────────────────────────
+// ─── DRAGGABLE POMO WIDGET ───────────────────────────────────────────────────
+const PomoWidget = ({ timeStr, isActive, isFocus, pct, toggle, reset, onClose }) => {
+  const [pos, setPos] = useState({ x: window.innerWidth - 260, y: window.innerHeight - 200 });
+  const dragging = useRef(false);
+  const offset = useRef({ x: 0, y: 0 });
+  const widgetRef = useRef(null);
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const strokeOffset = circ * (1 - pct);
+
+  const onMouseDown = e => {
+    if (e.target.closest('button')) return;
+    dragging.current = true;
+    offset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const onMove = e => {
+      if (!dragging.current) return;
+      const el = widgetRef.current;
+      const maxX = window.innerWidth - (el ? el.offsetWidth : 220);
+      const maxY = window.innerHeight - (el ? el.offsetHeight : 140);
+      setPos({
+        x: Math.max(0, Math.min(e.clientX - offset.current.x, maxX)),
+        y: Math.max(0, Math.min(e.clientY - offset.current.y, maxY)),
+      });
+    };
+    const onUp = () => { dragging.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  return ReactDOM.createPortal(
+    <div ref={widgetRef} style={{
+      position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 18, boxShadow: '0 8px 32px rgba(28,25,23,.2)',
+      width: 220, padding: '12px 16px', userSelect: 'none',
+      fontFamily: 'Figtree, sans-serif',
+    }}>
+      <div onMouseDown={onMouseDown} style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 10, cursor: 'grab',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="grip-horizontal" size={13} style={{ color: 'var(--muted)' }}/>
+          <span style={{ fontSize: '.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>
+            {isFocus ? '🧠 Foco' : '☕ Pausa'}
+          </span>
+        </div>
+        <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--muted)', borderRadius: 4, lineHeight: 1, display:'flex',alignItems:'center' }}>
+          <Icon name="x" size={13}/>
+        </button>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ position: 'relative', width: 70, height: 70, flexShrink: 0 }}>
+          <svg width="70" height="70" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
+            <circle cx="35" cy="35" r={r} fill="none" stroke="var(--border)" strokeWidth="4"/>
+            <circle cx="35" cy="35" r={r} fill="none" stroke={isFocus ? 'var(--text)' : '#276b3e'} strokeWidth="4"
+              strokeDasharray={circ} strokeDashoffset={strokeOffset} strokeLinecap="round"
+              style={{ transition: 'stroke-dashoffset 1s linear, stroke .4s' }}/>
+          </svg>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', fontWeight: 500 }}>{timeStr}</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={toggle} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+            borderRadius: 8, border: '1px solid var(--border)',
+            background: isActive ? 'var(--text)' : 'transparent',
+            color: isActive ? 'white' : 'var(--text)', cursor: 'pointer',
+            fontFamily: 'Figtree, sans-serif', fontSize: '.8rem', fontWeight: 600, transition: 'all .15s',
+          }}>
+            <Icon name={isActive ? 'pause' : 'play'} size={13}/>
+            {isActive ? 'Pausar' : 'Iniciar'}
+          </button>
+          <button onClick={reset} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px',
+            borderRadius: 8, border: 'none', background: 'transparent',
+            color: 'var(--muted)', cursor: 'pointer',
+            fontFamily: 'Figtree, sans-serif', fontSize: '.78rem', fontWeight: 500,
+          }}>
+            <Icon name="rotate-ccw" size={12}/>
+            Reiniciar
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body);
+};
+
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const FOCUS_SECS = 25 * 60;
   const BREAK_SECS = 5 * 60;
@@ -787,6 +884,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const [isActive, setIsActive] = useState(false);
   const [mode, setMode] = useState('focus');
   const [showStats, setShowStats] = useState(false);
+  const [showWidget, setShowWidget] = useState(false);
   const modeRef = useRef('focus');
   const timeLeftRef = useRef(FOCUS_SECS);
   const unsavedSecsRef = useRef(0);
@@ -890,6 +988,13 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
   return (
     <div style={{marginBottom:20}}>
+      {showWidget && (
+        <PomoWidget
+          timeStr={timeStr} isActive={isActive} isFocus={isFocus} pct={pct}
+          toggle={toggle} reset={reset}
+          onClose={() => setShowWidget(false)}
+        />
+      )}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <span className="label">Pomodoro</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -897,6 +1002,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
             {isFocus ? 'Foco' : 'Pausa'}
           </div>
+          <button
+            className="btn btn-ghost"
+            onClick={() => setShowWidget(w => !w)}
+            title="Widget flutuante"
+            style={{padding:'4px 8px',borderRadius:6,background:showWidget?'var(--text)':'transparent',color:showWidget?'white':'var(--muted)'}}
+          >
+            <Icon name="layout" size={14}/>
+          </button>
           <button
             className="btn btn-ghost"
             onClick={()=>setShowStats(s=>!s)}
@@ -1914,37 +2027,7 @@ const ProjectDetail=({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGl
                 </div>
               </div>
             </div>
-            {(globalMentors||[]).filter(m=>!m.deleted).length>0&&(
-              <div className="card" style={{padding:18}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-                  <span className="label" style={{display:'flex',alignItems:'center',gap:5}}><Icon name="book-open" size={10}/> Mentores</span>
-                  <span style={{fontSize:'.65rem',color:'var(--muted)'}}>{(local.mentors||[]).length}/3</span>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                  {(globalMentors||[]).filter(m=>!m.deleted).map(m=>{
-                    const on=(local.mentors||[]).includes(m.id);
-                    const full=(local.mentors||[]).length>=3&&!on;
-                    return(
-                      <button key={m.id} onClick={()=>{
-                        if(full)return;
-                        const cur=local.mentors||[];
-                        upd('mentors',on?cur.filter(x=>x!==m.id):[...cur,m.id]);
-                      }}
-                        style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,border:'1px solid '+(on?'var(--text)':'var(--border)'),background:on?'var(--text)':'transparent',cursor:full?'not-allowed':'pointer',opacity:full?0.4:1,transition:'all .15s',fontFamily:'Figtree,sans-serif',textAlign:'left',width:'100%'}}>
-                        <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.78rem',fontWeight:500}}>
-                          {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
-                        </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:'.76rem',fontWeight:600,color:on?'white':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                          {m.area&&<div style={{fontSize:'.64rem',color:on?'rgba(255,255,255,.65)':'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}</div>}
-                        </div>
-                        {on&&<Icon name="check" size={11} style={{color:'white',flexShrink:0}}/>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+
           </div>
         </div>
       )}
@@ -3049,7 +3132,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
           <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{form.name||'Mentor'}</h2>
           <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
         </div>
-        <div style={{display:'flex',gap:16,alignItems:'flex-start',marginBottom:20}}>
+        <div style={{display:'flex',gap:16,alignItems:'flex-start',marginBottom:14}}>
           <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
           <div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
             onMouseEnter={e=>e.currentTarget.querySelector('.mh').style.opacity=1}
@@ -3070,24 +3153,24 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
             </Field>
           </div>
         </div>
-        <div style={{marginBottom:20}}>
+        <div style={{marginBottom:12}}>
           <button onClick={()=>set('main',!form.main)}
-            style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 16px',borderRadius:10,border:'1.5px solid '+(form.main?'#92700b':'var(--border)'),background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--muted)',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:600,transition:'all .15s'}}>
+            style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 14px',borderRadius:10,border:'1.5px solid '+(form.main?'#92700b':'var(--border)'),background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--muted)',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:600,transition:'all .15s'}}>
             <Icon name="star" size={14}/>
             {form.main?'Mentor Principal (ativo)':'Marcar como Principal'}
           </button>
-          <p style={{fontSize:'.72rem',color:'var(--muted)',margin:'6px 0 0 2px'}}>Ate 3 mentores principais aparecem na pagina inicial.</p>
+          <p style={{fontSize:'.72rem',color:'var(--muted)',margin:'4px 0 0 2px'}}>Ate 3 mentores principais aparecem na pagina inicial.</p>
         </div>
         <Field label="Notas e Estudos">
-          <textarea className="input-box" rows={3} value={form.notes||''} onChange={e=>set('notes',e.target.value)}
-            placeholder="Insights, tecnicas, o que aprender..." style={{resize:'vertical',lineHeight:1.7,marginBottom:16}}/>
+          <textarea className="input-box" rows={2} value={form.notes||''} onChange={e=>set('notes',e.target.value)}
+            placeholder="Insights, tecnicas, o que aprender..." style={{resize:'vertical',lineHeight:1.7,marginBottom:10}}/>
         </Field>
         <Field label="Links de Referencia">
           <input className="input-box" value={form.links||''} onChange={e=>set('links',e.target.value)}
-            placeholder="https://... (separe com virgula)" style={{marginBottom:16}}/>
+            placeholder="https://... (separe com virgula)" style={{marginBottom:10}}/>
         </Field>
-        <div style={{marginBottom:20}}>
-          <span className="label" style={{display:'block',marginBottom:10}}>Imagens de Referencia</span>
+        <div style={{marginBottom:14}}>
+          <span className="label" style={{display:'block',marginBottom:8}}>Imagens de Referencia</span>
           <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
             {[0,1,2,3].map(idx=>(
               <div key={idx} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',cursor:'pointer'}}
