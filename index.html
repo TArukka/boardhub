@@ -1264,6 +1264,30 @@ const Dashboard=({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoDat
         </div>
       </div>
 
+      {/* ── Mentores Principais ── */}
+      {mentors.filter(m=>!m.deleted&&m.main).length>0&&(
+        <div style={{marginTop:32}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <span className="label" style={{display:'flex',alignItems:'center',gap:6}}><Icon name="graduation-cap" size={12}/> Mentores Principais</span>
+            <button className="btn btn-outline" style={{padding:'5px 10px',fontSize:'.75rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={12}/></button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:12}}>
+            {mentors.filter(m=>!m.deleted&&m.main).slice(0,3).map(m=>(
+              <div key={m.id} className="card" style={{padding:'16px 18px',display:'flex',alignItems:'center',gap:14}}>
+                <div style={{width:44,height:44,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,color:'var(--muted)'}}>
+                  {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?` — ${m.medium}`:''}</div>
+                  {m.notes&&<div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',lineHeight:1.4}}>{m.notes}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
