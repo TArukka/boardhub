@@ -3304,7 +3304,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
   const visible=mentors.filter(m=>!m.deleted&&(
     !search||m.name.toLowerCase().includes(search.toLowerCase())||
     (m.area||'').toLowerCase().includes(search.toLowerCase())
-  ));
+  )).sort((a,b)=>(b.main?1:0)-(a.main?1:0));
 
   const add=()=>{
     const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
@@ -3373,7 +3373,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
           {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum mentor.</div>}
         </div>
       ):(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:14}}>
         {visible.map(m=>{
           const photos=(m.photos||[]).filter(Boolean);
           return(
