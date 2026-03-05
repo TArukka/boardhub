@@ -986,8 +986,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         : timeLeftRef.current - 1;
 
       if (remaining <= 0) {
-        clearInterval(id);
-        setTimeLeft(0);
         if (modeRef.current === 'focus') {
           flushPomoSecs();
           playPomoSound('work_end');
@@ -996,11 +994,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
           modeRef.current = 'break';
           setTimeLeft(BREAK_SECS);
           timeLeftRef.current = BREAK_SECS;
+          // Auto-start break — reset end anchor and keep interval running
           endTimestampRef.current = Date.now() + BREAK_SECS * 1000;
           persistTimerState(true, BREAK_SECS, 'break');
+          return; // interval keeps running
         } else {
+          clearInterval(id);
           playPomoSound('break_end');
-          fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar? ');
+          fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar?');
           setMode('focus');
           modeRef.current = 'focus';
           setTimeLeft(FOCUS_SECS);
@@ -1008,8 +1009,8 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
           setIsActive(false);
           endTimestampRef.current = null;
           persistTimerState(false, FOCUS_SECS, 'focus');
+          return;
         }
-        return;
       }
 
       setTimeLeft(remaining);
@@ -1047,10 +1048,11 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const reset = () => {
     setIsActive(false);
     endTimestampRef.current = null;
-    const t = mode === 'focus' ? FOCUS_SECS : BREAK_SECS;
-    setTimeLeft(t);
-    timeLeftRef.current = t;
-    persistTimerState(false, t, mode);
+    setMode('focus');
+    modeRef.current = 'focus';
+    setTimeLeft(FOCUS_SECS);
+    timeLeftRef.current = FOCUS_SECS;
+    persistTimerState(false, FOCUS_SECS, 'focus');
     flushPomoSecs();
   };
 
@@ -2065,7 +2067,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{display:'flex',flexDirection:'column',gap:16}}>
             <div className="card" style={{padding:'clamp(16px,2.5vh,32px)'}}>
               <span className="label" style={{display:'block',marginBottom:14}}>Notas & Direção de Arte</span>
-              <textarea style={{background:'transparent',outline:'none',resize:'none',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',height:200,border:'none',width:'100%'}}
+              <textarea style={{background:'transparent',outline:'none',resize:'vertical',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',minHeight:120,height:'auto',border:'none',width:'100%'}}
                 value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
             {/* Mentors picker */}
@@ -2154,7 +2156,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       )}
 
       {tab==='Animatics'&&(
-        <div style={{display:'flex',gap:16,minHeight:isMobile?0:480,flexDirection:isMobile?'column':'row'}}>
+        <div style={{display:'flex',gap:16,flexDirection:isMobile?'column':'row'}}>
           {/* Left: animatics with expandable notes */}
           {(!isMobile||(isMobile&&!activeMiniId))&&(
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
@@ -2216,10 +2218,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
 
           {/* Right: editor panel */}
           {(!isMobile||activeMiniId)&&(
-          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0}}>
-            {isMobile&&activeMiniId&&(
-              <button onClick={()=>{setActiveMiniId(null);setActiveInnerNoteId(null);}} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'8px 12px',fontSize:'.88rem'}}>
-                <Icon name="arrow-left" size={16}/> Voltar aos animatics
+          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0,minHeight:320}}>
               </button>
             )}
             {activeMini&&!activeInnerNoteId&&(
@@ -2242,7 +2241,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 </div>
                 <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)}
                   placeholder="Notas, intenções, referências para este animatic..."
-                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
+                  style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i)=>(
@@ -2281,7 +2280,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   </div>
                   <textarea value={note.content||''} onChange={e=>updateInnerNote('content',e.target.value)}
                     placeholder="Notas, análises, referências..."
-                    style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
+                    style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                   {(note.images||[]).length>0&&(
                     <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                       {(note.images||[]).map((img,i)=>(
@@ -2318,7 +2317,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       )}
 
       {tab==='Pesquisa'&&(
-        <div style={{display:'flex',gap:16,minHeight:isMobile?0:480,flexDirection:isMobile?'column':'row'}}>
+        <div style={{display:'flex',gap:16,flexDirection:isMobile?'column':'row'}}>
           {(!isMobile||(isMobile&&!activeResearchId))&&(
           <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
@@ -2335,8 +2334,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           </div>
           )}
           {(!isMobile||activeResearchId)&&(
-          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0}}>
-            {isMobile&&activeResearchId&&(
+          <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0,minHeight:320}}>
               <button onClick={()=>setActiveResearchId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'4px 8px',fontSize:'.78rem'}}>
                 <Icon name="arrow-left" size={13}/> Voltar às pesquisas
               </button>
@@ -2361,7 +2359,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 </div>
                 <textarea value={activeResearch.content} onChange={e=>updateResearch('content',e.target.value)}
                   placeholder="Notas, análises, referências..."
-                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
+                  style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                 {/* Images - 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
@@ -2873,8 +2871,8 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
 });
 
 // - CLIENT DETAIL -
-const ClientDetail=({client,onBack,onSave,onDelete})=>{
-  const [form,setForm]=useState(client);
+const ClientDetail=({client,onBack,onSave,onDelete,isMobile})=>{
+  const [form,setForm]=useState({name:'',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',...client});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const photoRef=useRef();
   const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
@@ -2885,25 +2883,24 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
       <div className="card" style={{padding:'clamp(16px,2.5vh,32px)',marginBottom:'clamp(10px,1.5vh,20px)'}}>
         <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
           <div onClick={()=>photoRef.current.click()} style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
-            onMouseEnter={e=>e.currentTarget.querySelector('.ch').style.opacity=1} onMouseLeave={e=>e.currentTarget.querySelector('.ch').style.opacity=0}>
+            onMouseEnter={e=>{const el=e.currentTarget.querySelector('.ch');if(el)el.style.opacity=1;}} onMouseLeave={e=>{const el=e.currentTarget.querySelector('.ch');if(el)el.style.opacity=0;}}>
             {form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{form.name.charAt(0)||'?'}</span>}
+              :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{(form.name||'?').charAt(0)}</span>}
             <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
           </div>
           <div style={{flex:1,display:'flex',flexDirection:'column',gap:12}}>
-            <Field label="Nome"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontSize:'1rem',fontWeight:600}}/></Field>
+            <Field label="Nome"><input className="input-box" value={form.name||''} onChange={e=>set('name',e.target.value)} style={{fontSize:'1rem',fontWeight:600}}/></Field>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <Field label="Empresa"><input className="input-box" value={form.company} onChange={e=>set('company',e.target.value)}/></Field>
-              <Field label="Cargo"><input className="input-box" value={form.role} onChange={e=>set('role',e.target.value)}/></Field>
+              <Field label="Empresa"><input className="input-box" value={form.company||''} onChange={e=>set('company',e.target.value)}/></Field>
+              <Field label="Cargo"><input className="input-box" value={form.role||''} onChange={e=>set('role',e.target.value)}/></Field>
             </div>
           </div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-          <Field label="Email"><input className="input-box" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></Field>
-          <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Ativo</option><option>Lead</option><option>Inativo</option><option>Arquivado</option></select></Field>
-          <Field label="Ano"><input className="input-box" type="number" min="2000" max="2099" value={form.year||''} onChange={e=>set('year',e.target.value?parseInt(e.target.value):'')} placeholder={new Date().getFullYear()}/></Field>
+          <Field label="Email"><input className="input-box" type="email" value={form.email||''} onChange={e=>set('email',e.target.value)}/></Field>
+          <Field label="Status"><select className="input-box" value={form.status||'Lead'} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Ativo</option><option>Lead</option><option>Inativo</option><option>Arquivado</option></select></Field>
         </div>
-        <Field label="Notas & Histórico"><textarea className="input-box" rows={4} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Preferências, histórico de projetos..." style={{resize:'vertical',lineHeight:1.7,minHeight:100}}/></Field>
+        <Field label="Notas & Histórico"><textarea className="input-box" rows={4} value={form.notes||''} onChange={e=>set('notes',e.target.value)} placeholder="Preferências, histórico de projetos..." style={{resize:'vertical',lineHeight:1.7,minHeight:100}}/></Field>
       </div>
       <div style={{display:'flex',justifyContent:'space-between'}}>
         <button className="btn btn-danger" onClick={onDelete}><Icon name="trash-2" size={14}/> Mover para Lixeira</button>
@@ -2922,9 +2919,9 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true}:c));setSelected(null);};
   const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false}:c));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
-  const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',year:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
+  const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
-  if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
+  if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete} isMobile={isMobile}/>;
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap'}}>
@@ -2954,69 +2951,32 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
           {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum cliente.</div>}
         </div>
       ):(
-        <div>
-          {(()=>{
-            const ClientCard=({c})=>(
-              <div className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
-                <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                  {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                    :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
-                  <div>
-                    <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
-                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
-                  </div>
-                </div>
-                {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
-                  {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
-                    <div style={{display:'flex',gap:5}}>
-                      <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
-                      <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
-                    </div>
-                  )}
-                  <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
-                    <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
-                  </div>
-                </div>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:14}}>
+        {visible.map(c=>(
+          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+              {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+              <div>
+                <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
+                <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
               </div>
-            );
-            const SectionHeader=({label,muted})=>(
-              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-                <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500,letterSpacing:'-0.01em',color:muted?'var(--muted)':'var(--text)',whiteSpace:'nowrap'}}>{label}</span>
-                <div style={{flex:1,height:1,background:'var(--border)'}}/>
+            </div>
+            {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
+              {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
+                <div style={{display:'flex',gap:5}}>
+                  <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
+                  <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+                </div>
+              )}
+              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
+                <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
               </div>
-            );
-            if(trash){
-              return visible.length===0
-                ?<div style={{textAlign:'center',padding:48,color:'var(--muted)'}}>Lixeira vazia.</div>
-                :<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{visible.map(c=><ClientCard key={c.id} c={c}/>)}</div>;
-            }
-            const yearMap={};
-            visible.forEach(c=>{const y=c.year||'';(yearMap[y]=yearMap[y]||[]).push(c);});
-            const years=Object.keys(yearMap).filter(y=>y!=='').sort((a,b)=>b-a);
-            const noYear=yearMap['']||[];
-            if(visible.length===0)return <div style={{textAlign:'center',padding:48,color:'var(--muted)'}}>Nenhum cliente.</div>;
-            return(
-              <>
-                {years.map(y=>(
-                  <div key={y} style={{marginBottom:30}}>
-                    <SectionHeader label={y}/>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
-                      {yearMap[y].map(c=><ClientCard key={c.id} c={c}/>)}
-                    </div>
-                  </div>
-                ))}
-                {noYear.length>0&&(
-                  <div style={{marginBottom:30}}>
-                    {years.length>0&&<SectionHeader label="Sem ano" muted/>}
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
-                      {noYear.map(c=><ClientCard key={c.id} c={c}/>)}
-                    </div>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+            </div>
+          </div>
+        ))}
+        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
         </div>
       )}
     </div>
@@ -3277,6 +3237,9 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
             <Field label="Nome"><input className="input-box" value={form.name} onChange={e=>set('name',e.target.value)} style={{fontWeight:600}}/></Field>
             <Field label="Area"><input className="input-box" value={form.area||''} onChange={e=>set('area',e.target.value)} placeholder="Ex: Narrativa Visual"/></Field>
             <Field label="Meio"><input className="input-box" value={form.medium||''} onChange={e=>set('medium',e.target.value)} placeholder="Ex: Animacao, HQ..."/></Field>
+            <Field label="Ano">
+              <input className="input-box" type="number" value={form.year||''} onChange={e=>set('year',e.target.value?Number(e.target.value):'')} placeholder={new Date().getFullYear()} min="1900" max="2099"/>
+            </Field>
             <Field label="Status">
               <select className="input-box" value={form.active?'Ativo':'Inativo'} onChange={e=>set('active',e.target.value==='Ativo')} style={{cursor:'pointer'}}>
                 <option>Ativo</option><option>Inativo</option>
@@ -3338,14 +3301,23 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
 const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
   const [selected,setSelected]=useState(null);
   const [search,setSearch]=useState('');
+  const currentYear=new Date().getFullYear();
+  const [activeYear,setActiveYear]=useState('all');
 
-  const visible=mentors.filter(m=>!m.deleted&&(
-    !search||m.name.toLowerCase().includes(search.toLowerCase())||
-    (m.area||'').toLowerCase().includes(search.toLowerCase())
-  ));
+  // Collect all distinct years present in mentors
+  const years=useMemo(()=>{
+    const ys=[...new Set(mentors.filter(m=>!m.deleted&&m.year).map(m=>Number(m.year)))];
+    ys.sort((a,b)=>b-a);
+    return ys;
+  },[mentors]);
+
+  const visible=mentors.filter(m=>!m.deleted&&
+    (activeYear==='all'||String(m.year)===String(activeYear))&&
+    (!search||m.name.toLowerCase().includes(search.toLowerCase())||(m.area||'').toLowerCase().includes(search.toLowerCase()))
+  );
 
   const add=()=>{
-    const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
+    const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',year:currentYear,notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
     setMentors(p=>[n,...p]);
     setSelected(n);
   };
@@ -3378,10 +3350,25 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
         <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
       </div>
       {mentors.filter(m=>!m.deleted).length>0&&(
-        <div style={{position:'relative',marginBottom:24}}>
+        <div style={{position:'relative',marginBottom:16}}>
           <Icon name="search" size={14} style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--muted)',pointerEvents:'none'}}/>
           <input className="input-box" value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="Buscar mentores..." style={{paddingLeft:36}}/>
+        </div>
+      )}
+      {/* Year tabs */}
+      {years.length>0&&(
+        <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20,gap:0,overflowX:'auto'}}>
+          <button onClick={()=>setActiveYear('all')} className="tab-btn"
+            style={{color:activeYear==='all'?'var(--text)':'var(--muted)',borderBottom:activeYear==='all'?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>
+            Todos
+          </button>
+          {years.map(y=>(
+            <button key={y} onClick={()=>setActiveYear(String(y))} className="tab-btn"
+              style={{color:String(activeYear)===String(y)?'var(--text)':'var(--muted)',borderBottom:String(activeYear)===String(y)?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>
+              {y}
+            </button>
+          ))}
         </div>
       )}
       {visible.length===0&&(
@@ -3400,7 +3387,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
               }
               <div className="compact-row-info">
                 <div className="compact-row-title">{m.name}</div>
-                <div className="compact-row-meta">{m.area}{m.medium?' · '+m.medium:''}</div>
+                <div className="compact-row-meta">{m.area}{m.medium?' · '+m.medium:''}{m.year?' · '+m.year:''}</div>
               </div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
                 <span style={{fontSize:'.6rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'2px 6px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
@@ -3411,7 +3398,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
           {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum mentor.</div>}
         </div>
       ):(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
         {visible.map(m=>{
           const photos=(m.photos||[]).filter(Boolean);
           return(
@@ -3436,9 +3423,10 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
                   </div>
                 </div>
                 {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
-                <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center'}}>
+                <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
                   <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
                   {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                  {m.year&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'var(--bg)',color:'var(--muted)'}}>{m.year}</span>}
                 </div>
               </div>
             </div>
