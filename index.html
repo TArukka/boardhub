@@ -2901,6 +2901,7 @@ const ClientDetail=({client,onBack,onSave,onDelete})=>{
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
           <Field label="Email"><input className="input-box" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/></Field>
           <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Ativo</option><option>Lead</option><option>Inativo</option><option>Arquivado</option></select></Field>
+          <Field label="Ano"><input className="input-box" type="number" min="2000" max="2099" value={form.year||''} onChange={e=>set('year',e.target.value?parseInt(e.target.value):'')} placeholder={new Date().getFullYear()}/></Field>
         </div>
         <Field label="Notas & Histórico"><textarea className="input-box" rows={4} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Preferências, histórico de projetos..." style={{resize:'vertical',lineHeight:1.7,minHeight:100}}/></Field>
       </div>
@@ -2921,7 +2922,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true}:c));setSelected(null);};
   const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false}:c));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
-  const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
+  const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',year:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
   if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete}/>;
   return(
@@ -2953,32 +2954,69 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
           {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum cliente.</div>}
         </div>
       ):(
-        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
-        {visible.map(c=>(
-          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
-            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-              {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
-              <div>
-                <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
-                <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
-              </div>
-            </div>
-            {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
-              {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
-                <div style={{display:'flex',gap:5}}>
-                  <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
-                  <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+        <div>
+          {(()=>{
+            const ClientCard=({c})=>(
+              <div className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+                <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+                  {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                    :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
+                  <div>
+                    <div style={{fontWeight:600,fontSize:'.88rem'}}>{c.name}</div>
+                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div>
+                  </div>
                 </div>
-              )}
-              <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
-                <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+                {c.notes&&<p style={{fontSize:'.78rem',color:'var(--muted)',lineHeight:1.6,margin:'0 0 12px',paddingBottom:12,borderBottom:'1px solid var(--border)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.notes}</p>}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:c.notes?'none':'1px solid var(--border)',paddingTop:c.notes?0:12}}>
+                  {!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:(
+                    <div style={{display:'flex',gap:5}}>
+                      <button onClick={e=>{e.stopPropagation();restore(c.id);}} className="btn btn-outline" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="refresh-cw" size={11}/></button>
+                      <button onClick={e=>{e.stopPropagation();hardDelete(c.id);}} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
+                    </div>
+                  )}
+                  <div style={{display:'flex',alignItems:'center',gap:5,fontSize:'.75rem',color:'var(--muted)',overflow:'hidden'}}>
+                    <Icon name="mail" size={11}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.email}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
-        {visible.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:48,color:'var(--muted)'}}>{trash?'Lixeira vazia.':'Nenhum cliente.'}</div>}
+            );
+            const SectionHeader=({label,muted})=>(
+              <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+                <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500,letterSpacing:'-0.01em',color:muted?'var(--muted)':'var(--text)',whiteSpace:'nowrap'}}>{label}</span>
+                <div style={{flex:1,height:1,background:'var(--border)'}}/>
+              </div>
+            );
+            if(trash){
+              return visible.length===0
+                ?<div style={{textAlign:'center',padding:48,color:'var(--muted)'}}>Lixeira vazia.</div>
+                :<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{visible.map(c=><ClientCard key={c.id} c={c}/>)}</div>;
+            }
+            const yearMap={};
+            visible.forEach(c=>{const y=c.year||'';(yearMap[y]=yearMap[y]||[]).push(c);});
+            const years=Object.keys(yearMap).filter(y=>y!=='').sort((a,b)=>b-a);
+            const noYear=yearMap['']||[];
+            if(visible.length===0)return <div style={{textAlign:'center',padding:48,color:'var(--muted)'}}>Nenhum cliente.</div>;
+            return(
+              <>
+                {years.map(y=>(
+                  <div key={y} style={{marginBottom:30}}>
+                    <SectionHeader label={y}/>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                      {yearMap[y].map(c=><ClientCard key={c.id} c={c}/>)}
+                    </div>
+                  </div>
+                ))}
+                {noYear.length>0&&(
+                  <div style={{marginBottom:30}}>
+                    {years.length>0&&<SectionHeader label="Sem ano" muted/>}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                      {noYear.map(c=><ClientCard key={c.id} c={c}/>)}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -3304,7 +3342,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
   const visible=mentors.filter(m=>!m.deleted&&(
     !search||m.name.toLowerCase().includes(search.toLowerCase())||
     (m.area||'').toLowerCase().includes(search.toLowerCase())
-  )).sort((a,b)=>(b.main?1:0)-(a.main?1:0));
+  ));
 
   const add=()=>{
     const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
@@ -3373,7 +3411,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
           {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--muted)'}}>Nenhum mentor.</div>}
         </div>
       ):(
-        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:14}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}}>
         {visible.map(m=>{
           const photos=(m.photos||[]).filter(Boolean);
           return(
