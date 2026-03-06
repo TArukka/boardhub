@@ -1067,6 +1067,29 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
   const todayDisplay = todaySecs + unsavedSecsRef.current;
 
+  // Star reward system based on focus time
+  const getStarLevel = (seconds) => {
+    const sessions = Math.floor(seconds / FOCUS_SECS);
+    const hours = seconds / 3600;
+    
+    if (hours >= 8) return { level: 'diamond', icon: '💎', name: 'Diamante', color: '#60A5FA', sessions: 19, target: 8 * 3600 };
+    if (hours >= 6) return { level: 'golden', icon: '🏆', name: 'Ouro', color: '#FBBF24', sessions: 14, target: 6 * 3600 };
+    if (hours >= 4) return { level: 'silver', icon: '🥈', name: 'Prata', color: '#94A3B8', sessions: 10, target: 4 * 3600 };
+    if (sessions >= 4) return { level: 'bronze', icon: '🥉', name: 'Bronze', color: '#CD7F32', sessions: 4, target: 4 * FOCUS_SECS };
+    return { level: 'none', icon: '⭐', name: 'Iniciante', color: 'var(--muted)', sessions: 0, target: 4 * FOCUS_SECS };
+  };
+
+  const currentStar = getStarLevel(todayDisplay);
+  const nextStar = (() => {
+    const hours = todayDisplay / 3600;
+    if (hours >= 8) return null;
+    if (hours >= 6) return { level: 'diamond', target: 8 * 3600, name: 'Diamante' };
+    if (hours >= 4) return { level: 'golden', target: 6 * 3600, name: 'Ouro' };
+    if (Math.floor(todayDisplay / FOCUS_SECS) >= 4) return { level: 'silver', target: 4 * 3600, name: 'Prata' };
+    return { level: 'bronze', target: 4 * FOCUS_SECS, name: 'Bronze' };
+  })();
+  const progressToNext = nextStar ? (todayDisplay / nextStar.target) * 100 : 100;
+
   // - Stats data -
   const dayEntries = useMemo(() => {
     const entries = Object.entries(pomoData.days || {});
@@ -1134,8 +1157,24 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                 <Icon name="rotate-ccw" size={13}/>
               </button>
             </div>
-            <div style={{fontSize:'.67rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
-              <Icon name="clock" size={10}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todayDisplay)}</strong> em foco
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              <div style={{fontSize:'.67rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+                <Icon name="clock" size={10}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todayDisplay)}</strong> em foco
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:3,padding:'2px 6px',borderRadius:12,background:currentStar.level==='none'?'var(--bg)':currentStar.color+'20',border:`1px solid ${currentStar.level==='none'?'var(--border)':currentStar.color+'40'}`}}>
+                  <span style={{fontSize:'.95rem',lineHeight:1}}>{currentStar.icon}</span>
+                  <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:currentStar.level==='none'?'var(--muted)':currentStar.color}}>{currentStar.name}</span>
+                </div>
+                {nextStar && (
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{height:3,background:'var(--bg)',borderRadius:2,overflow:'hidden',position:'relative'}}>
+                      <div style={{height:'100%',width:Math.min(100,progressToNext)+'%',background:currentStar.color,borderRadius:2,transition:'width 0.5s ease'}}/>
+                    </div>
+                    <div style={{fontSize:'.58rem',color:'var(--muted)',marginTop:1,textAlign:'right'}}>{Math.round(progressToNext)}% → {nextStar.name}</div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1149,10 +1188,17 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
               <h2 className="serif" style={{fontSize:'1.5rem',fontWeight:400,margin:0}}>Historico de Foco</h2>
               <button className="btn btn-ghost" onClick={()=>setShowStats(false)} style={{padding:6}}><Icon name="x" size={18}/></button>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               <div style={{padding:'14px 20px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
                 <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Hoje</div>
                 <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todayDisplay)}</div>
+              </div>
+              <div style={{padding:'14px 20px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
+                <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Estrela</div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+                  <span style={{fontSize:'1.5rem',lineHeight:1}}>{currentStar.icon}</span>
+                  <span style={{fontSize:'.75rem',fontWeight:700,color:currentStar.color}}>{currentStar.name}</span>
+                </div>
               </div>
               <div style={{padding:'14px 20px',textAlign:'center'}}>
                 <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Total</div>
@@ -1170,17 +1216,24 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
               {statsTab==='days'&&(dayEntries.length===0
                 ?<p style={{fontSize:'.85rem',color:'var(--muted)',textAlign:'center',padding:'32px 0',margin:0}}>Nenhuma sessao registrada.</p>
                 :<div style={{display:'flex',flexDirection:'column',gap:12}}>
-                  {dayEntries.map(([day,s])=>(
+                  {dayEntries.map(([day,s])=>{
+                    const dayStar = getStarLevel(s);
+                    return(
                     <div key={day}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-                        <span style={{fontSize:'.82rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'center'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontSize:'.82rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
+                          {dayStar.level !== 'none' && (
+                            <span style={{fontSize:'.9rem',lineHeight:1}} title={dayStar.name}>{dayStar.icon}</span>
+                          )}
+                        </div>
                         <span style={{fontSize:'.82rem',fontWeight:600}}>{pomoFmtSecs(s)}</span>
                       </div>
                       <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
-                        <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:'var(--text)',borderRadius:3}}/>
+                        <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:dayStar.level !== 'none' ? dayStar.color : 'var(--text)',borderRadius:3}}/>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
               {statsTab==='months'&&(monthEntries.length===0
