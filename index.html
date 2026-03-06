@@ -2031,6 +2031,42 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   };
   const MINI_STATUSES=['Em Andamento','Revisão','Aprovado','Arquivado'];
 
+  // Drag-to-reorder refs
+  const miniDragIdx   = useRef(null);
+  const miniDragOver  = useRef(null);
+  const innerDragIdx  = useRef(null);
+  const innerDragOver = useRef(null);
+  const resDragIdx    = useRef(null);
+  const resDragOver   = useRef(null);
+
+  const reorderMinis = () => {
+    if(miniDragIdx.current===null||miniDragOver.current===null||miniDragIdx.current===miniDragOver.current)return;
+    const items=[...(local.miniProjects||[])];
+    const dragged=items.splice(miniDragIdx.current,1)[0];
+    items.splice(miniDragOver.current,0,dragged);
+    miniDragIdx.current=null; miniDragOver.current=null;
+    upd('miniProjects',items);
+  };
+  const reorderInnerNotes = () => {
+    if(innerDragIdx.current===null||innerDragOver.current===null||innerDragIdx.current===innerDragOver.current)return;
+    const minis=[...(local.miniProjects||[])];
+    const mini=minis.find(m=>m.id===activeMiniId);
+    if(!mini)return;
+    const notes=[...(mini.innerNotes||[])];
+    const dragged=notes.splice(innerDragIdx.current,1)[0];
+    notes.splice(innerDragOver.current,0,dragged);
+    innerDragIdx.current=null; innerDragOver.current=null;
+    upd('miniProjects',minis.map(m=>m.id===activeMiniId?{...m,innerNotes:notes}:m));
+  };
+  const reorderResearch = () => {
+    if(resDragIdx.current===null||resDragOver.current===null||resDragIdx.current===resDragOver.current)return;
+    const items=[...(local.researchNotes||[])];
+    const dragged=items.splice(resDragIdx.current,1)[0];
+    items.splice(resDragOver.current,0,dragged);
+    resDragIdx.current=null; resDragOver.current=null;
+    upd('researchNotes',items);
+  };
+
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',display:'flex',flexDirection:'column'}}>
       <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
@@ -2215,12 +2251,18 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
-            {(local.miniProjects||[]).map(m=>{
+            {(local.miniProjects||[]).map((m,mIdx)=>{
               const expanded=expandedMiniIds.has(m.id);
               const isMiniActive=activeMiniId===m.id&&!activeInnerNoteId;
               const toggleExpand=e=>{e.stopPropagation();const s=new Set(expandedMiniIds);expanded?s.delete(m.id):s.add(m.id);setExpandedMiniIds(s);};
               return(
-                <div key={m.id}>
+                <div key={m.id}
+                  draggable
+                  onDragStart={()=>{miniDragIdx.current=mIdx;}}
+                  onDragEnter={()=>{miniDragOver.current=mIdx;}}
+                  onDragOver={e=>e.preventDefault()}
+                  onDragEnd={reorderMinis}
+                  style={{opacity:miniDragIdx.current===mIdx?.4:1,transition:'opacity .15s'}}>
                   {/* Animatic row */}
                   <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
@@ -2228,6 +2270,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}
                     onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
+                    <Icon name="grip-vertical" size={12} style={{flexShrink:0,color:isMiniActive?'rgba(255,255,255,.4)':'var(--border)',cursor:'grab'}}/>
                     <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
                       <Icon name="chevron-right" size={13}/>
                     </button>
@@ -2241,15 +2284,22 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   {/* Expanded inner notes */}
                   {expanded&&(
                     <div style={{paddingLeft:20,display:'flex',flexDirection:'column',gap:2,marginTop:2,marginBottom:2}}>
-                      {(m.innerNotes||[]).map(n=>{
+                      {(m.innerNotes||[]).map((n,nIdx)=>{
                         const isNoteActive=activeInnerNoteId===n.id&&activeMiniId===m.id;
                         return(
-                          <div key={n.id} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
+                          <div key={n.id}
+                            draggable
+                            onDragStart={e=>{e.stopPropagation();innerDragIdx.current=nIdx;setActiveMiniId(m.id);}}
+                            onDragEnter={e=>{e.stopPropagation();innerDragOver.current=nIdx;}}
+                            onDragOver={e=>{e.preventDefault();e.stopPropagation();}}
+                            onDragEnd={e=>{e.stopPropagation();reorderInnerNotes();}}
+                            onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
                             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6,cursor:'pointer',
                               border:`1px solid ${isNoteActive?'var(--text)':'transparent'}`,
                               background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}
                             onMouseEnter={e=>{if(!isNoteActive)e.currentTarget.style.background='var(--surface)';}}
                             onMouseLeave={e=>{if(!isNoteActive)e.currentTarget.style.background='transparent';}}>
+                            <Icon name="grip-vertical" size={11} style={{flexShrink:0,color:'var(--border)',cursor:'grab'}}/>
                             <Icon name="file-text" size={11} style={{flexShrink:0,color:'var(--muted)'}}/>
                             <span style={{fontSize:'.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:isNoteActive?'var(--text)':'var(--muted)'}}>{n.title||'Sem título'}</span>
                           </div>
@@ -2378,13 +2428,22 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
             {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
-            {(local.researchNotes||[]).map(n=>(
-              <div key={n.id} onClick={()=>setActiveResearchId(n.id)}
-                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
+            {(local.researchNotes||[]).map((n,rIdx)=>(
+              <div key={n.id}
+                draggable
+                onDragStart={()=>{resDragIdx.current=rIdx;}}
+                onDragEnter={()=>{resDragOver.current=rIdx;}}
+                onDragOver={e=>e.preventDefault()}
+                onDragEnd={reorderResearch}
+                onClick={()=>setActiveResearchId(n.id)}
+                style={{padding:'9px 12px 9px 8px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'flex-start',gap:6}}
                 onMouseEnter={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='var(--surface)';}}
                 onMouseLeave={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='transparent';}}>
-                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
-                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
+                <Icon name="grip-vertical" size={13} style={{flexShrink:0,color:'var(--border)',cursor:'grab',marginTop:2}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
+                  <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
+                </div>
               </div>
             ))}
           </div>
