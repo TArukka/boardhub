@@ -2031,42 +2031,6 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   };
   const MINI_STATUSES=['Em Andamento','Revisão','Aprovado','Arquivado'];
 
-  // Drag-to-reorder refs
-  const miniDragIdx   = useRef(null);
-  const miniDragOver  = useRef(null);
-  const innerDragIdx  = useRef(null);
-  const innerDragOver = useRef(null);
-  const resDragIdx    = useRef(null);
-  const resDragOver   = useRef(null);
-
-  const reorderMinis = () => {
-    if(miniDragIdx.current===null||miniDragOver.current===null||miniDragIdx.current===miniDragOver.current)return;
-    const items=[...(local.miniProjects||[])];
-    const dragged=items.splice(miniDragIdx.current,1)[0];
-    items.splice(miniDragOver.current,0,dragged);
-    miniDragIdx.current=null; miniDragOver.current=null;
-    upd('miniProjects',items);
-  };
-  const reorderInnerNotes = () => {
-    if(innerDragIdx.current===null||innerDragOver.current===null||innerDragIdx.current===innerDragOver.current)return;
-    const minis=[...(local.miniProjects||[])];
-    const mini=minis.find(m=>m.id===activeMiniId);
-    if(!mini)return;
-    const notes=[...(mini.innerNotes||[])];
-    const dragged=notes.splice(innerDragIdx.current,1)[0];
-    notes.splice(innerDragOver.current,0,dragged);
-    innerDragIdx.current=null; innerDragOver.current=null;
-    upd('miniProjects',minis.map(m=>m.id===activeMiniId?{...m,innerNotes:notes}:m));
-  };
-  const reorderResearch = () => {
-    if(resDragIdx.current===null||resDragOver.current===null||resDragIdx.current===resDragOver.current)return;
-    const items=[...(local.researchNotes||[])];
-    const dragged=items.splice(resDragIdx.current,1)[0];
-    items.splice(resDragOver.current,0,dragged);
-    resDragIdx.current=null; resDragOver.current=null;
-    upd('researchNotes',items);
-  };
-
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',display:'flex',flexDirection:'column'}}>
       <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCoverUpload}/>
@@ -2251,18 +2215,12 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
-            {(local.miniProjects||[]).map((m,mIdx)=>{
+            {(local.miniProjects||[]).map(m=>{
               const expanded=expandedMiniIds.has(m.id);
               const isMiniActive=activeMiniId===m.id&&!activeInnerNoteId;
               const toggleExpand=e=>{e.stopPropagation();const s=new Set(expandedMiniIds);expanded?s.delete(m.id):s.add(m.id);setExpandedMiniIds(s);};
               return(
-                <div key={m.id}
-                  draggable
-                  onDragStart={()=>{miniDragIdx.current=mIdx;}}
-                  onDragEnter={()=>{miniDragOver.current=mIdx;}}
-                  onDragOver={e=>e.preventDefault()}
-                  onDragEnd={reorderMinis}
-                  style={{opacity:miniDragIdx.current===mIdx?.4:1,transition:'opacity .15s'}}>
+                <div key={m.id}>
                   {/* Animatic row */}
                   <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
@@ -2270,7 +2228,6 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}
                     onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
-                    <Icon name="grip-vertical" size={12} style={{flexShrink:0,color:isMiniActive?'rgba(255,255,255,.4)':'var(--border)',cursor:'grab'}}/>
                     <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
                       <Icon name="chevron-right" size={13}/>
                     </button>
@@ -2284,22 +2241,15 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   {/* Expanded inner notes */}
                   {expanded&&(
                     <div style={{paddingLeft:20,display:'flex',flexDirection:'column',gap:2,marginTop:2,marginBottom:2}}>
-                      {(m.innerNotes||[]).map((n,nIdx)=>{
+                      {(m.innerNotes||[]).map(n=>{
                         const isNoteActive=activeInnerNoteId===n.id&&activeMiniId===m.id;
                         return(
-                          <div key={n.id}
-                            draggable
-                            onDragStart={e=>{e.stopPropagation();innerDragIdx.current=nIdx;setActiveMiniId(m.id);}}
-                            onDragEnter={e=>{e.stopPropagation();innerDragOver.current=nIdx;}}
-                            onDragOver={e=>{e.preventDefault();e.stopPropagation();}}
-                            onDragEnd={e=>{e.stopPropagation();reorderInnerNotes();}}
-                            onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
+                          <div key={n.id} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
                             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6,cursor:'pointer',
                               border:`1px solid ${isNoteActive?'var(--text)':'transparent'}`,
                               background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}
                             onMouseEnter={e=>{if(!isNoteActive)e.currentTarget.style.background='var(--surface)';}}
                             onMouseLeave={e=>{if(!isNoteActive)e.currentTarget.style.background='transparent';}}>
-                            <Icon name="grip-vertical" size={11} style={{flexShrink:0,color:'var(--border)',cursor:'grab'}}/>
                             <Icon name="file-text" size={11} style={{flexShrink:0,color:'var(--muted)'}}/>
                             <span style={{fontSize:'.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:isNoteActive?'var(--text)':'var(--muted)'}}>{n.title||'Sem título'}</span>
                           </div>
@@ -2428,22 +2378,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:4}} onClick={addResearchNote}><Icon name="plus" size={13}/> Nova Pesquisa</button>
             {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
-            {(local.researchNotes||[]).map((n,rIdx)=>(
-              <div key={n.id}
-                draggable
-                onDragStart={()=>{resDragIdx.current=rIdx;}}
-                onDragEnter={()=>{resDragOver.current=rIdx;}}
-                onDragOver={e=>e.preventDefault()}
-                onDragEnd={reorderResearch}
-                onClick={()=>setActiveResearchId(n.id)}
-                style={{padding:'9px 12px 9px 8px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'flex-start',gap:6}}
+            {(local.researchNotes||[]).map(n=>(
+              <div key={n.id} onClick={()=>setActiveResearchId(n.id)}
+                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
                 onMouseEnter={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='var(--surface)';}}
                 onMouseLeave={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='transparent';}}>
-                <Icon name="grip-vertical" size={13} style={{flexShrink:0,color:'var(--border)',cursor:'grab',marginTop:2}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
-                  <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
-                </div>
+                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
+                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
               </div>
             ))}
           </div>
@@ -3180,132 +3121,161 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
 
   return(
-    <div className="fade-up" style={{maxWidth:'min(640px,100%)',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',margin:'0 auto'}}>
-      <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)',marginBottom:isMobile?14:18}}>Sync em tempo real entre dispositivos via Google.</p>
-
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(180px,1fr))',gap:10,marginBottom:isMobile?10:14}}>
-        {counts.map(s=>(
-          <div key={s.label} className="card" style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{s.label}</span>
-            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.4rem',fontWeight:500}}>{s.value}</span>
-          </div>
-        ))}
+    <div className="fade-up" style={{
+      boxSizing:'border-box',
+      height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',
+      display:'flex',flexDirection:'column',
+      overflow:'hidden',
+    }}>
+      {/* Header */}
+      <div style={{flexShrink:0,marginBottom:14}}>
+        <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.4rem,2.4vh,2.2rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Sincronizar</h1>
+        <p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.82rem)',margin:0}}>Sync em tempo real entre dispositivos via Google.</p>
       </div>
 
-      {localImgCount>0&&(
-        <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-          <Icon name="image" size={16} style={{color:'#92700b',flexShrink:0}}/>
-          <div style={{flex:1,fontSize:'.83rem',color:'#78350F'}}>
-            <strong>{localImgCount} imagem(ns)</strong> armazenada(s) apenas localmente. Use <strong>"Re-enviar Imagens"</strong> abaixo para sincronizá-las.
-          </div>
-        </div>
-      )}
-
-      {status&&(
-        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
-          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
-        </div>
-      )}
-
-      {reuploadProgress&&(
-        <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 18px',marginBottom:16}}>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:'.82rem',fontWeight:600}}>
-            <span>Enviando imagens...</span>
-            <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
-          </div>
-          <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
-            <div style={{height:'100%',background:'var(--text)',borderRadius:3,transition:'width .3s',width:`${Math.round(reuploadProgress.done/reuploadProgress.total*100)}%`}}/>
-          </div>
-        </div>
-      )}
-
-      {/* Google Account Card */}
-      <div className="card" style={{padding:28,marginBottom:16,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
-        {fbUser ? (
-          <>
-            <div style={{display:'flex',alignItems:'center',gap:16,width:'100%'}}>
-              <div style={{width:56,height:56,borderRadius:'50%',overflow:'hidden',flexShrink:0,background:'var(--bg)',border:'2px solid var(--border)'}}>
-                {fbUser.photoURL
-                  ?<img src={fbUser.photoURL} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
-                  :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.4rem',fontWeight:500,color:'var(--muted)'}}>{(fbUser.displayName||fbUser.email||'?').charAt(0)}</div>
-                }
+      {/* Transient banners */}
+      {(status||reuploadProgress)&&(
+        <div style={{flexShrink:0,marginBottom:10,display:'flex',flexDirection:'column',gap:8}}>
+          {status&&(
+            <div style={{padding:'10px 16px',borderRadius:10,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.83rem',display:'flex',alignItems:'center',gap:10}}>
+              <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={15}/>{status.msg}
+              <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
+            </div>
+          )}
+          {reuploadProgress&&(
+            <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:6,fontSize:'.8rem',fontWeight:600}}>
+                <span>Enviando imagens...</span>
+                <span style={{color:'var(--muted)'}}>{reuploadProgress.done}/{reuploadProgress.total}</span>
               </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:'1rem',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fbUser.displayName||fbUser.email}</div>
-                <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
-                  <Icon name={syncIcon} size={12}/>{syncLabel}
-                </div>
+              <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{height:'100%',background:'var(--text)',borderRadius:3,transition:'width .3s',width:`${Math.round(reuploadProgress.done/reuploadProgress.total*100)}%`}}/>
               </div>
             </div>
-            <div style={{display:'flex',gap:8,width:'100%'}}>
-              <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={handleManualPush} disabled={loading}>
-                <Icon name="upload-cloud" size={14}/> Forçar sync
-              </button>
-              <button className="btn btn-ghost" style={{fontSize:'.8rem',color:'var(--muted)'}} onClick={signOut}>
-                <Icon name="log-out" size={13}/> Sair
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{textAlign:'center'}}>
-              <div style={{width:64,height:64,borderRadius:'50%',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}>
-                <Icon name="cloud" size={26} style={{color:'var(--muted)'}}/>
-              </div>
-              <div style={{fontWeight:600,fontSize:'1rem',marginBottom:6}}>Entre com sua conta Google</div>
-              <div style={{fontSize:'.82rem',color:'var(--muted)',maxWidth:340,lineHeight:1.6}}>Seus dados ficam sincronizados automaticamente em todos os seus dispositivos.</div>
-            </div>
-            <button style={{
-              display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-              width:'100%',maxWidth:320,padding:'13px 20px',borderRadius:10,
-              border:'1px solid var(--border)',background:'white',cursor:'pointer',
-              fontFamily:'Figtree,sans-serif',fontSize:'.95rem',fontWeight:600,color:'#1C1917',
-              boxShadow:'0 1px 4px rgba(0,0,0,.08)',transition:'box-shadow .15s',
-            }}
-            onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'}
-            onMouseLeave={e=>e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.08)'}
-            onClick={signIn}>
-              <svg width="20" height="20" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Entrar com Google
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="card" style={{padding:isMobile?20:28,marginBottom:16}}>
-        <span className="label" style={{display:'block',marginBottom:16}}>Backup Manual</span>
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={exportData} disabled={loading}>
-              <Icon name="download" size={14}/> Exportar JSON
-            </button>
-            <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={()=>importRef.current.click()} disabled={loading}>
-              <Icon name="upload" size={14}/> Importar JSON
-            </button>
-            <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
-          </div>
-          {localImgCount>0&&(
-            <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={handleReupload} disabled={loading}>
-              <Icon name="cloud-upload" size={14}/> Re-enviar Imagens ({localImgCount})
-            </button>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Danger zone */}
-      <div style={{borderTop:'1px solid var(--border)',paddingTop:20}}>
-        <span className="label" style={{display:'block',marginBottom:12,color:'#9B1C1C'}}>Zona Perigosa</span>
-        <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
-          <Icon name="alert-triangle" size={14}/> Resetar tudo
-        </button>
+      {/* Main two-column layout */}
+      <div style={{flex:1,minHeight:0,display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:isMobile?12:16,alignItems:'start'}}>
+
+        {/* LEFT — account + backup */}
+        <div style={{display:'flex',flexDirection:'column',gap:isMobile?10:12}}>
+
+          {/* Google Account Card */}
+          <div className="card" style={{padding:isMobile?18:22,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+            {fbUser ? (
+              <>
+                <div style={{display:'flex',alignItems:'center',gap:14,width:'100%'}}>
+                  <div style={{width:48,height:48,borderRadius:'50%',overflow:'hidden',flexShrink:0,background:'var(--bg)',border:'2px solid var(--border)'}}>
+                    {fbUser.photoURL
+                      ?<img src={fbUser.photoURL} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+                      :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.3rem',fontWeight:500,color:'var(--muted)'}}>{(fbUser.displayName||fbUser.email||'?').charAt(0)}</div>
+                    }
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fbUser.displayName||fbUser.email}</div>
+                    <div style={{fontSize:'.75rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
+                      <Icon name={syncIcon} size={11}/>{syncLabel}
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:8,width:'100%'}}>
+                  <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={handleManualPush} disabled={loading}>
+                    <Icon name="upload-cloud" size={13}/> Forçar sync
+                  </button>
+                  <button className="btn btn-ghost" style={{fontSize:'.78rem',color:'var(--muted)'}} onClick={signOut}>
+                    <Icon name="log-out" size={13}/> Sair
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{textAlign:'center'}}>
+                  <div style={{width:52,height:52,borderRadius:'50%',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
+                    <Icon name="cloud" size={22} style={{color:'var(--muted)'}}/>
+                  </div>
+                  <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:5}}>Entre com sua conta Google</div>
+                  <div style={{fontSize:'.79rem',color:'var(--muted)',lineHeight:1.55}}>Sync automático em todos os dispositivos.</div>
+                </div>
+                <button style={{
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:9,
+                  width:'100%',maxWidth:280,padding:'11px 18px',borderRadius:10,
+                  border:'1px solid var(--border)',background:'white',cursor:'pointer',
+                  fontFamily:'Figtree,sans-serif',fontSize:'.9rem',fontWeight:600,color:'#1C1917',
+                  boxShadow:'0 1px 4px rgba(0,0,0,.08)',transition:'box-shadow .15s',
+                }}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.08)'}
+                onClick={signIn}>
+                  <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Entrar com Google
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Backup Manual */}
+          <div className="card" style={{padding:isMobile?16:20}}>
+            <span className="label" style={{display:'block',marginBottom:12}}>Backup Manual</span>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={exportData} disabled={loading}>
+                  <Icon name="download" size={13}/> Exportar JSON
+                </button>
+                <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={()=>importRef.current.click()} disabled={loading}>
+                  <Icon name="upload" size={13}/> Importar JSON
+                </button>
+                <input ref={importRef} type="file" accept=".json" style={{display:'none'}} onChange={handleImportFile}/>
+              </div>
+              {localImgCount>0&&(
+                <button className="btn btn-outline" style={{width:'100%',justifyContent:'center'}} onClick={handleReupload} disabled={loading}>
+                  <Icon name="cloud-upload" size={13}/> Re-enviar Imagens ({localImgCount})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — stats + warnings + danger */}
+        <div style={{display:'flex',flexDirection:'column',gap:isMobile?10:12}}>
+
+          {/* Stats grid */}
+          <div className="card" style={{padding:isMobile?16:20}}>
+            <span className="label" style={{display:'block',marginBottom:12}}>Dados</span>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+              {counts.map(s=>(
+                <div key={s.label} style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px',display:'flex',flexDirection:'column',gap:3}}>
+                  <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,lineHeight:1}}>{s.value}</span>
+                  <span style={{fontSize:'.68rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em'}}>{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Local image warning */}
+          {localImgCount>0&&(
+            <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'flex-start',gap:10}}>
+              <Icon name="image" size={15} style={{color:'#92700b',flexShrink:0,marginTop:1}}/>
+              <div style={{fontSize:'.8rem',color:'#78350F',lineHeight:1.5}}>
+                <strong>{localImgCount} imagem(ns)</strong> locais. Use <strong>"Re-enviar Imagens"</strong> para sincronizar.
+              </div>
+            </div>
+          )}
+
+          {/* Danger zone */}
+          <div className="card" style={{padding:isMobile?16:20}}>
+            <span className="label" style={{display:'block',marginBottom:12,color:'#9B1C1C'}}>Zona Perigosa</span>
+            <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
+              <Icon name="alert-triangle" size={13}/> Resetar tudo
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>
