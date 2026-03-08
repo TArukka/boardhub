@@ -27,9 +27,10 @@
 *,*::before,*::after{box-sizing:border-box;}
 /* Offscreen rendering optimization - browser skips layout/paint for non-visible content */
 main>div{content-visibility:auto;contain-intrinsic-size:auto 500px;}
+/* Image performance: prevent layout shift, smooth decode */
+img{max-width:100%;display:block;}
 body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;}
 h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
-img{max-width:100%;}
 ::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
@@ -212,6 +213,34 @@ const lsSave = s => {
   }
 };
 const persisted = lsLoad();
+
+// Prefetch all idb:// image refs from persisted state into the object URL cache
+// so BgImg/Img components get their URL synchronously on first render (no flash).
+const _prefetchDone = (()=>{
+  if(!persisted)return Promise.resolve();
+  const keys=[];
+  const collect=obj=>{
+    if(Array.isArray(obj)){obj.forEach(collect);}
+    else if(obj&&typeof obj==='object'){Object.values(obj).forEach(collect);}
+    else if(typeof obj==='string'&&obj.startsWith('idb://'))keys.push(obj.slice(6));
+  };
+  collect(persisted);
+  if(!keys.length)return Promise.resolve();
+  return openIdb().then(db=>Promise.all(keys.map(key=>{
+    if(_objUrlCache[key])return;
+    return new Promise(res=>{
+      try{
+        const req=db.transaction('images','readonly').objectStore('images').get(key);
+        req.onsuccess=e=>{
+          const blob=e.target.result;
+          if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
+          res();
+        };
+        req.onerror=()=>res();
+      }catch{res();}
+    });
+  }))).catch(()=>{});
+})();
 
 // - IDENTITY (hub name + OS name, set on first run) -
 const ID_KEY = 'boardhub_identity';
@@ -402,19 +431,24 @@ const idbDel=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
 }));
 
 // Hook: given an image src (may be idb://key, https://, or data:), returns a displayable URL.
-// FIX 2: Track and revoke object URLs to prevent memory leaks that cause IDB connection drops.
+// Checks _objUrlCache synchronously so prefetched images render with zero flash.
 const _objUrlCache={};
 const useIdbUrl=(src)=>{
-  const [url,setUrl]=React.useState(()=>src&&!src.startsWith('idb://')?src:'');
+  const getInitial=()=>{
+    if(!src)return '';
+    if(!src.startsWith('idb://'))return src;
+    return _objUrlCache[src.slice(6)]||'';
+  };
+  const [url,setUrl]=React.useState(getInitial);
   React.useEffect(()=>{
     if(!src){setUrl('');return;}
     if(!src.startsWith('idb://')){setUrl(src);return;}
     const key=src.slice(6);
+    // Already cached — no async needed
     if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
     let cancelled=false;
     idbGet(key).then(blob=>{
       if(cancelled||!blob){if(!cancelled)setUrl('');return;}
-      // Recheck cache — another instance may have populated it while we awaited
       if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
       const u=URL.createObjectURL(blob);
       _objUrlCache[key]=u;
@@ -429,7 +463,7 @@ const useIdbUrl=(src)=>{
 const Img=({src,...props})=>{
   const url=useIdbUrl(src);
   if(!url)return null;
-  return <img src={url} {...props}/>;
+  return <img src={url} loading="lazy" decoding="async" {...props}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs
