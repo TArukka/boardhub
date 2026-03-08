@@ -3812,6 +3812,8 @@ const App=()=>{
 
   // Firestore real-time listener — fires instantly when any device saves
   const _isApplyingRemote=useRef(false);
+  const _lastLocalEditAt=useRef(0);
+  const _lastPushedAt=useRef(0);
   useEffect(()=>{
     if(!fbUser)return;
     const ref=getStateRef(fbUser.uid);
@@ -3819,12 +3821,15 @@ const App=()=>{
     setSyncStatus('syncing');
     const unsub=ref.onSnapshot(snap=>{
       if(!snap.exists)return;
+      // Skip our own write echo — Firestore fires the snapshot back to the
+      // writing device with hasPendingWrites=true before the server confirms
+      if(snap.metadata.hasPendingWrites)return;
       const data=snap.data();
       if(!data)return;
-      // Client-side guard: reject any snapshot that doesn't carry our version tag
-      // (shouldn't happen with proper rules, but defence-in-depth)
       if(typeof data._v!=='string')return;
-      // Reject arrays that aren't actually arrays (malformed writes)
+      // Skip if there are local edits that haven't been pushed yet —
+      // applying the snapshot now would overwrite the user's unsaved changes
+      if(_lastLocalEditAt.current>_lastPushedAt.current)return;
       const isArr=v=>Array.isArray(v);
       _isApplyingRemote.current=true;
       if(data.projects&&isArr(data.projects))setProjects(data.projects);
@@ -3837,7 +3842,9 @@ const App=()=>{
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
-      setTimeout(()=>{ _isApplyingRemote.current=false; },600);
+      // Hold flag longer than the auto-save debounce (2500ms) so the state
+      // changes above don't immediately trigger a push back to Firestore
+      setTimeout(()=>{ _isApplyingRemote.current=false; },3500);
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
       setSyncStatus('error');
@@ -3849,6 +3856,9 @@ const App=()=>{
   const saveFlashTimer=useRef(null);
   const fbPushTimer=useRef(null);
   useEffect(()=>{
+    // Record that a local edit happened so the snapshot listener can skip
+    // applying a remote update that would overwrite unsaved local changes
+    _lastLocalEditAt.current=Date.now();
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity};
       lsSave(state);
@@ -3859,12 +3869,11 @@ const App=()=>{
       clearTimeout(fbPushTimer.current);
       fbPushTimer.current=setTimeout(async()=>{
         try{
-          // Guard: don't attempt push if payload would exceed the 900 KB
-          // threshold enforced by the Firestore rules (hard limit is 1 MB)
           const approxBytes=new Blob([JSON.stringify(stripBase64(state))]).size;
           if(approxBytes>900000){console.warn('[BoardHub] State too large for Firestore (',Math.round(approxBytes/1024),'KB), skipping push.');setSyncStatus('error');return;}
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
+          _lastPushedAt.current=Date.now();
           setSyncStatus('synced');
         }catch(e){
           console.error('[BoardHub] Firestore push:',e);
@@ -3873,7 +3882,7 @@ const App=()=>{
       },2000);
     },2500);
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData]);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity]);
 
   const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
