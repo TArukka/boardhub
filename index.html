@@ -213,6 +213,11 @@ const lsSave = s => {
 };
 const persisted = lsLoad();
 
+// - IDENTITY (hub name + OS name, set on first run) -
+const ID_KEY = 'boardhub_identity';
+const loadIdentity = () => { try { const s = localStorage.getItem(ID_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
+const saveIdentity = id => { try { localStorage.setItem(ID_KEY, JSON.stringify(id)); } catch {} };
+
 // - SEED DATA -
 const SEED = {
   projects:[
@@ -680,12 +685,120 @@ const NAV_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
+// - FIRST-RUN SETUP MODAL -
+const SetupModal=({onDone})=>{
+  const [hubName,setHubName]=useState('BoardHub');
+  const [osName,setOsName]=useState('Storyboard OS');
+  const [step,setStep]=useState(0); // 0=hub, 1=os, 2=done
+  const hubRef=useRef(null);
+  const osRef=useRef(null);
+
+  useEffect(()=>{
+    if(step===0&&hubRef.current)hubRef.current.focus();
+    if(step===1&&osRef.current)osRef.current.focus();
+  },[step]);
+
+  const next=()=>{
+    if(step===0){if(hubName.trim())setStep(1);}
+    else if(step===1){if(osName.trim())setStep(2);}
+  };
+  const finish=()=>{
+    const id={hubName:hubName.trim()||'BoardHub',osName:osName.trim()||'Storyboard OS'};
+    saveIdentity(id);
+    onDone(id);
+  };
+
+  const inputStyle={
+    width:'100%',boxSizing:'border-box',background:'transparent',border:'none',borderBottom:'2px solid var(--text)',
+    outline:'none',fontSize:'1.6rem',fontFamily:'Cormorant Garamond,serif',fontWeight:400,color:'var(--text)',
+    padding:'4px 0 8px',textAlign:'center',letterSpacing:'-0.01em',
+  };
+  const mutedStyle={fontSize:'.8rem',color:'var(--muted)',textAlign:'center',marginTop:6,lineHeight:1.5};
+
+  return ReactDOM.createPortal(
+    <div style={{position:'fixed',inset:0,zIndex:9000,background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div style={{width:'100%',maxWidth:420,display:'flex',flexDirection:'column',gap:0}}>
+
+        {/* Logo / title */}
+        <div style={{textAlign:'center',marginBottom:40}}>
+          <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>
+            Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span>
+          </div>
+          <div style={{fontSize:'.7rem',color:'var(--muted)',letterSpacing:'.12em',textTransform:'uppercase',marginTop:4}}>Configuração inicial</div>
+        </div>
+
+        {/* Step 0 — hub name */}
+        {step===0&&(
+          <div style={{display:'flex',flexDirection:'column',gap:24}}>
+            <div>
+              <div style={{fontSize:'.65rem',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--muted)',textAlign:'center',marginBottom:16}}>
+                Como você quer chamar seu hub?
+              </div>
+              <input ref={hubRef} value={hubName} onChange={e=>setHubName(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&next()} style={inputStyle}/>
+              <p style={mutedStyle}>Esse nome vai aparecer na barra lateral e no cabeçalho.</p>
+            </div>
+            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',padding:'12px',fontSize:'1rem'}} onClick={next} disabled={!hubName.trim()}>
+              Continuar <Icon name="arrow-right" size={16}/>
+            </button>
+          </div>
+        )}
+
+        {/* Step 1 — OS name */}
+        {step===1&&(
+          <div style={{display:'flex',flexDirection:'column',gap:24}}>
+            <div>
+              <div style={{fontSize:'.65rem',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--muted)',textAlign:'center',marginBottom:16}}>
+                Como você quer chamar seu sistema?
+              </div>
+              <input ref={osRef} value={osName} onChange={e=>setOsName(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&next()} style={inputStyle}/>
+              <p style={mutedStyle}>Esse subtítulo aparece abaixo do nome do hub na barra lateral.</p>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'12px'}} onClick={()=>setStep(0)}>
+                <Icon name="arrow-left" size={14}/> Voltar
+              </button>
+              <button className="btn btn-dark" style={{flex:2,justifyContent:'center',padding:'12px',fontSize:'1rem'}} onClick={next} disabled={!osName.trim()}>
+                Continuar <Icon name="arrow-right" size={16}/>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — confirm */}
+        {step===2&&(
+          <div style={{display:'flex',flexDirection:'column',gap:24,textAlign:'center'}}>
+            <div style={{padding:'28px 0'}}>
+              <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.4rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1.1,color:'var(--text)'}}>
+                {hubName}
+              </div>
+              <div style={{fontSize:'.7rem',color:'var(--muted)',letterSpacing:'.12em',textTransform:'uppercase',marginTop:6}}>
+                {osName}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'12px'}} onClick={()=>setStep(1)}>
+                <Icon name="arrow-left" size={14}/> Editar
+              </button>
+              <button className="btn btn-dark" style={{flex:2,justifyContent:'center',padding:'12px',fontSize:'1rem'}} onClick={finish}>
+                Começar <Icon name="check" size={16}/>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile})=>(
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile,hubName,osName})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
-      <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></div>
-      <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>Storyboard OS</div>
+      <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>{hubName||'BoardHub'}</div>
+      <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{osName||'Storyboard OS'}</div>
     </div>
     <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
       {NAV_ITEMS.map(item=>(
@@ -721,16 +834,16 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile})=>{
+const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hubName})=>{
   const [moreOpen,setMoreOpen]=useState(false);
   const go=id=>{setView(id);setMoreOpen(false);};
   const isMore=MORE_ITEMS.some(n=>activeView.startsWith(n.id));
-  const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||'BoardHub';
+  const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||(hubName||'BoardHub');
   return(
     <>
       {/* Header bar */}
       <div className="mobile-header">
-        <span className="mobile-header-title">Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span>
+        <span className="mobile-header-title">{hubName||'BoardHub'}</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
           <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
@@ -1702,13 +1815,23 @@ const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
 
-const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
+const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=>{
   const today=todayISO();
   const [selectedId,setSelectedId]=useState(null);
   const [editDraft,setEditDraft]=useState(null);
   const [newTaskName,setNewTaskName]=useState('');
+  const [thisWeek,setThisWeek]=useState(true);
   const dragRef=useRef(null);
   const [, forceUpdate]=useState(0);
+
+  // Compute this week Mon-Sun
+  const getWeekBounds=()=>{
+    const d=new Date(today+'T12:00:00');
+    const day=d.getDay(); // 0=Sun
+    const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    return{start:mon.toISOString().slice(0,10),end:sun.toISOString().slice(0,10)};
+  };
 
   // - Compute chart bounds -
   let chartStart=projectStart||today;
@@ -1717,8 +1840,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
     if(t.startDate&&t.startDate<chartStart)chartStart=t.startDate;
     if(t.dueDate&&t.dueDate>chartEnd)chartEnd=t.dueDate;
   });
-  chartStart=addDays(chartStart,-5);
-  chartEnd=addDays(chartEnd,12);
+  if(thisWeek){const wb=getWeekBounds();chartStart=wb.start;chartEnd=wb.end;}
+  else{chartStart=addDays(chartStart,-5);chartEnd=addDays(chartEnd,12);}
   const totalDays=Math.max(1,daysBetween(chartStart,chartEnd));
   const DAY_W=36;
   const ROW_H=38;
@@ -1798,9 +1921,14 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
     <div className="card" style={{padding:0,overflow:'hidden',marginBottom:12,flexShrink:0}}>
       {/* Top bar */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 16px',borderBottom:'1px solid var(--border)',background:'var(--surface)'}}>
-        <div>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
           <span className="label">Timeline do Projeto</span>
-          <span style={{fontSize:'.72rem',color:'var(--muted)',marginLeft:8}}>Arraste para reagendar · clique para editar</span>
+          <button onClick={()=>setThisWeek(w=>!w)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem',background:thisWeek?'var(--text)':'transparent',color:thisWeek?'white':'var(--muted)',borderColor:thisWeek?'var(--text)':'var(--border)'}}>
+            <Icon name="calendar" size={10}/> Esta semana
+          </button>
+          {onExpandAll&&<button onClick={onExpandAll} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}}>
+            <Icon name="maximize-2" size={10}/> Ver tudo
+          </button>}
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <input value={newTaskName} onChange={e=>setNewTaskName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
@@ -1965,6 +2093,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     return{...project,projectTasks:tasks};
   });
   const [tab,setTab]=useState('Visão Geral');
+  const [showTimelineModal,setShowTimelineModal]=useState(false);
+  const [showFullTimeline,setShowFullTimeline]=useState(false);
   const coverRef=useRef();
 
   const projectRef=useRef(project);
@@ -2083,12 +2213,36 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
         </div>
       </div>
 
-      {/* Timeline - vertical on mobile, Gantt on desktop */}
-      {isMobile?(
+      {/* Timeline - vertical on mobile (with popup), Gantt on desktop */}
+      {isMobile?(<>
+        {showTimelineModal&&ReactDOM.createPortal(
+          <div style={{position:'fixed',inset:0,zIndex:300,background:'var(--bg)',display:'flex',flexDirection:'column',overflowY:'auto'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,padding:'16px 16px 0',flexShrink:0}}>
+              <button onClick={()=>setShowTimelineModal(false)} className="btn btn-ghost" style={{padding:'6px 10px',fontSize:'.88rem'}}>
+                <Icon name="arrow-left" size={16}/> Voltar
+              </button>
+              <span className="label">Timeline do Projeto</span>
+            </div>
+            <div style={{padding:'12px 8px',flex:1}}>
+              <GanttTimeline
+                tasks={applyAutoLate(local.projectTasks||[])}
+                onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+                projectStart={local.startDate}
+                projectEnd={local.deadline}
+              />
+            </div>
+          </div>,
+          document.body
+        )}
         <div style={{marginBottom:16}}>
-          {(local.timelineEvents||[]).length>0?(
+          {(local.timelineEvents||[]).length>0&&(
             <div className="card" style={{padding:16}}>
-              <span className="label" style={{display:'block',marginBottom:12}}>Timeline</span>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <span className="label">Timeline</span>
+                <button onClick={()=>setShowTimelineModal(true)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}}>
+                  <Icon name="maximize-2" size={10}/> Expandir
+                </button>
+              </div>
               {(local.timelineEvents||[]).map((ev,i)=>(
                 <div key={ev.id||i} className="vtimeline-item">
                   <div className={`vtimeline-dot ${i<(local.timelineEvents||[]).length-1?'done':''}`}/>
@@ -2097,10 +2251,15 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 </div>
               ))}
             </div>
-          ):null}
+          )}
           {(local.projectTasks||[]).length>0&&(
             <div className="card" style={{padding:16,marginTop:12}}>
-              <span className="label" style={{display:'block',marginBottom:12}}>Tarefas do Projeto</span>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <span className="label">Tarefas do Projeto</span>
+                <button onClick={()=>setShowTimelineModal(true)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}}>
+                  <Icon name="calendar-days" size={10}/> Ver Timeline
+                </button>
+              </div>
               {applyAutoLate(local.projectTasks||[]).map(t=>(
                 <div key={t.id} className="vtimeline-item">
                   <span className={`ptask-pill ptask-${t.status}`} style={{fontSize:'.62rem',flexShrink:0}}>{t.status}</span>
@@ -2109,14 +2268,38 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               ))}
             </div>
           )}
+          {(local.timelineEvents||[]).length===0&&(local.projectTasks||[]).length===0&&(
+            <button onClick={()=>setShowTimelineModal(true)} className="btn btn-outline" style={{width:'100%',justifyContent:'center',padding:'10px'}}>
+              <Icon name="calendar-days" size={14}/> Abrir Timeline
+            </button>
+          )}
         </div>
-      ):(
+      </>):(
         <GanttTimeline
           tasks={applyAutoLate(local.projectTasks||[])}
           onUpdateTasks={tasks=>upd('projectTasks',tasks)}
           projectStart={local.startDate}
           projectEnd={local.deadline}
+          onExpandAll={()=>setShowFullTimeline(true)}
         />
+          <div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setShowFullTimeline(false)}>
+            <div style={{background:'var(--bg)',borderRadius:14,width:'100%',maxWidth:1100,maxHeight:'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+                <span className="label">Timeline Completa — {local.title}</span>
+                <button onClick={()=>setShowFullTimeline(false)} className="btn btn-ghost" style={{padding:6}}><Icon name="x" size={18}/></button>
+              </div>
+              <div style={{flex:1,overflow:'auto',padding:16}}>
+                <GanttTimeline
+                  tasks={applyAutoLate(local.projectTasks||[])}
+                  onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+                  projectStart={local.startDate}
+                  projectEnd={local.deadline}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       )}
 
       {/* Tabs */}
@@ -2627,40 +2810,59 @@ const IdeasLab=React.memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
   const [localContent,setLocalContent]=useState('');
   const flushTitleRef=useRef(null);
   const flushContentRef=useRef(null);
+  const isDirtyRef=useRef(false);
+  const contentAreaRef=useRef(null);
   const visible=useMemo(()=>notes.filter(n=>folder==='notes'?!n.deleted:n.deleted),[notes,folder]);
   const active=useMemo(()=>notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null,[notes,activeId,folder]);
 
-  // Sync local drafts when switching notes OR when external data changes for the active note
-  const activeTitle=active?.title;
-  const activeContent=active?.content;
+  // Only sync local drafts when switching notes (activeId changes).
+  // Previously watched activeTitle/activeContent too, which caused a race:
+  // debounce flush → notes update → effect fires → resets local state mid-typing → data loss on mobile.
   useEffect(()=>{
+    isDirtyRef.current=false;
+    clearTimeout(flushTitleRef.current);
+    clearTimeout(flushContentRef.current);
     if(active){setLocalTitle(active.title);setLocalContent(active.content||'');}
-  },[activeId,activeTitle,activeContent]);
+  },[activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-resize textarea height on mobile when note changes
+  useEffect(()=>{
+    if(isMobile&&contentAreaRef.current){
+      contentAreaRef.current.style.height='auto';
+      contentAreaRef.current.style.height=contentAreaRef.current.scrollHeight+'px';
+    }
+  },[localContent,activeId,isMobile]);
 
   const flushToGlobal=(field,value)=>{
     setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
   };
 
   const handleTitleChange=e=>{
-    const v=e.target.value;setLocalTitle(v);
+    const v=e.target.value;isDirtyRef.current=true;setLocalTitle(v);
     clearTimeout(flushTitleRef.current);
     flushTitleRef.current=setTimeout(()=>flushToGlobal('title',v),1500);
   };
   const handleContentChange=e=>{
-    const v=e.target.value;setLocalContent(v);
+    const v=e.target.value;isDirtyRef.current=true;setLocalContent(v);
+    if(isMobile&&e.target){e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}
     clearTimeout(flushContentRef.current);
     flushContentRef.current=setTimeout(()=>flushToGlobal('content',v),1500);
   };
   // Flush immediately on blur
   const handleBlur=(field,value)=>{
+    isDirtyRef.current=false;
     clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);
     flushToGlobal(field,value);
   };
 
+  const newNoteCooldownRef=useRef(0);
   const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
-  const toggleTrash=id=>{setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);};
+  const toggleTrash=id=>{
+    if(Date.now()-newNoteCooldownRef.current<600)return; // guard against ghost-tap after note creation
+    setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);
+  };
   const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);}};
-  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};setNotes(p=>[n,...p]);setActiveId(n.id);};
+  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setActiveId(n.id);};
   const noteToTask=()=>{if(!active)return;setTasks(p=>[...p,{id:Date.now(),text:active.title,done:false,noteId:active.id}]);};
   const isAlreadyTask=active&&tasks.some(t=>t.noteId===active.id);
   const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
@@ -2674,7 +2876,7 @@ const IdeasLab=React.memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
         <h1 className="serif" style={{fontSize:isMobile?'1.6rem':'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Ideias</h1>
         <div style={{display:'flex',flexDirection:isMobile?'row':'column',gap:4}}>
           {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
-            <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(first?.id||null);}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
+            <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(isMobile?null:(first?.id||null));}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
               {l} <span style={{opacity:.6,fontSize:'.75rem'}}>({notes.filter(n=>v==='notes'?!n.deleted:n.deleted).length})</span>
             </button>
           ))}
@@ -2716,8 +2918,8 @@ const IdeasLab=React.memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
                 {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost text-link-danger" style={{padding:6}} title="Excluir permanentemente"><Icon name="trash" size={17}/></button>}
               </div>
             </div>
-            <textarea value={localContent} onChange={handleContentChange} onBlur={()=>handleBlur('content',localContent)} disabled={folder==='trash'} placeholder="Comece a escrever..."
-              style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1}}/>
+            <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleBlur('content',localContent)} disabled={folder==='trash'} placeholder="Comece a escrever..."
+              style={{flex:isMobile?undefined:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1,minHeight:isMobile?160:undefined,overflow:isMobile?'hidden':undefined}}/>
           </>
         ):(
           !isMobile&&<div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
@@ -3060,7 +3262,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
 });
 
 // - SYNC HUB -
-const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile})=>{
+const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile,onResetIdentity})=>{
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -3263,9 +3465,14 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
       {/* Danger zone */}
       <div style={{borderTop:'1px solid var(--border)',paddingTop:20}}>
         <span className="label" style={{display:'block',marginBottom:12,color:'#9B1C1C'}}>Zona Perigosa</span>
-        <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
-          <Icon name="alert-triangle" size={14}/> Resetar tudo
-        </button>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn btn-outline" onClick={onResetIdentity} style={{fontSize:'.82rem'}}>
+            <Icon name="pencil" size={13}/> Renomear Hub
+          </button>
+          <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
+            <Icon name="alert-triangle" size={14}/> Resetar tudo
+          </button>
+        </div>
       </div>
 
     </div>
@@ -3535,6 +3742,7 @@ const App=()=>{
   const [saveFlash,setSaveFlash]=useState(false);
   const [fbUser,setFbUser]=useState(null);
   const [syncStatus,setSyncStatus]=useState('idle'); // 'idle'|'syncing'|'synced'|'error'
+  const [identity,setIdentity]=useState(()=>loadIdentity());
 
   // Initialize from localStorage if available, else seed
   const [projects,setProjects]=useState(()=>persisted?.projects||SEED.projects);
@@ -3578,6 +3786,7 @@ const App=()=>{
       if(data.socialPosts)setSocialPosts(data.socialPosts);
       if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
       if(data.pomoData)setPomoData(data.pomoData);
+      if(data.identity){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
       setTimeout(()=>{ _isApplyingRemote.current=false; },600);
     },err=>{
@@ -3592,7 +3801,7 @@ const App=()=>{
   const fbPushTimer=useRef(null);
   useEffect(()=>{
     const timer=setTimeout(()=>{
-      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
+      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity};
       lsSave(state);
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
@@ -3649,12 +3858,20 @@ const App=()=>{
     if(ingested.pomoData)setPomoData(ingested.pomoData);
   };
 
+  // Update page title when identity changes
+  useEffect(()=>{
+    if(identity){document.title=`${identity.hubName} — ${identity.osName}`;}
+  },[identity]);
+
+  const handleSetupDone=id=>{setIdentity(id);};
+
   return(
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
+      {!identity&&<SetupModal onDone={handleSetupDone}/>}
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
       {isMobile
-        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile}/>
-        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile}/>
+        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName}/>
+        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
@@ -3665,7 +3882,7 @@ const App=()=>{
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile} onResetIdentity={()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);}}/>}
       </main>
     </div>
   );
