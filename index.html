@@ -793,11 +793,16 @@ const SetupModal=({onDone})=>{
   );
 };
 
+// Split hub name at second capital letter for styled rendering (e.g. "Board"+"Hub")
+const splitHubName=name=>{const m=(name||'BoardHub').match(/^([A-Z][a-z]*)([A-Z].*)$/);return m?[m[1],m[2]]:[(name||'BoardHub'),''];};
+
 // Desktop: fixed left sidebar
 const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile,hubName,osName})=>(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'28px 16px',zIndex:30,overflowY:'auto'}}>
     <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:32,padding:'0 4px'}}>
-      <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>{hubName||'BoardHub'}</div>
+      <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>
+        {(([a,b])=><>{a}<span style={{fontStyle:'italic',fontWeight:300}}>{b}</span></>)(splitHubName(hubName))}
+      </div>
       <div style={{fontSize:'.65rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{osName||'Storyboard OS'}</div>
     </div>
     <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
@@ -843,7 +848,9 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hub
     <>
       {/* Header bar */}
       <div className="mobile-header">
-        <span className="mobile-header-title">{hubName||'BoardHub'}</span>
+        <span className="mobile-header-title">
+          {(([a,b])=><>{a}<span style={{fontStyle:'italic',fontWeight:300}}>{b}</span></>)(splitHubName(hubName))}
+        </span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
           <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
@@ -2275,6 +2282,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           )}
         </div>
       </>):(
+        <>
         <GanttTimeline
           tasks={applyAutoLate(local.projectTasks||[])}
           onUpdateTasks={tasks=>upd('projectTasks',tasks)}
@@ -2282,6 +2290,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           projectEnd={local.deadline}
           onExpandAll={()=>setShowFullTimeline(true)}
         />
+        {showFullTimeline&&ReactDOM.createPortal(
           <div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setShowFullTimeline(false)}>
             <div style={{background:'var(--bg)',borderRadius:14,width:'100%',maxWidth:1100,maxHeight:'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
@@ -2300,6 +2309,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           </div>,
           document.body
         )}
+        </>
       )}
 
       {/* Tabs */}
@@ -3777,16 +3787,21 @@ const App=()=>{
       if(!snap.exists)return;
       const data=snap.data();
       if(!data)return;
+      // Client-side guard: reject any snapshot that doesn't carry our version tag
+      // (shouldn't happen with proper rules, but defence-in-depth)
+      if(typeof data._v!=='string')return;
+      // Reject arrays that aren't actually arrays (malformed writes)
+      const isArr=v=>Array.isArray(v);
       _isApplyingRemote.current=true;
-      if(data.projects)setProjects(data.projects);
-      if(data.clients)setClients(data.clients);
-      if(data.mentors)setMentors(data.mentors);
-      if(data.notes)setNotes(data.notes);
-      if(data.tasks)setTasks(data.tasks);
-      if(data.socialPosts)setSocialPosts(data.socialPosts);
-      if(data.galleryPosts)setGalleryPosts(data.galleryPosts);
-      if(data.pomoData)setPomoData(data.pomoData);
-      if(data.identity){saveIdentity(data.identity);setIdentity(data.identity);}
+      if(data.projects&&isArr(data.projects))setProjects(data.projects);
+      if(data.clients&&isArr(data.clients))setClients(data.clients);
+      if(data.mentors&&isArr(data.mentors))setMentors(data.mentors);
+      if(data.notes&&isArr(data.notes))setNotes(data.notes);
+      if(data.tasks&&isArr(data.tasks))setTasks(data.tasks);
+      if(data.socialPosts&&isArr(data.socialPosts))setSocialPosts(data.socialPosts);
+      if(data.galleryPosts&&isArr(data.galleryPosts))setGalleryPosts(data.galleryPosts);
+      if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
+      if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
       setTimeout(()=>{ _isApplyingRemote.current=false; },600);
     },err=>{
@@ -3810,6 +3825,10 @@ const App=()=>{
       clearTimeout(fbPushTimer.current);
       fbPushTimer.current=setTimeout(async()=>{
         try{
+          // Guard: don't attempt push if payload would exceed the 900 KB
+          // threshold enforced by the Firestore rules (hard limit is 1 MB)
+          const approxBytes=new Blob([JSON.stringify(stripBase64(state))]).size;
+          if(approxBytes>900000){console.warn('[BoardHub] State too large for Firestore (',Math.round(approxBytes/1024),'KB), skipping push.');setSyncStatus('error');return;}
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
           setSyncStatus('synced');
