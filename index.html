@@ -3780,8 +3780,19 @@ const App=()=>{
     if(splash){splash.style.opacity='0';setTimeout(()=>splash.remove(),350);}
   },[]);
 
-  const [view,setView]=useState('dashboard');
-  const [selectedProject,setSelectedProject]=useState(null);
+  // Hash-based routing: parse the current URL hash into {view, projectId}
+  const parseHash=()=>{
+    const h=window.location.hash.slice(1)||'dashboard';
+    const [v,id]=h.split('/');
+    return{view:v||'dashboard',projectId:id?Number(id):null};
+  };
+
+  const [view,setView]=useState(()=>parseHash().view);
+  const [selectedProject,setSelectedProject]=useState(()=>{
+    const{projectId}=parseHash();
+    if(!projectId)return null;
+    return(persisted?.projects||[]).find(p=>p.id===projectId)||null;
+  });
   const [showNewProject,setShowNewProject]=useState(false);
   const [saveFlash,setSaveFlash]=useState(false);
   const [fbUser,setFbUser]=useState(null);
@@ -3884,9 +3895,41 @@ const App=()=>{
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity]);
 
-  const navigate=v=>{setView(v);if(v!=='project-detail')setSelectedProject(null);};
+  const navigate=v=>{
+    const hash=v==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${v}`;
+    if(window.location.hash!==hash)window.history.pushState(null,'',hash);
+    setView(v);
+    if(v!=='project-detail')setSelectedProject(null);
+  };
+
+  // Listen to browser back/forward
+  useEffect(()=>{
+    const onPop=()=>{
+      const{view:v,projectId}=parseHash();
+      setView(v);
+      if(v==='project-detail'&&projectId){
+        setSelectedProject(prev=>{
+          const found=projects.find(p=>p.id===projectId);
+          return found||prev;
+        });
+      }else{
+        setSelectedProject(null);
+      }
+    };
+    window.addEventListener('popstate',onPop);
+    // Set initial hash without pushing a new entry
+    const initHash=view==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${view}`;
+    if(!window.location.hash)window.history.replaceState(null,'',initHash);
+    return()=>window.removeEventListener('popstate',onPop);
+  },[]);//eslint-disable-line react-hooks/exhaustive-deps
   const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
-  const addProject=p=>{setProjects(prev=>[p,...prev]);setShowNewProject(false);setSelectedProject(p);setView('project-detail');};
+  const addProject=p=>{
+    setProjects(prev=>[p,...prev]);
+    setShowNewProject(false);
+    setSelectedProject(p);
+    setView('project-detail');
+    window.history.pushState(null,'',`#project-detail/${p.id}`);
+  };
   const softDeleteProject=id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p));
 
   const clearSave=()=>{
@@ -3937,7 +3980,7 @@ const App=()=>{
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
-        {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
+        {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks} isMobile={isMobile}/>}
