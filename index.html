@@ -3823,8 +3823,7 @@ const App=()=>{
 
   // Firestore real-time listener — fires instantly when any device saves
   const _isApplyingRemote=useRef(false);
-  const _lastLocalEditAt=useRef(0);
-  const _lastPushedAt=useRef(0);
+  const _hasPendingLocalEdit=useRef(false); // true only when the USER made a change not yet pushed
   useEffect(()=>{
     if(!fbUser)return;
     const ref=getStateRef(fbUser.uid);
@@ -3832,15 +3831,14 @@ const App=()=>{
     setSyncStatus('syncing');
     const unsub=ref.onSnapshot(snap=>{
       if(!snap.exists)return;
-      // Skip our own write echo — Firestore fires the snapshot back to the
-      // writing device with hasPendingWrites=true before the server confirms
+      // Skip our own write echo (hasPendingWrites=true = the local write hasn't
+      // reached the server yet — it's our own data bouncing back)
       if(snap.metadata.hasPendingWrites)return;
       const data=snap.data();
-      if(!data)return;
-      if(typeof data._v!=='string')return;
-      // Skip if there are local edits that haven't been pushed yet —
-      // applying the snapshot now would overwrite the user's unsaved changes
-      if(_lastLocalEditAt.current>_lastPushedAt.current)return;
+      if(!data||typeof data._v!=='string')return;
+      // Skip if the user has local changes that haven't been pushed yet —
+      // applying now would overwrite their unsaved work
+      if(_hasPendingLocalEdit.current)return;
       const isArr=v=>Array.isArray(v);
       _isApplyingRemote.current=true;
       if(data.projects&&isArr(data.projects))setProjects(data.projects);
@@ -3853,9 +3851,9 @@ const App=()=>{
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
-      // Hold flag longer than the auto-save debounce (2500ms) so the state
-      // changes above don't immediately trigger a push back to Firestore
-      setTimeout(()=>{ _isApplyingRemote.current=false; },3500);
+      // Hold flag long enough to outlast the auto-save debounce (2500ms + 2000ms push delay)
+      // so the state changes above don't trigger a push back to Firestore
+      setTimeout(()=>{ _isApplyingRemote.current=false; },6000);
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
       setSyncStatus('error');
@@ -3867,9 +3865,11 @@ const App=()=>{
   const saveFlashTimer=useRef(null);
   const fbPushTimer=useRef(null);
   useEffect(()=>{
-    // Record that a local edit happened so the snapshot listener can skip
-    // applying a remote update that would overwrite unsaved local changes
-    _lastLocalEditAt.current=Date.now();
+    // Only mark a pending local edit when the user actually changed something
+    // (not when _isApplyingRemote caused the state update)
+    if(!_isApplyingRemote.current){
+      _hasPendingLocalEdit.current=true;
+    }
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity};
       lsSave(state);
@@ -3884,11 +3884,12 @@ const App=()=>{
           if(approxBytes>900000){console.warn('[BoardHub] State too large for Firestore (',Math.round(approxBytes/1024),'KB), skipping push.');setSyncStatus('error');return;}
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
-          _lastPushedAt.current=Date.now();
+          _hasPendingLocalEdit.current=false; // push succeeded — clear the flag
           setSyncStatus('synced');
         }catch(e){
           console.error('[BoardHub] Firestore push:',e);
           setSyncStatus('error');
+          // Keep _hasPendingLocalEdit=true so we retry on next change
         }
       },2000);
     },2500);
