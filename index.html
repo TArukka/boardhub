@@ -3824,6 +3824,10 @@ const App=()=>{
   // Firestore real-time listener — fires instantly when any device saves
   const _isApplyingRemote=useRef(false);
   const _hasPendingLocalEdit=useRef(false); // true only when the USER made a change not yet pushed
+  // Incremented each time remote data is applied — lets the auto-save effect
+  // distinguish "render caused by remote apply" from "render caused by user edit"
+  const _remoteApplyId=useRef(0);
+  const _lastSeenApplyId=useRef(0);
   useEffect(()=>{
     if(!fbUser)return;
     const ref=getStateRef(fbUser.uid);
@@ -3837,10 +3841,12 @@ const App=()=>{
       const data=snap.data();
       if(!data||typeof data._v!=='string')return;
       // Skip if the user has local changes that haven't been pushed yet —
-      // applying now would overwrite their unsaved work
+      // applying now would overwrite their unsaved work.
+      // Safety valve: never block for more than 12 s (handles permanent push failures).
       if(_hasPendingLocalEdit.current)return;
       const isArr=v=>Array.isArray(v);
       _isApplyingRemote.current=true;
+      _remoteApplyId.current=_remoteApplyId.current+1; // signal to auto-save effect
       if(data.projects&&isArr(data.projects))setProjects(data.projects);
       if(data.clients&&isArr(data.clients))setClients(data.clients);
       if(data.mentors&&isArr(data.mentors))setMentors(data.mentors);
@@ -3851,9 +3857,9 @@ const App=()=>{
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
-      // Hold flag long enough to outlast the auto-save debounce (2500ms + 2000ms push delay)
-      // so the state changes above don't trigger a push back to Firestore
-      setTimeout(()=>{ _isApplyingRemote.current=false; },6000);
+      // Only needs to cover React's batched render (~one tick). We no longer rely
+      // on this flag in the push guard — _remoteApplyId handles that correctly.
+      setTimeout(()=>{ _isApplyingRemote.current=false; },200);
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
       setSyncStatus('error');
@@ -3864,10 +3870,15 @@ const App=()=>{
   // Auto-save localStorage + debounced push to Firestore
   const saveFlashTimer=useRef(null);
   const fbPushTimer=useRef(null);
+  const _retryTimer=useRef(null);
   useEffect(()=>{
-    // Only mark a pending local edit when the user actually changed something
-    // (not when _isApplyingRemote caused the state update)
-    if(!_isApplyingRemote.current){
+    // Compare against _remoteApplyId to detect whether this render was triggered
+    // by remote data being applied (vs. a genuine user edit).
+    // This is reliable because React batches all the remote setters into one render,
+    // and user edits are always separate renders.
+    const isRemoteTrigger=_remoteApplyId.current!==_lastSeenApplyId.current;
+    _lastSeenApplyId.current=_remoteApplyId.current;
+    if(!isRemoteTrigger){
       _hasPendingLocalEdit.current=true;
     }
     const timer=setTimeout(()=>{
@@ -3876,20 +3887,36 @@ const App=()=>{
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
       saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
-      if(!fbUser||_isApplyingRemote.current)return;
+      // Only push if the user actually made changes (not a remote echo)
+      if(!fbUser||!_hasPendingLocalEdit.current)return;
       clearTimeout(fbPushTimer.current);
       fbPushTimer.current=setTimeout(async()=>{
-        try{
+        const doPush=async()=>{
           const approxBytes=new Blob([JSON.stringify(stripBase64(state))]).size;
           if(approxBytes>900000){console.warn('[BoardHub] State too large for Firestore (',Math.round(approxBytes/1024),'KB), skipping push.');setSyncStatus('error');return;}
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
-          _hasPendingLocalEdit.current=false; // push succeeded — clear the flag
+          _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
+          clearTimeout(_retryTimer.current);
           setSyncStatus('synced');
+        };
+        try{
+          await doPush();
         }catch(e){
           console.error('[BoardHub] Firestore push:',e);
           setSyncStatus('error');
-          // Keep _hasPendingLocalEdit=true so we retry on next change
+          // Retry once after 8 s. On success _hasPendingLocalEdit clears normally;
+          // on failure clear it anyway so the snapshot listener is not blocked forever.
+          clearTimeout(_retryTimer.current);
+          _retryTimer.current=setTimeout(async()=>{
+            try{ await doPush(); }
+            catch(e2){
+              console.error('[BoardHub] Firestore push retry failed:',e2);
+              // Give up — allow remote snapshots through so the device stays in sync
+              _hasPendingLocalEdit.current=false;
+              setSyncStatus('error');
+            }
+          },8000);
         }
       },2000);
     },2500);
