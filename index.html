@@ -3823,6 +3823,9 @@ const App=()=>{
 
   // Firestore real-time listener — fires instantly when any device saves
   const _isApplyingRemote=useRef(false);
+  // False on first render (initial state from localStorage is NOT a user edit).
+  // Set to true after the first auto-save effect fires so subsequent renders are tracked.
+  const _isMounted=useRef(false);
   const _hasPendingLocalEdit=useRef(false); // true only when the USER made a change not yet pushed
   // Incremented each time remote data is applied — lets the auto-save effect
   // distinguish "render caused by remote apply" from "render caused by user edit"
@@ -3878,9 +3881,13 @@ const App=()=>{
     // and user edits are always separate renders.
     const isRemoteTrigger=_remoteApplyId.current!==_lastSeenApplyId.current;
     _lastSeenApplyId.current=_remoteApplyId.current;
-    if(!isRemoteTrigger){
+    if(_isMounted.current&&!isRemoteTrigger){
+      // Only mark as a user edit after mount — the very first run is localStorage
+      // hydration, not a change the user made, so we must not block Firestore from
+      // overwriting it with the authoritative cloud state.
       _hasPendingLocalEdit.current=true;
     }
+    _isMounted.current=true;
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity};
       lsSave(state);
