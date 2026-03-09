@@ -1883,6 +1883,15 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
   });
   if(thisWeek){const wb=getWeekBounds();chartStart=wb.start;chartEnd=wb.end;}
   else{chartStart=addDays(chartStart,-5);chartEnd=addDays(chartEnd,12);}
+  // When showing "this week", only render tasks that overlap the visible window.
+  // A task overlaps [chartStart, chartEnd] if its start <= chartEnd AND its end >= chartStart.
+  const visibleTasks=thisWeek
+    ? tasks.filter(t=>{
+        const s=t.startDate||(projectStart||today);
+        const e=t.dueDate||(projectEnd||addDays(today,7));
+        return s<=chartEnd&&e>=chartStart;
+      })
+    : tasks;
   const totalDays=Math.max(1,daysBetween(chartStart,chartEnd));
   const DAY_W=36;
   const ROW_H=38;
@@ -1987,13 +1996,13 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
           <div style={{height:HEADER_H,borderBottom:'1px solid var(--border)',background:'var(--bg)',display:'flex',alignItems:'flex-end',padding:'0 14px 8px',flexShrink:0}}>
             <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:'var(--muted)'}}>Tarefa</span>
           </div>
-          {tasks.length===0&&(
+          {visibleTasks.length===0&&(
             <div style={{padding:'28px 16px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem'}}>
               <Icon name="calendar-plus" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
               Adicione tarefas para começar.
             </div>
           )}
-          {tasks.map(t=>{
+          {visibleTasks.map(t=>{
             const colors=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];
             const isSelected=selectedId===t.id;
             return(
@@ -2032,7 +2041,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
             </div>
 
             {/* Task rows */}
-            {tasks.map((t,i)=>{
+            {visibleTasks.map((t,i)=>{
               const{left,width}=barGeom(t);
               const colors=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];
               const isSelected=selectedId===t.id;
@@ -2171,7 +2180,9 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     const files=Array.from(e.target.files);
     const urls=await uploadImages(files);
     const rn=(local.researchNotes||[]).map(n=>n.id===noteId?{...n,images:[...(n.images||[]),...urls]}:n);
-    upd('researchNotes',rn);e.target.value='';
+    upd('researchNotes',rn);
+    if(urls.length)upd('cover',urls[urls.length-1]);
+    e.target.value='';
   };
   const removeResearchImg=(noteId,idx)=>{
     const rn=(local.researchNotes||[]).map(n=>{if(n.id!==noteId)return n;const imgs=[...(n.images||[])];imgs.splice(idx,1);return{...n,images:imgs};});
@@ -2217,6 +2228,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     const files=Array.from(e.target.files);
     const urls=await uploadImages(files);
     updateMini('frames',[...((local.miniProjects||[]).find(m=>m.id===activeMiniId)?.frames||[]),...urls]);
+    if(urls.length)upd('cover',urls[urls.length-1]);
     e.target.value='';
   };
   const MINI_STATUSES=['Em Andamento','Revisão','Aprovado','Arquivado'];
@@ -2601,6 +2613,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       const files=Array.from(e.target.files);
                       const urls=await uploadImages(files);
                       updateInnerNote('images',[...(note.images||[]),...urls]);
+                      if(urls.length)upd('cover',urls[urls.length-1]);
                       e.target.value='';
                     }}/>
                   </label>
