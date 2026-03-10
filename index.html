@@ -1044,6 +1044,21 @@ const playPomoSound = (type) => {
       gain.gain.setValueAtTime(0.22, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
       osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+    } else if (type === 'start') {
+      // Two quick ascending tones — gentle "let's go" cue
+      const notes = [523.25, 659.25]; // C5, E5
+      notes.forEach((freq, i) => {
+        const t = ctx.currentTime + i * 0.15;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.22, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        osc.start(t); osc.stop(t + 0.5);
+      });
     }
   } catch(e) {}
 };
@@ -1072,6 +1087,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const timeLeftRef = useRef(_init.timeLeft);
   const isActiveRef = useRef(_init.isActive);
   const unsavedSecsRef = useRef(0);
+  const pendingSecsRef = useRef(0);
   const endTimestampRef = useRef(_init.isActive ? (_init.timeLeft * 1000 + Date.now()) : null);
   modeRef.current = mode;
   timeLeftRef.current = timeLeft;
@@ -1099,10 +1115,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     if (unsavedSecsRef.current > 0) {
       const secs = unsavedSecsRef.current;
       unsavedSecsRef.current = 0;
+      // Track as pending so todayDisplay doesn't dip while setPomoData is async
+      pendingSecsRef.current += secs;
       setPomoData(prev => {
         const key = pomoTodayKey();
         const newDays = { ...prev.days };
         newDays[key] = (newDays[key] || 0) + secs;
+        // Deduct from pending once state catches up
+        pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
         return { days: newDays };
       });
     }
@@ -1187,6 +1207,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
       const next = !a;
       if (next) {
         // Starting — set end anchor
+        playPomoSound('start');
         endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
         persistTimerState(true, timeLeftRef.current, modeRef.current);
       } else {
@@ -1219,7 +1240,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const offset = circ * (1 - pct);
   const isFocus = mode === 'focus';
   const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
-  const todayDisplay = todaySecs + unsavedSecsRef.current;
+  const todayDisplay = todaySecs + unsavedSecsRef.current + pendingSecsRef.current;
 
   // Day medal tiers — Bronze: 2h, Silver: 4h, Gold: 6h, Diamond: 8h
   const DAY_TIERS = [
@@ -1961,8 +1982,10 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
   const addTask=()=>{
     if(!newTaskName.trim())return;
     const id=Date.now();
-    const s=projectStart||today;
-    const e=projectEnd||addDays(today,7);
+    // When "this week" view is active, default to today so the task is visible immediately.
+    // Otherwise use the project's own start/end as defaults.
+    const s=thisWeek ? today : (projectStart||today);
+    const e=thisWeek ? addDays(today,7) : (projectEnd||addDays(today,7));
     onUpdateTasks([...tasks,{id,text:newTaskName.trim(),status:'Pendente',startDate:s,dueDate:e,notes:''}]);
     setNewTaskName('');
   };
