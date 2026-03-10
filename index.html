@@ -72,7 +72,17 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 .save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .25s ease;display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;}
 
-/* Gantt styles */
+/* Gallery image zoom — replaces onMouseEnter/Leave transform handlers */
+.img-zoom-sm{transition:transform .25s;}.img-zoom-sm:hover{transform:scale(1.05);}
+.img-zoom-md{transition:transform .3s;}.img-zoom-md:hover{transform:scale(1.03);}
+.img-zoom-lg{transition:transform .4s;}.img-zoom-lg:hover{transform:scale(1.06);}
+/* Task pill scale on hover */
+.ptask-pill-hover{transition:transform .12s;}.ptask-pill-hover:hover{transform:scale(1.4);}
+/* Mentor card hover shadow */
+.mentor-card-hover{transition:box-shadow .15s;box-shadow:0 1px 4px rgba(0,0,0,.08);}.mentor-card-hover:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)!important;}
+/* Child element reveal on parent hover */
+.reveal-child-on-hover .mh{opacity:0;transition:opacity .15s;}.reveal-child-on-hover:hover .mh{opacity:1;}
+.reveal-child-on-hover .ch{opacity:0;transition:opacity .15s;}.reveal-child-on-hover:hover .ch{opacity:1;}
 .gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
 .gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
 
@@ -81,6 +91,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .hover-danger:hover{color:#DC2626!important;}
 .hover-surface:hover{background:var(--surface);}
 .hover-border-text:hover{border-color:var(--text)!important;}
+.hover-border-2:hover{border-color:var(--border-2)!important;}
 .text-link{color:var(--muted);transition:color .15s;}.text-link:hover{color:var(--text)!important;}
 .text-link-danger{color:var(--muted);transition:color .15s;}.text-link-danger:hover{color:#DC2626!important;}
 
@@ -198,7 +209,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
   </script>
 </div>
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
@@ -226,20 +237,25 @@ const _prefetchDone = (()=>{
   };
   collect(persisted);
   if(!keys.length)return Promise.resolve();
-  return openIdb().then(db=>Promise.all(keys.map(key=>{
-    if(_objUrlCache[key])return;
-    return new Promise(res=>{
-      try{
-        const req=db.transaction('images','readonly').objectStore('images').get(key);
+  return openIdb().then(db=>new Promise(res=>{
+    try{
+      // Single transaction for all keys — much faster than one tx per image
+      const tx=db.transaction('images','readonly');
+      const store=tx.objectStore('images');
+      let pending=keys.length;
+      const done=()=>{ if(--pending===0)res(); };
+      keys.forEach(key=>{
+        if(_objUrlCache[key]){done();return;}
+        const req=store.get(key);
         req.onsuccess=e=>{
           const blob=e.target.result;
           if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
-          res();
+          done();
         };
-        req.onerror=()=>res();
-      }catch{res();}
-    });
-  }))).catch(()=>{});
+        req.onerror=()=>done();
+      });
+    }catch{res();}
+  })).catch(()=>{});
 })();
 
 // - IDENTITY (hub name + OS name, set on first run) -
@@ -332,12 +348,12 @@ const _resolveIcon=(name)=>{
     tmp.remove();
   }catch(e){}
 };
-const Icon=({name,size=16,style={}})=>{
+const Icon=React.memo(({name,size=16,style={}})=>{
   _resolveIcon(name);
   return React.createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
-};
+});
 
-const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
+const Field=React.memo(({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>);
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
 // - RESPONSIVE HOOK -
@@ -433,6 +449,9 @@ const idbDel=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
 // Hook: given an image src (may be idb://key, https://, or data:), returns a displayable URL.
 // Checks _objUrlCache synchronously so prefetched images render with zero flash.
 const _objUrlCache={};
+// In-flight deduplication: if two components request the same key simultaneously,
+// they share one IDB transaction instead of each opening their own.
+const _inflightFetch={};
 const useIdbUrl=(src)=>{
   const getInitial=()=>{
     if(!src)return '';
@@ -447,13 +466,16 @@ const useIdbUrl=(src)=>{
     // Already cached — no async needed
     if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
     let cancelled=false;
-    idbGet(key).then(blob=>{
-      if(cancelled||!blob){if(!cancelled)setUrl('');return;}
-      if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
-      const u=URL.createObjectURL(blob);
-      _objUrlCache[key]=u;
-      setUrl(u);
-    }).catch(()=>{ if(!cancelled) setUrl(''); });
+    // Reuse any in-flight fetch for the same key to avoid duplicate IDB transactions
+    if(!_inflightFetch[key]){
+      _inflightFetch[key]=idbGet(key).then(blob=>{
+        if(!blob){delete _inflightFetch[key];return '';}
+        if(!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
+        delete _inflightFetch[key];
+        return _objUrlCache[key];
+      }).catch(()=>{delete _inflightFetch[key];return '';});
+    }
+    _inflightFetch[key].then(u=>{ if(!cancelled)setUrl(u); });
     return ()=>{ cancelled=true; };
   },[src]);
   return url;
@@ -677,16 +699,35 @@ const rehydrateIdbRefs=(obj,map)=>{
   return obj;
 };
 
+// Ingest base64 data URLs into IDB during import.
+// Uses atob() instead of fetch() — fetch(dataUrl) is unreliable on mobile.
+const _dataUrlToBlob=dataUrl=>{
+  const[header,b64]=dataUrl.split(',');
+  const mime=(header.match(/:(.*?);/)||[])[1]||'image/jpeg';
+  const bytes=atob(b64);
+  const arr=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++)arr[i]=bytes.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+};
+const ingestImages=async obj=>{
+  if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
+  if(typeof obj==='string'&&obj.startsWith('data:image')){
+    try{const blob=_dataUrlToBlob(obj);const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;}catch{}
+  }
+  return obj;
+};
+
 
 
 // - TRASH BANNER -
-const TrashBanner=({label,onExit})=>(
+const TrashBanner=React.memo(({label,onExit})=>(
   <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'#991B1B'}}>
     <Icon name="trash-2" size={14}/>
     <span>Você está vendo a lixeira de <strong>{label}</strong>. Itens aqui podem ser restaurados ou excluídos permanentemente.</span>
     <button onClick={onExit} className="btn btn-ghost" style={{marginLeft:'auto',padding:'3px 10px',fontSize:'.78rem',color:'#991B1B'}}>Sair da lixeira</button>
   </div>
-);
+));
 
 // - MODAL -
 const Modal=({title,onClose,children,width=480})=>{
@@ -1650,8 +1691,7 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
   return(
     <Modal title="Novo Projeto" onClose={onClose} width={isMobile?'100%':520}>
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        <div onClick={()=>coverRef.current.click()} style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
-          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+        <div onClick={()=>coverRef.current.click()} className="hover-border-text" style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}>
           {form.cover?<Img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
           {form.cover&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',gap:6,fontSize:'.82rem'}}><Icon name="camera" size={16}/>Trocar</div>}
           <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
@@ -2036,8 +2076,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
               <div key={t.id} onClick={()=>isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t)}
                 style={{height:ROW_H,display:'flex',alignItems:'center',gap:8,padding:'0 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',
                   background:isSelected?'rgba(28,25,23,.05)':'transparent',transition:'background .15s'}}>
-                <button onClick={e=>{e.stopPropagation();cycleStatus(t.id);}} style={{width:12,height:12,borderRadius:'50%',background:colors.dot,border:'none',cursor:'pointer',flexShrink:0,padding:0,transition:'transform .15s'}}
-                  title={`Status: ${t.status}`} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.4)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
+                <button onClick={e=>{e.stopPropagation();cycleStatus(t.id);}} className="ptask-pill-hover" style={{width:12,height:12,borderRadius:'50%',background:colors.dot,border:'none',cursor:'pointer',flexShrink:0,padding:0}}
+                  title={`Status: ${t.status}`}/>
                 <span style={{fontSize:'.83rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
                   textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
               </div>
@@ -2513,11 +2553,10 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 <div key={m.id}>
                   {/* Animatic row */}
                   <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
+                    className={isMiniActive?'':' hover-surface'}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
                       border:`1px solid ${isMiniActive?'var(--text)':'transparent'}`,
-                      background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}
-                    onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
-                    onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
+                      background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}>
                     <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
                       <Icon name="chevron-right" size={13}/>
                     </button>
@@ -2535,20 +2574,20 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                         const isNoteActive=activeInnerNoteId===n.id&&activeMiniId===m.id;
                         return(
                           <div key={n.id} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
+                            className={isNoteActive?'':' hover-surface'}
                             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6,cursor:'pointer',
                               border:`1px solid ${isNoteActive?'var(--text)':'transparent'}`,
-                              background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}
-                            onMouseEnter={e=>{if(!isNoteActive)e.currentTarget.style.background='var(--surface)';}}
-                            onMouseLeave={e=>{if(!isNoteActive)e.currentTarget.style.background='transparent';}}>
+                              background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}>
                             <Icon name="file-text" size={11} style={{flexShrink:0,color:'var(--muted)'}}/>
                             <span style={{fontSize:'.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:isNoteActive?'var(--text)':'var(--muted)'}}>{n.title||'Sem título'}</span>
                           </div>
                         );
                       })}
                       <button onClick={e=>{e.stopPropagation();setActiveMiniId(m.id);addInnerNote();if(!expandedMiniIds.has(m.id)){const s=new Set(expandedMiniIds);s.add(m.id);setExpandedMiniIds(s);}}}
-                        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:6,border:'1px dashed var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.74rem',color:'var(--muted)',transition:'all .15s',marginTop:2}}
-                        onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--text)';e.currentTarget.style.color='var(--text)';}}
-                        onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--muted)';}}>
+                        className="hover-border-text hover-text"
+                        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:6,border:'1px dashed var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.74rem',color:'var(--muted)',transition:'all .15s',marginTop:2}}>
+                        <Icon name="plus" size={10}/> Nova nota
+                      </button>
                         <Icon name="plus" size={10}/> Nova nota
                       </button>
                     </div>
@@ -2671,9 +2710,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             {(local.researchNotes||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma pesquisa.</div>}
             {(local.researchNotes||[]).map(n=>(
               <div key={n.id} onClick={()=>setActiveResearchId(n.id)}
-                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
-                onMouseEnter={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-                onMouseLeave={e=>{if(activeResearchId!==n.id)e.currentTarget.style.background='transparent';}}>
+                className={activeResearchId===n.id?'':'hover-surface'}
+                style={{padding:'9px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeResearchId===n.id?'var(--text)':'transparent'}`,background:activeResearchId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}>
                 <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title||'Sem título'}</div>
                 <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
               </div>
@@ -2801,7 +2839,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
                 setBannerPicker(updated);
                 setPosts(prev=>prev.map(p=>p.id===updated.id?updated:p));
               }} style={{position:'relative',aspectRatio:'16/9',borderRadius:10,overflow:'hidden',cursor:'pointer',border:`2.5px solid ${isActive?'var(--text)':'transparent'}`,transition:'border-color .15s'}}>
-                <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .25s'}} onMouseEnter={e=>e.target.style.transform='scale(1.05)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+                <Img src={img} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                 {isActive&&<div style={{position:'absolute',bottom:5,right:5,background:'var(--text)',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="check" size={11} style={{color:'white'}}/></div>}
               </div>
             );
@@ -2848,7 +2886,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i)=>(
             <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+              <Img src={img} className="img-zoom-md" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
               <button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
                 style={{position:'absolute',top:6,left:6,background:selected.bannerImage===img?'rgba(251,191,36,.9)':'rgba(28,25,23,.55)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',transition:'background .2s'}}>
@@ -2901,7 +2939,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
                 <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
-                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
+                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} className={trash?'':'img-zoom-lg'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
                   {!trash&&post.images.length>1&&(
                     <button onClick={e=>{e.stopPropagation();setBannerPicker(post);}}
                       title="Escolher banner"
@@ -3078,9 +3116,8 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
       {items.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px'}}>{emptyMsg}</div>}
       {items.map(n=>(
         <div key={n.id} onClick={()=>onSelect(n.id)}
-          style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
-          onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-          onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
+          className={activeId===n.id?'':'hover-surface'}
+          style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}>
           <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
           <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
         </div>
@@ -3153,8 +3190,8 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
                     style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:'var(--text)',minWidth:0}}/>
                   {manageGroups.length>1&&(
                     <button onClick={()=>setManageGroups(prev=>prev.filter((_,j)=>j!==i))}
-                      style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 4px',borderRadius:4,flexShrink:0,transition:'color .15s'}}
-                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                      className="text-link-danger"
+                      style={{background:'none',border:'none',cursor:'pointer',padding:'2px 4px',borderRadius:4,flexShrink:0}}>
                       <Icon name="trash-2" size={13}/>
                     </button>
                   )}
@@ -3200,8 +3237,7 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
                   <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
                     style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-                  <button onClick={()=>trashNote(activeNote.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
-                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+                  <button onClick={()=>trashNote(activeNote.id)} className="btn btn-ghost text-link-danger" style={{padding:6}}><Icon name="trash-2" size={16}/></button>
                 </div>
                 <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleNoteBlur('content',localContent)} placeholder="Comece a escrever..."
                   style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
@@ -3224,9 +3260,8 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
             {miniProjects.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px'}}>Nenhum projeto ainda.</div>}
             {miniProjects.map(p=>(
               <div key={p.id} onClick={()=>{setActiveProjId(p.id);setActiveEntryId((p.entries||[])[0]?.id||null);}}
-                style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeProjId===p.id?'var(--text)':'transparent'}`,background:activeProjId===p.id?'var(--surface)':'transparent',transition:'all .15s'}}
-                onMouseEnter={e=>{if(activeProjId!==p.id)e.currentTarget.style.background='var(--surface)';}}
-                onMouseLeave={e=>{if(activeProjId!==p.id)e.currentTarget.style.background='transparent';}}>
+                className={activeProjId===p.id?'':'hover-surface'}
+                style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeProjId===p.id?'var(--text)':'transparent'}`,background:activeProjId===p.id?'var(--surface)':'transparent',transition:'all .15s'}}>
                 <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
                 <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{(p.entries||[]).length} entradas · {p.date}</div>
               </div>
@@ -3244,9 +3279,8 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
                   {(activeProj.entries||[]).length===0&&<div style={{fontSize:'.78rem',color:'var(--muted)',padding:'8px 0'}}>Nenhuma entrada.</div>}
                   {(activeProj.entries||[]).map((e,i)=>(
                     <div key={e.id} onClick={()=>setActiveEntryId(e.id)}
-                      style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}
-                      onMouseEnter={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='var(--surface)';}}
-                      onMouseLeave={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='transparent';}}>
+                      className={activeEntryId===e.id?'':'hover-surface'}
+                      style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}>
                       <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
                       <span style={{fontSize:'.8rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</span>
                     </div>
@@ -3254,8 +3288,7 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
                 </div>
                 <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid var(--border)'}}>
                   <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',fontSize:'.78rem',padding:'6px 0'}} onClick={addEntry}><Icon name="plus" size={12}/> Adicionar</button>
-                  <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}}
-                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+                  <button className="btn btn-ghost text-link-danger" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0'}}
                     onClick={()=>trashProject(activeProj.id)}><Icon name="trash-2" size={11}/> Excluir projeto</button>
                 </div>
               </div>
@@ -3268,8 +3301,7 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
                         style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
                       <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
                         <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{activeEntry.date}</span>
-                        <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
-                          onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
+                        <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost text-link-danger" style={{padding:6}}<Icon name="trash-2" size={15}/></button>
                       </div>
                     </div>
                     <textarea ref={entryAreaRef} value={entryContent} onChange={handleEntryContentChange} onBlur={()=>handleEntryBlur('content',entryContent)} placeholder="Escreva suas anotações aqui..."
@@ -3412,8 +3444,7 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
               <Icon name="chevron-right" size={14} style={{color:'var(--muted)',flexShrink:0}}/>
             </div>
           ))}
-          <button className="btn btn-ghost" style={{alignSelf:'flex-start',marginTop:8,fontSize:'.78rem',color:'var(--muted)'}}
-            onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+          <button className="btn btn-ghost text-link-danger" style={{alignSelf:'flex-start',marginTop:8,fontSize:'.78rem'}}
             onClick={()=>trashProject(activeProj.id)}><Icon name="trash-2" size={12}/> Excluir projeto</button>
         </div>
       )}
@@ -3570,8 +3601,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {templates.map((t,i)=>(
-                <div key={i} style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',transition:'border-color .15s',position:'relative',minWidth:0,overflow:'hidden'}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-2)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                <div key={i} className="hover-border-2" style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',transition:'border-color .15s',position:'relative',minWidth:0,overflow:'hidden'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
                     <button onClick={()=>setText(t.text)} style={{fontWeight:600,fontSize:'.82rem',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',color:'var(--text)',padding:0,textAlign:'left'}}>{t.label}</button>
                     <div style={{display:'flex',gap:2,flexShrink:0}}>
@@ -3650,8 +3680,7 @@ const ClientDetail=({client,onBack,onSave,onDelete,isMobile})=>{
       <button className="btn btn-outline" onClick={onBack} style={{marginBottom:28}}><Icon name="arrow-left" size={13}/> Voltar</button>
       <div className="card" style={{padding:'clamp(16px,2.5vh,32px)',marginBottom:'clamp(10px,1.5vh,20px)'}}>
         <div style={{display:'flex',alignItems:'flex-start',gap:20,marginBottom:24}}>
-          <div onClick={()=>photoRef.current.click()} style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
-            onMouseEnter={e=>{const el=e.currentTarget.querySelector('.ch');if(el)el.style.opacity=1;}} onMouseLeave={e=>{const el=e.currentTarget.querySelector('.ch');if(el)el.style.opacity=0;}}>
+          <div onClick={()=>photoRef.current.click()} className="reveal-child-on-hover" style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}>
             {form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
               :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{(form.name||'?').charAt(0)}</span>}
             <div className="ch" style={{position:'absolute',inset:0,background:'rgba(0,0,0,.4)',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity .2s'}}><Icon name="camera" size={18} style={{color:'white'}}/></div>
@@ -3909,15 +3938,12 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
               <div style={{fontWeight:600,fontSize:'1rem',marginBottom:6}}>Entre com sua conta Google</div>
               <div style={{fontSize:'.82rem',color:'var(--muted)',maxWidth:340,lineHeight:1.6}}>Seus dados ficam sincronizados automaticamente em todos os seus dispositivos.</div>
             </div>
-            <button style={{
+            <button className="mentor-card-hover" style={{
               display:'flex',alignItems:'center',justifyContent:'center',gap:10,
               width:'100%',maxWidth:320,padding:'13px 20px',borderRadius:10,
               border:'1px solid var(--border)',background:'white',cursor:'pointer',
               fontFamily:'Figtree,sans-serif',fontSize:'.95rem',fontWeight:600,color:'#1C1917',
-              boxShadow:'0 1px 4px rgba(0,0,0,.08)',transition:'box-shadow .15s',
             }}
-            onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'}
-            onMouseLeave={e=>e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.08)'}
             onClick={signIn}>
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -3998,9 +4024,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
         </div>
         <div style={{display:'flex',gap:16,alignItems:'flex-start',marginBottom:14}}>
           <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
-          <div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}
-            onMouseEnter={e=>e.currentTarget.querySelector('.mh').style.opacity=1}
-            onMouseLeave={e=>e.currentTarget.querySelector('.mh').style.opacity=0}>
+          <div onClick={()=>photoRef.current.click()} className="reveal-child-on-hover" style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',flexShrink:0,overflow:'hidden',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',backgroundColor:'var(--bg)',position:'relative'}}>
             {form.photo
               ?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
               :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:500,color:'var(--muted)'}}>{(form.name||'?').charAt(0)}</span>}
@@ -4378,12 +4402,15 @@ const App=()=>{
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups,identity]);
 
-  const navigate=v=>{
-    const hash=v==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${v}`;
+  // Ref so navigate stays stable (no re-renders on selectedProject changes)
+  const _selectedProjectRef=useRef(selectedProject);
+  _selectedProjectRef.current=selectedProject;
+  const navigate=useCallback(v=>{
+    const hash=v==='project-detail'&&_selectedProjectRef.current?`#project-detail/${_selectedProjectRef.current.id}`:`#${v}`;
     if(window.location.hash!==hash)window.history.pushState(null,'',hash);
     setView(v);
     if(v!=='project-detail')setSelectedProject(null);
-  };
+  },[]);
 
   // Listen to browser back/forward
   useEffect(()=>{
@@ -4405,36 +4432,26 @@ const App=()=>{
     if(!window.location.hash)window.history.replaceState(null,'',initHash);
     return()=>window.removeEventListener('popstate',onPop);
   },[]);//eslint-disable-line react-hooks/exhaustive-deps
-  const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
-  const addProject=p=>{
+  const handleUpdateProject=useCallback(p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);},[]);
+  const addProject=useCallback(p=>{
     setProjects(prev=>[p,...prev]);
     setShowNewProject(false);
     setSelectedProject(p);
     setView('project-detail');
     window.history.pushState(null,'',`#project-detail/${p.id}`);
-  };
-  const softDeleteProject=id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p));
+  },[]);
+  const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p)),[]);
 
-  const clearSave=()=>{
+  const clearSave=useCallback(()=>{
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);
     setPomoData({days:{}});
     navigate('dashboard');
-  };
+  },[navigate]);
 
   const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups};
 
-  // When importing data: store any base64 images in IDB, replace with idb:// refs
-  const ingestImages=async obj=>{
-    if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
-    if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
-    if(typeof obj==='string'&&obj.startsWith('data:image')){
-      try{const res=await fetch(obj);const blob=await res.blob();const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;}catch{}
-    }
-    return obj;
-  };
-
-  const handleImport=async data=>{
+  const handleImport=useCallback(async data=>{
     const ingested=await ingestImages(data);
     if(ingested.projects)setProjects(ingested.projects);
     if(ingested.clients)setClients(ingested.clients);
@@ -4445,14 +4462,14 @@ const App=()=>{
     if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
     if(ingested.noteGroups)setNoteGroups(ingested.noteGroups);
     if(ingested.pomoData)setPomoData(ingested.pomoData);
-  };
+  },[]);
 
   // Update page title when identity changes
   useEffect(()=>{
     if(identity){document.title=`${identity.hubName} — ${identity.osName}`;}
   },[identity]);
 
-  const handleSetupDone=id=>{setIdentity(id);};
+  const handleSetupDone=useCallback(id=>{setIdentity(id);},[]);
 
   return(
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
@@ -4476,7 +4493,8 @@ const App=()=>{
     </div>
   );
 };
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+// Mount after prefetch so all idb:// images are in cache before first render
+_prefetchDone.then(()=>ReactDOM.createRoot(document.getElementById('root')).render(<App/>));
 </script>
 </body>
 </html>
