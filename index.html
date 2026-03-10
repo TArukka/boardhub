@@ -1045,8 +1045,8 @@ const playPomoSound = (type) => {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
       osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
     } else if (type === 'start') {
-      // Two quick ascending tones — gentle "let's go" cue
-      const notes = [523.25, 659.25]; // C5, E5
+      // Two quick ascending tones
+      const notes = [523.25, 659.25];
       notes.forEach((freq, i) => {
         const t = ctx.currentTime + i * 0.15;
         const osc = ctx.createOscillator();
@@ -1115,13 +1115,11 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     if (unsavedSecsRef.current > 0) {
       const secs = unsavedSecsRef.current;
       unsavedSecsRef.current = 0;
-      // Track as pending so todayDisplay doesn't dip while setPomoData is async
       pendingSecsRef.current += secs;
       setPomoData(prev => {
         const key = pomoTodayKey();
         const newDays = { ...prev.days };
         newDays[key] = (newDays[key] || 0) + secs;
-        // Deduct from pending once state catches up
         pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
         return { days: newDays };
       });
@@ -1466,13 +1464,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 };
 
 // - DASHBOARD -
-const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile})=>{
+const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile,setSelectedProject})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
   const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
   const h=new Date().getHours();
   const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
+  const [showAllTasks,setShowAllTasks]=useState(false);
 
   const stats=[
     {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects'},
@@ -1485,7 +1484,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
   const taskToNote=task=>{const n={id:Date.now(),title:task.text,content:'',date:'Agora',deleted:false};setNotes(p=>[n,...p]);setTasks(p=>p.map(t=>t.id===task.id?{...t,noteId:n.id}:t));};
 
   const isSmall = !isMobile && typeof window !== 'undefined' && window.innerHeight < 800;
-  return(
+  const content=(
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto',width:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - 48px)',display:'flex',flexDirection:'column',overflow:isMobile?'auto':'hidden',gap:0}}>
       {/* Header */}
       <div style={{marginBottom:isMobile?10:isSmall?8:12,flexShrink:0}}>
@@ -1518,7 +1517,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
             {active.length===0&&<div className="card" style={{padding:12,textAlign:'center',color:'var(--muted)',fontSize:'.78rem'}}>Nenhum projeto ativo.</div>}
             <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6}}>
               {active.map(p=>(
-                <div key={p.id} className="card card-click" onClick={()=>setView('projects')} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:9}}>
+                <div key={p.id} className="card card-click" onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:9}}>
                   <BgImg src={p.cover} style={{width:26,height:26,borderRadius:5,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
@@ -1542,7 +1541,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                   const openTasks=(p.projectTasks||[]).filter(t=>t.status!=='Concluído');
                   return(
                     <div key={p.id} className="card" style={{padding:isSmall?'6px 10px':'8px 12px',flexShrink:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:isSmall?4:5,paddingBottom:isSmall?3:4,borderBottom:'1px solid var(--border)'}}>
+                      <div onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{display:'flex',alignItems:'center',gap:7,marginBottom:isSmall?4:5,paddingBottom:isSmall?3:4,borderBottom:'1px solid var(--border)',cursor:'pointer'}}>
                         <BgImg src={p.cover} style={{width:16,height:16,borderRadius:3,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                         <span style={{fontWeight:600,fontSize:'.72rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{p.title}</span>
                         <span style={{fontSize:'.6rem',color:'var(--muted)',flexShrink:0}}>{openTasks.length} tarefa{openTasks.length!==1?'s':''}</span>
@@ -1568,7 +1567,9 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
           <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
               <span className="label">Lista de Atividades</span>
-              <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('ideas')}>Ver Ideias <Icon name="arrow-right" size={10}/></button>
+              <button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:'.68rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:3}} onClick={()=>setShowAllTasks(true)}>
+                <Icon name="list" size={11}/> Ver todas
+              </button>
             </div>
             <div className="card" style={{padding:'10px 14px',flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
               <div style={{display:'flex',gap:7,marginBottom:tasks.length>0?8:0,flexShrink:0}}>
@@ -1692,6 +1693,28 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
 
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
+      {/* All-tasks popup */}
+      {showAllTasks&&ReactDOM.createPortal(
+        <div style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setShowAllTasks(false)}>
+          <div style={{background:'var(--bg)',borderRadius:14,width:'100%',maxWidth:480,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+              <span className="label">Todas as Atividades <span style={{color:'var(--muted)',fontWeight:400}}>({tasks.length})</span></span>
+              <button onClick={()=>setShowAllTasks(false)} className="btn btn-ghost" style={{padding:6}}><Icon name="x" size={18}/></button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px 12px'}}>
+              {tasks.length===0&&<p style={{textAlign:'center',color:'var(--muted)',fontSize:'.85rem',padding:24}}>Nenhuma atividade.</p>}
+              {tasks.map(t=>(
+                <div key={t.id} className="task-row" style={{paddingTop:8,paddingBottom:8}}>
+                  <div className={`task-check ${t.done?'done':''}`} onClick={()=>setTasks(p=>p.map(x=>x.id===t.id?{...x,done:!x.done}:x))}/>
+                  <span style={{flex:1,fontSize:'.88rem',textDecoration:t.done?'line-through':'none',color:t.done?'var(--muted)':'var(--text)',lineHeight:1.4}}>{t.text}</span>
+                  <button onClick={()=>setTasks(p=>p.filter(x=>x.id!==t.id))} className="btn btn-ghost" style={{padding:4}}><Icon name="x" size={13}/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       <div style={{display:'flex',gap:28,alignItems:'flex-start',flexDirection:isMobile?'column':'row',flex:1}}>
         {/* LEFT: projects list */}
         <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
@@ -1908,6 +1931,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
   // A task overlaps [chartStart, chartEnd] if its start <= chartEnd AND its end >= chartStart.
   const visibleTasks=thisWeek
     ? tasks.filter(t=>{
+        // Always show overdue tasks regardless of date range — they need attention
+        if(t.status==='Atrasado')return true;
         const s=t.startDate||(projectStart||today);
         const e=t.dueDate||(projectEnd||addDays(today,7));
         return s<=chartEnd&&e>=chartStart;
@@ -1983,7 +2008,6 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
     if(!newTaskName.trim())return;
     const id=Date.now();
     // When "this week" view is active, default to today so the task is visible immediately.
-    // Otherwise use the project's own start/end as defaults.
     const s=thisWeek ? today : (projectStart||today);
     const e=thisWeek ? addDays(today,7) : (projectEnd||addDays(today,7));
     onUpdateTasks([...tasks,{id,text:newTaskName.trim(),status:'Pendente',startDate:s,dueDate:e,notes:''}]);
@@ -2070,8 +2094,9 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
               const isSelected=selectedId===t.id;
               return(
                 <div key={t.id} style={{height:ROW_H,position:'relative',borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'rgba(28,25,23,.015)'}}>
-                  {weekMarkers.map((mk,j)=>(
-                    <div key={j} style={{position:'absolute',left:mk.offset,top:0,bottom:0,borderLeft:'1px dashed var(--border)',opacity:.6,pointerEvents:'none'}}/>
+                  {/* Day-by-day grid lines — subtle for each day, stronger at week boundaries */}
+                  {Array.from({length:totalDays+1},(_,d)=>(
+                    <div key={'d'+d} style={{position:'absolute',left:d*DAY_W,top:0,bottom:0,borderLeft:d%7===0?'1px dashed var(--border)':'1px solid var(--border)',opacity:d%7===0?.55:.15,pointerEvents:'none'}}/>
                   ))}
                   {/* Bar */}
                   <div
@@ -2384,13 +2409,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       {/* Tabs */}
       {isMobile?(
         <div className="seg-tabs">
-          {['Visão Geral','Animatics','Pesquisa'].map(t=>(
+          {['Visão Geral','Animatics','Pesquisa','Mentores'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} className={`seg-tab ${tab===t?'active':''}`}>{t}</button>
           ))}
         </div>
       ):(
         <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
-          {['Visão Geral','Animatics','Pesquisa'].map(t=>(
+          {['Visão Geral','Animatics','Pesquisa','Mentores'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{t}</button>
           ))}
         </div>
@@ -2404,55 +2429,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               <textarea style={{background:'transparent',outline:'none',resize:'vertical',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',minHeight:120,height:'auto',border:'none',width:'100%'}}
                 value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
-            {/* Mentors picker */}
-            <div className="card" style={{padding:'20px 24px'}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                <span className="label">Referências & Mentores</span>
-                <button onClick={()=>onAddMentor&&onAddMentor()} style={{display:'none'}}/>
-              </div>
-              {globalMentors.filter(m=>!m.deleted).length===0
-                ?<p style={{fontSize:'.82rem',color:'var(--muted)',margin:'0 0 12px'}}>Nenhum mentor ainda. Adicione um abaixo.</p>
-                :(
-                  <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
-                    {globalMentors.filter(m=>!m.deleted).map(m=>{
-                      const on=(local.mentors||[]).includes(m.id);
-                      return(
-                        <button key={m.id} onClick={()=>toggleMentor(m.id)}
-                          style={{display:'flex',alignItems:'center',gap:7,padding:'6px 12px 6px 8px',borderRadius:20,
-                            border:`1.5px solid ${on?'var(--text)':'var(--border)'}`,
-                            background:on?'var(--text)':'transparent',
-                            color:on?'white':'var(--muted)',
-                            fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
-                          <div style={{width:22,height:22,borderRadius:'50%',background:on?'rgba(255,255,255,.2)':'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500}}>
-                            {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
-                          </div>
-                          {m.name}
-                          {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )
-              }
-              {/* Inline add mentor */}
-              <AddMentorInline onAdd={mentor=>{onAddGlobalMentor(mentor);toggleMentor(mentor.id);}}/>
-              {/* Show linked mentor notes inline */}
-              {linkedMentors.length>0&&(
-                <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:8}}>
-                  {linkedMentors.map(m=>(
-                    <div key={m.id} style={{display:'flex',alignItems:'flex-start',gap:10}}>
-                      <div style={{width:28,height:28,borderRadius:'50%',background:'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1rem',fontWeight:500,marginTop:1}}>
-                        {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:600,fontSize:'.82rem'}}>{m.name} <span style={{fontWeight:400,color:'var(--muted)',fontSize:'.74rem'}}>· {m.area}</span></div>
-                        {m.notes&&<div style={{fontSize:'.78rem',color:'var(--muted)',marginTop:2,lineHeight:1.5,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             <div className="card" style={{padding:24}}>
@@ -2462,8 +2439,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Inicio</div>
                   <label style={{display:'block',position:'relative',cursor:'pointer'}}>
                     <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
-                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.05rem',fontWeight:500,color:local.startDate?'var(--text)':'var(--muted)'}}>
-                        {local.startDate?new Date(local.startDate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'Selecionar data'}
+                      <span style={{fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.startDate?'var(--text)':'var(--muted)'}}>
+                        {local.startDate?new Date(local.startDate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Selecionar data'}
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                     </div>
@@ -2474,8 +2451,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Deadline</div>
                   <label style={{display:'block',position:'relative',cursor:'pointer'}}>
                     <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
-                      <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.05rem',fontWeight:600,color:local.deadline?'var(--text)':'var(--muted)'}}>
-                        {local.deadline?new Date(local.deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}):'Selecionar data'}
+                      <span style={{fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.deadline?'var(--text)':'var(--muted)'}}>
+                        {local.deadline?new Date(local.deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Selecionar data'}
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                     </div>
@@ -2486,6 +2463,58 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             </div>
 
           </div>
+        </div>
+      )}
+
+      {tab==='Mentores'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <div className="card" style={{padding:'20px 24px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+              <span className="label">Vincular Referências</span>
+            </div>
+            {globalMentors.filter(m=>!m.deleted).length===0
+              ?<p style={{fontSize:'.82rem',color:'var(--muted)',margin:'0 0 12px'}}>Nenhum mentor ainda. Adicione um abaixo.</p>
+              :(
+                <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:14}}>
+                  {globalMentors.filter(m=>!m.deleted).map(m=>{
+                    const on=(local.mentors||[]).includes(m.id);
+                    return(
+                      <button key={m.id} onClick={()=>toggleMentor(m.id)}
+                        style={{display:'flex',alignItems:'center',gap:7,padding:'6px 12px 6px 8px',borderRadius:20,
+                          border:`1.5px solid ${on?'var(--text)':'var(--border)'}`,
+                          background:on?'var(--text)':'transparent',
+                          color:on?'white':'var(--muted)',
+                          fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                        <div style={{width:22,height:22,borderRadius:'50%',background:on?'rgba(255,255,255,.2)':'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500}}>
+                          {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                        </div>
+                        {m.name}
+                        {on&&<Icon name="check" size={11} style={{opacity:.8}}/>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            }
+            <AddMentorInline onAdd={mentor=>{onAddGlobalMentor(mentor);toggleMentor(mentor.id);}}/>
+          </div>
+          {linkedMentors.length>0&&(
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {linkedMentors.map(m=>(
+                <div key={m.id} className="card" style={{padding:'16px 20px',display:'flex',alignItems:'flex-start',gap:14}}>
+                  <div style={{width:40,height:40,borderRadius:'50%',background:'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,border:'1px solid var(--border)'}}>
+                    {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.9rem',marginBottom:2}}>{m.name} <span style={{fontWeight:400,color:'var(--muted)',fontSize:'.78rem'}}>· {m.area}</span></div>
+                    {m.medium&&<div style={{fontSize:'.75rem',color:'var(--muted)',marginBottom:4}}>{m.medium}</div>}
+                    {m.notes&&<div style={{fontSize:'.82rem',color:'var(--muted)',lineHeight:1.6}}>{m.notes}</div>}
+                    {m.links&&<a href={m.links} target="_blank" rel="noreferrer" style={{fontSize:'.75rem',color:'var(--text)',textDecoration:'underline',marginTop:4,display:'inline-block'}}>{m.links}</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2739,6 +2768,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
   const [activeFolder,setActiveFolder]=useState('work');
   const [selected,setSelected]=useState(null);
   const [lightbox,setLightbox]=useState(null);
+  const [bannerPicker,setBannerPicker]=useState(null); // post whose banner we're picking
   const [trash,setTrash]=useState(false);
   const [uploading,setUploading]=useState(false);
   const addImgRef=useRef();
@@ -2773,6 +2803,36 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
     document.addEventListener('keydown',handleKeyDown);
     return()=>document.removeEventListener('keydown',handleKeyDown);
   },[lightbox]);
+
+  // Banner picker modal — portal so it escapes any stacking context
+  const bannerPickerPortal = bannerPicker ? ReactDOM.createPortal(
+    <div onClick={()=>setBannerPicker(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg)',borderRadius:16,padding:24,width:'100%',maxWidth:560,boxShadow:'0 24px 64px rgba(0,0,0,.3)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <span style={{fontFamily:'Figtree,sans-serif',fontWeight:700,fontSize:'.82rem',textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)'}}>Escolher banner — {bannerPicker.title}</span>
+          <button onClick={()=>setBannerPicker(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:4}}><Icon name="x" size={16}/></button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+          {bannerPicker.images.map((img,i)=>{
+            const isActive=bannerPicker.bannerImage===img||(i===0&&!bannerPicker.bannerImage);
+            return(
+              <div key={i} onClick={()=>{
+                const updated={...bannerPicker,bannerImage:img};
+                setBannerPicker(updated);
+                setPosts(prev=>prev.map(p=>p.id===updated.id?updated:p));
+              }} style={{position:'relative',aspectRatio:'16/9',borderRadius:10,overflow:'hidden',cursor:'pointer',border:`2.5px solid ${isActive?'var(--text)':'transparent'}`,transition:'border-color .15s'}}>
+                <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .25s'}} onMouseEnter={e=>e.target.style.transform='scale(1.05)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+                {isActive&&<div style={{position:'absolute',bottom:5,right:5,background:'var(--text)',borderRadius:'50%',width:20,height:20,display:'flex',alignItems:'center',justifyContent:'center'}}><Icon name="check" size={11} style={{color:'white'}}/></div>}
+              </div>
+            );
+          })}
+        </div>
+        {bannerPicker.images.length===0&&<p style={{textAlign:'center',color:'var(--muted)',fontSize:'.85rem',padding:'24px 0'}}>Nenhuma imagem neste post ainda.</p>}
+        <button onClick={()=>setBannerPicker(null)} className="btn btn-dark" style={{marginTop:16,width:'100%',justifyContent:'center'}}>Confirmar</button>
+      </div>
+    </div>,
+    document.body
+  ) : null;
 
   if(lightbox)return(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
@@ -2810,6 +2870,9 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
             <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
               <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
+              <button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
+                style={{position:'absolute',top:6,left:6,background:selected.bannerImage===img?'rgba(251,191,36,.9)':'rgba(28,25,23,.55)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',transition:'background .2s'}}>
+                <Icon name="star" size={11} style={{fill:selected.bannerImage===img?'white':'none'}}/></button>
             </div>
           ))}
           <div className="upload-zone" style={{aspectRatio:'16/9',minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
@@ -2856,10 +2919,17 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
           <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?10:14}}>
             {monthPosts.map(post=>(
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
-                <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
-                    ?<Img src={post.images[post.images.length-1]} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
-                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
+                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
+                  {!trash&&post.images.length>1&&(
+                    <button onClick={e=>{e.stopPropagation();setBannerPicker(post);}}
+                      title="Escolher banner"
+                      className="cover-edit-overlay"
+                      style={{position:'absolute',inset:0,background:'rgba(0,0,0,0)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:5,color:'white',fontSize:'.72rem',fontWeight:700,fontFamily:'Figtree,sans-serif',letterSpacing:'.05em',textTransform:'uppercase'}}>
+                      <Icon name="images" size={13}/> Banner
+                    </button>
+                  )}
                 </div>
                 <div style={{padding:'12px 14px'}}>
                   <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:2}}>{post.title}</div>
@@ -2877,13 +2947,21 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
         </div>
       ))}
     </div>
+    {bannerPickerPortal}
   );
 });
 
 // - IDEAS -
-const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
-  // tab: 'projects' | 'notes' | 'trash'
-  const [tab,setTab]=useState('notes');
+const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>{
+  // tab: group.id | 'trash'
+  const [tab,setTab]=useState(()=>noteGroups[0]?.id||'notes');
+  const [editingGroupId,setEditingGroupId]=useState(null);
+  const [editingGroupLabel,setEditingGroupLabel]=useState('');
+  const [showAddGroup,setShowAddGroup]=useState(false);
+  const [newGroupLabel,setNewGroupLabel]=useState('');
+  const [showManageGroups,setShowManageGroups]=useState(false);
+  const [manageGroups,setManageGroups]=useState(null); // local copy for editing in modal
+  const dragGroupIdx=useRef(null);
 
   // ── QUICK NOTES ──
   const [activeNoteId,setActiveNoteId]=useState(()=>notes.find(n=>(!n.type||n.type==='note')&&!n.deleted)?.id||null);
@@ -2894,7 +2972,9 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const contentAreaRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
 
-  const quickNotes=useMemo(()=>notes.filter(n=>(!n.type||n.type==='note')&&!n.deleted),[notes]);
+  // Group helpers — backward compat: type='note'/undefined → 'notes', type='project' → 'projects'
+  const noteGroup=n=>{if(n.group)return n.group;if(!n.type||n.type==='note')return 'notes';if(n.type==='project')return 'projects';return noteGroups[0]?.id||'notes';};
+  const quickNotes=useMemo(()=>notes.filter(n=>!n.deleted&&noteGroup(n)===tab&&noteGroup(n)!=='projects'),[notes,tab,noteGroups]);
   const trashed=useMemo(()=>notes.filter(n=>n.deleted),[notes]);
   const activeNote=useMemo(()=>notes.find(n=>n.id===activeNoteId&&!n.deleted)||null,[notes,activeNoteId]);
 
@@ -2919,7 +2999,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   };
   const handleNoteBlur=(field,value)=>{clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);flushNote(field,value);};
   const newNote=()=>{
-    const n={id:Date.now(),type:'note',title:'Nova Nota',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
+    const n={id:Date.now(),type:'note',group:tab,title:'Nova Nota',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
     newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setActiveNoteId(n.id);setTab('notes');
   };
   const trashNote=id=>{
@@ -2939,7 +3019,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const flushEntryContentRef=useRef(null);
   const entryAreaRef=useRef(null);
 
-  const miniProjects=useMemo(()=>notes.filter(n=>n.type==='project'&&!n.deleted),[notes]);
+  const miniProjects=useMemo(()=>notes.filter(n=>!n.deleted&&noteGroup(n)==='projects'),[notes,noteGroups]);
   const activeProj=useMemo(()=>notes.find(n=>n.id===activeProjId&&n.type==='project'&&!n.deleted)||null,[notes,activeProjId]);
   const activeEntry=useMemo(()=>activeProj?.entries?.find(e=>e.id===activeEntryId)||null,[activeProj,activeEntryId]);
 
@@ -2990,11 +3070,27 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
     if(activeEntryId===id){const entries=activeProj?.entries||[];const next=entries.find(e=>e.id!==id);setActiveEntryId(next?.id||null);}
   };
 
+  // ── GROUP MANAGEMENT ──
+  const addGroup=()=>{
+    if(!newGroupLabel.trim())return;
+    const g={id:'g_'+Date.now(),label:newGroupLabel.trim(),icon:'file-text'};
+    setNoteGroups(prev=>[...prev,g]);
+    setNewGroupLabel('');setShowAddGroup(false);setTab(g.id);
+  };
+  const renameGroup=(id,label)=>{if(!label.trim())return;setNoteGroups(prev=>prev.map(g=>g.id===id?{...g,label:label.trim()}:g));};
+  const deleteGroup=id=>{
+    const fallback=noteGroups.find(g=>g.id!==id)?.id||'notes';
+    // Move notes to fallback group
+    setNotes(prev=>prev.map(n=>noteGroup(n)===id?{...n,group:fallback}:n));
+    setNoteGroups(prev=>prev.filter(g=>g.id!==id));
+    if(tab===id)setTab(fallback);
+  };
+
+  const currentGroupIsProjects=tab==='projects';
+
   // ── SHARED NAV ──
   // mobile drill-down state
   const [mobileView,setMobileView]=useState('list'); // 'list'|'editor'|'entry'
-
-  const TABS=[['notes','Notas','file-text'],['projects','Mini Projetos','folder-open'],['trash','Lixeira','trash-2']];
 
   // ── RENDER helpers ──
   const NoteList=({items,activeId,onSelect,emptyMsg})=>(
@@ -3019,23 +3115,99 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
       <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14,flexShrink:0}}>
         <h1 className="serif" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Ideias</h1>
         <div style={{display:'flex',gap:6}}>
-          {tab==='notes'&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newNote}><Icon name="plus" size={12}/> Nova Nota</button>}
+          {tab!=='trash'&&tab!=='projects'&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newNote}><Icon name="plus" size={12}/> Nova Nota</button>}
           {tab==='projects'&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newProject}><Icon name="plus" size={12}/> Novo Projeto</button>}
         </div>
       </div>
-      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:16,flexShrink:0}}>
-        {TABS.map(([v,l,ic])=>(
-          <button key={v} onClick={()=>setTab(v)} className="tab-btn" style={{color:tab===v?'var(--text)':'var(--muted)',borderBottom:tab===v?'2px solid var(--text)':'2px solid transparent',display:'flex',alignItems:'center',gap:5}}>
-            <Icon name={ic} size={12}/>{l}
-            {v==='trash'&&trashed.length>0&&<span style={{fontSize:'.68rem',opacity:.6}}>({trashed.length})</span>}
-            {v==='notes'&&<span style={{fontSize:'.68rem',opacity:.5}}>({quickNotes.length})</span>}
-            {v==='projects'&&<span style={{fontSize:'.68rem',opacity:.5}}>({miniProjects.length})</span>}
-          </button>
-        ))}
+      <div style={{display:'flex',alignItems:'center',borderBottom:'1px solid var(--border)',marginBottom:16,flexShrink:0,gap:0}}>
+        {noteGroups.map(g=>{
+          const count=g.id==='projects'?miniProjects.length:notes.filter(n=>!n.deleted&&noteGroup(n)===g.id).length;
+          return(
+            <button key={g.id} onClick={()=>setTab(g.id)} className="tab-btn"
+              style={{color:tab===g.id?'var(--text)':'var(--muted)',borderBottom:tab===g.id?'2px solid var(--text)':'2px solid transparent',display:'flex',alignItems:'center',gap:5}}>
+              <Icon name={g.icon||'file-text'} size={12}/>{g.label}
+              <span style={{fontSize:'.68rem',opacity:.5}}>({count})</span>
+            </button>
+          );
+        })}
+        <button onClick={()=>{setManageGroups(noteGroups.map(g=>({...g})));setShowManageGroups(true);}} title="Gerenciar grupos"
+          className="tab-btn" style={{color:'var(--muted)',borderBottom:'2px solid transparent',padding:'4px 8px',marginLeft:2}}>
+          <Icon name="settings-2" size={12}/>
+        </button>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setTab('trash')} className="tab-btn"
+          style={{color:tab==='trash'?'var(--text)':'var(--muted)',borderBottom:tab==='trash'?'2px solid var(--text)':'2px solid transparent',display:'flex',alignItems:'center',gap:5}}>
+          <Icon name="trash-2" size={12}/>Lixeira
+          {trashed.length>0&&<span style={{fontSize:'.68rem',opacity:.6}}>({trashed.length})</span>}
+        </button>
       </div>
+      {/* Manage Groups Modal */}
+      {showManageGroups&&manageGroups&&ReactDOM.createPortal(
+        <div onClick={()=>setShowManageGroups(false)} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg)',borderRadius:16,padding:28,width:'100%',maxWidth:420,boxShadow:'0 24px 64px rgba(0,0,0,.28)',display:'flex',flexDirection:'column',gap:16}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontFamily:'Figtree,sans-serif',fontWeight:700,fontSize:'.82rem',textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)'}}>Gerenciar Grupos</span>
+              <button onClick={()=>setShowManageGroups(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:4}}><Icon name="x" size={16}/></button>
+            </div>
+            {/* Group list with drag reorder */}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {manageGroups.map((g,i)=>(
+                <div key={g.id}
+                  draggable
+                  onDragStart={()=>{dragGroupIdx.current=i;}}
+                  onDragOver={e=>{e.preventDefault();}}
+                  onDrop={()=>{
+                    const from=dragGroupIdx.current;
+                    if(from===null||from===i)return;
+                    const next=[...manageGroups];
+                    const [moved]=next.splice(from,1);
+                    next.splice(i,0,moved);
+                    setManageGroups(next);
+                    dragGroupIdx.current=null;
+                  }}
+                  style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--surface)',cursor:'grab'}}>
+                  <Icon name="grip-vertical" size={14} style={{color:'var(--muted)',flexShrink:0,cursor:'grab'}}/>
+                  <input
+                    value={g.label}
+                    onChange={e=>{const v=e.target.value;setManageGroups(prev=>prev.map((x,j)=>j===i?{...x,label:v}:x));}}
+                    style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:'var(--text)',minWidth:0}}/>
+                  {manageGroups.length>1&&(
+                    <button onClick={()=>setManageGroups(prev=>prev.filter((_,j)=>j!==i))}
+                      style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 4px',borderRadius:4,flexShrink:0,transition:'color .15s'}}
+                      onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
+                      <Icon name="trash-2" size={13}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/* Add new group */}
+            <div style={{display:'flex',gap:8}}>
+              <input value={newGroupLabel} onChange={e=>setNewGroupLabel(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'&&newGroupLabel.trim()){setManageGroups(prev=>[...prev,{id:'g_'+Date.now(),label:newGroupLabel.trim(),icon:'file-text'}]);setNewGroupLabel('');}}}
+                placeholder="Novo grupo..." style={{flex:1,padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',outline:'none',background:'var(--bg)',color:'var(--text)'}}/>
+              <button onClick={()=>{if(!newGroupLabel.trim())return;setManageGroups(prev=>[...prev,{id:'g_'+Date.now(),label:newGroupLabel.trim(),icon:'file-text'}]);setNewGroupLabel('');}}
+                className="btn btn-outline" style={{padding:'6px 12px',flexShrink:0}}><Icon name="plus" size={14}/></button>
+            </div>
+            {/* Save */}
+            <button onClick={()=>{
+              // Apply renames + reorder + deletions
+              const deletedIds=noteGroups.filter(g=>!manageGroups.find(m=>m.id===g.id)).map(g=>g.id);
+              const fallback=manageGroups[0]?.id||'notes';
+              if(deletedIds.length>0)setNotes(prev=>prev.map(n=>deletedIds.includes(noteGroup(n))?{...n,group:fallback}:n));
+              setNoteGroups(manageGroups.map(g=>({...g,label:g.label.trim()||g.label})));
+              if(deletedIds.includes(tab))setTab(fallback);
+              setShowManageGroups(false);setNewGroupLabel('');
+            }} className="btn btn-dark" style={{width:'100%',justifyContent:'center',padding:'9px'}}>
+              Salvar
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
 
-      {/* Notes tab */}
-      {tab==='notes'&&(
+      {/* Notes tab — any non-projects group */}
+      {tab!=='trash'&&tab!=='projects'&&(
         <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
           {/* List */}
           <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
@@ -3171,10 +3343,10 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
       if(mobileProjView==='editor'){setMobileProjView('entries');return;}
       if(mobileProjView==='entries'){setMobileProjView('list');setActiveProjId(null);return;}
     }
-    if(tab==='notes'&&activeNoteId){setActiveNoteId(null);return;}
+    if(tab!=='trash'&&tab!=='projects'&&activeNoteId){setActiveNoteId(null);return;}
   };
 
-  const showMobileBack=(tab==='notes'&&activeNoteId)||(tab==='projects'&&mobileProjView!=='list');
+  const showMobileBack=(tab!=='trash'&&tab!=='projects'&&activeNoteId)||(tab==='projects'&&mobileProjView!=='list');
 
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16}}>
@@ -3184,26 +3356,31 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           ?<button className="btn btn-ghost" style={{padding:'8px 12px',fontSize:'.88rem'}} onClick={goBackMobile}><Icon name="arrow-left" size={16}/> Voltar</button>
           :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Ideias</h1>
         }
-        {tab==='notes'&&!activeNoteId&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={newNote}><Icon name="plus" size={13}/> Nova Nota</button>}
+        {tab!=='trash'&&tab!=='projects'&&!activeNoteId&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={newNote}><Icon name="plus" size={13}/> Nova Nota</button>}
         {tab==='projects'&&mobileProjView==='list'&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{newProject();setMobileProjView('entries');}}><Icon name="plus" size={13}/> Novo</button>}
         {tab==='projects'&&mobileProjView==='entries'&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{addEntry();setMobileProjView('editor');}}><Icon name="plus" size={13}/> Entrada</button>}
       </div>
 
       {/* Tabs */}
       {!showMobileBack&&(
-        <div style={{display:'flex',background:'var(--bg)',borderRadius:10,padding:3,gap:2,marginBottom:16}}>
-          {TABS.map(([v,l,ic])=>(
-            <button key={v} onClick={()=>{setTab(v);setMobileProjView('list');setActiveNoteId(null);setActiveProjId(null);}}
-              style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.75rem',fontWeight:600,cursor:'pointer',
-                background:tab===v?'var(--surface)':'transparent',color:tab===v?'var(--text)':'var(--muted)',transition:'all .15s',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-              <Icon name={ic} size={11}/>{l}
+        <div style={{display:'flex',background:'var(--bg)',borderRadius:10,padding:3,gap:2,marginBottom:16,overflowX:'auto'}}>
+          {noteGroups.map(g=>(
+            <button key={g.id} onClick={()=>{setTab(g.id);setMobileProjView('list');setActiveNoteId(null);setActiveProjId(null);}}
+              style={{flex:1,padding:'7px 6px',borderRadius:8,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.72rem',fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',
+                background:tab===g.id?'var(--surface)':'transparent',color:tab===g.id?'var(--text)':'var(--muted)',transition:'all .15s',display:'flex',alignItems:'center',justifyContent:'center',gap:3}}>
+              <Icon name={g.icon||'file-text'} size={11}/>{g.label}
             </button>
           ))}
+          <button onClick={()=>{setTab('trash');setActiveNoteId(null);setActiveProjId(null);}}
+            style={{padding:'7px 6px',borderRadius:8,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.72rem',fontWeight:600,cursor:'pointer',
+              background:tab==='trash'?'var(--surface)':'transparent',color:tab==='trash'?'var(--text)':'var(--muted)',transition:'all .15s',display:'flex',alignItems:'center',justifyContent:'center',gap:3}}>
+            <Icon name="trash-2" size={11}/>
+          </button>
         </div>
       )}
 
       {/* Notes tab */}
-      {tab==='notes'&&!activeNoteId&&(
+      {tab!=='trash'&&tab!=='projects'&&!activeNoteId&&(
         <div style={{display:'flex',flexDirection:'column',gap:4}}>
           {quickNotes.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma nota ainda.</div>}
           {quickNotes.map(n=>(
@@ -3214,7 +3391,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           ))}
         </div>
       )}
-      {tab==='notes'&&activeNoteId&&activeNote&&(
+      {tab!=='trash'&&tab!=='projects'&&activeNoteId&&activeNote&&(
         <div className="card" style={{padding:20,display:'flex',flexDirection:'column'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,borderBottom:'1px solid var(--border)',paddingBottom:10}}>
             <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
@@ -3677,30 +3854,30 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   return(
     <div className="fade-up" style={{maxWidth:'min(640px,100%)',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',margin:'0 auto'}}>
       <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Sincronizar</h1>
-      <p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)',marginBottom:isMobile?14:18}}>Sync em tempo real entre dispositivos via Google.</p>
+      <p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)',marginBottom:isMobile?10:12}}>Sync em tempo real entre dispositivos via Google.</p>
 
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(180px,1fr))',gap:10,marginBottom:isMobile?10:14}}>
+      <div style={{display:'flex',gap:6,marginBottom:isMobile?8:10,flexWrap:isMobile?'wrap':'nowrap'}}>
         {counts.map(s=>(
-          <div key={s.label} className="card" style={{padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:'.75rem',color:'var(--muted)'}}>{s.label}</span>
-            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.4rem',fontWeight:500}}>{s.value}</span>
+          <div key={s.label} className="card" style={{padding:'8px 12px',display:'flex',alignItems:'center',gap:8,flex:isMobile?'1 1 45%':'1'}}>
+            <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500,flexShrink:0}}>{s.value}</span>
+            <span style={{fontSize:'.68rem',color:'var(--muted)',lineHeight:1.2}}>{s.label}</span>
           </div>
         ))}
       </div>
 
       {localImgCount>0&&(
-        <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-          <Icon name="image" size={16} style={{color:'#92700b',flexShrink:0}}/>
-          <div style={{flex:1,fontSize:'.83rem',color:'#78350F'}}>
-            <strong>{localImgCount} imagem(ns)</strong> armazenada(s) apenas localmente. Use <strong>"Re-enviar Imagens"</strong> abaixo para sincronizá-las.
+        <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'8px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <Icon name="image" size={14} style={{color:'#92700b',flexShrink:0}}/>
+          <div style={{flex:1,fontSize:'.8rem',color:'#78350F'}}>
+            <strong>{localImgCount} imagem(ns)</strong> apenas localmente. Use <strong>"Re-enviar Imagens"</strong> abaixo.
           </div>
         </div>
       )}
 
       {status&&(
-        <div style={{padding:'12px 18px',borderRadius:10,marginBottom:20,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.85rem',display:'flex',alignItems:'center',gap:10}}>
-          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={16}/>{status.msg}
-          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={14}/></button>
+        <div style={{padding:'8px 14px',borderRadius:10,marginBottom:10,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.82rem',display:'flex',alignItems:'center',gap:10}}>
+          <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={15}/>{status.msg}
+          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
         </div>
       )}
 
@@ -3717,7 +3894,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
       )}
 
       {/* Google Account Card */}
-      <div className="card" style={{padding:28,marginBottom:16,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
+      <div className="card" style={{padding:isMobile?20:18,marginBottom:10,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
         {fbUser ? (
           <>
             <div style={{display:'flex',alignItems:'center',gap:16,width:'100%'}}>
@@ -3775,8 +3952,8 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
       </div>
 
       {/* Actions */}
-      <div className="card" style={{padding:isMobile?20:28,marginBottom:16}}>
-        <span className="label" style={{display:'block',marginBottom:16}}>Backup Manual</span>
+      <div className="card" style={{padding:isMobile?16:18,marginBottom:10}}>
+        <span className="label" style={{display:'block',marginBottom:10}}>Backup Manual</span>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <button className="btn btn-outline" style={{flex:1,justifyContent:'center'}} onClick={exportData} disabled={loading}>
@@ -3796,8 +3973,8 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
       </div>
 
       {/* Danger zone */}
-      <div style={{borderTop:'1px solid var(--border)',paddingTop:20}}>
-        <span className="label" style={{display:'block',marginBottom:12,color:'#9B1C1C'}}>Zona Perigosa</span>
+      <div style={{borderTop:'1px solid var(--border)',paddingTop:12}}>
+        <span className="label" style={{display:'block',marginBottom:8,color:'#9B1C1C'}}>Zona Perigosa</span>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button className="btn btn-outline" onClick={onResetIdentity} style={{fontSize:'.82rem'}}>
             <Icon name="pencil" size={13}/> Renomear Hub
@@ -4096,6 +4273,8 @@ const App=()=>{
   const [tasks,setTasks]=useState(()=>persisted?.tasks||SEED.tasks);
   const [socialPosts,setSocialPosts]=useState(()=>persisted?.socialPosts||SEED.socialPosts);
   const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
+  const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
+  const [noteGroups,setNoteGroups]=useState(()=>persisted?.noteGroups||DEFAULT_NOTE_GROUPS);
   const [pomoData,setPomoData]=useState(()=>pomoLoad());
 
   useEffect(()=>{ pomoSave(pomoData); },[pomoData]);
@@ -4178,7 +4357,7 @@ const App=()=>{
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
-      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity};
+      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups,identity};
       lsSave(state);
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
@@ -4217,7 +4396,7 @@ const App=()=>{
       },2000);
     },2500);
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,identity]);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups,identity]);
 
   const navigate=v=>{
     const hash=v==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${v}`;
@@ -4263,7 +4442,7 @@ const App=()=>{
     navigate('dashboard');
   };
 
-  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData};
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups};
 
   // When importing data: store any base64 images in IDB, replace with idb:// refs
   const ingestImages=async obj=>{
@@ -4284,6 +4463,7 @@ const App=()=>{
     if(ingested.tasks)setTasks(ingested.tasks);
     if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
     if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
+    if(ingested.noteGroups)setNoteGroups(ingested.noteGroups);
     if(ingested.pomoData)setPomoData(ingested.pomoData);
   };
 
@@ -4303,11 +4483,11 @@ const App=()=>{
         :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
-        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile}/>}
+        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
-        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
+        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} noteGroups={noteGroups} setNoteGroups={setNoteGroups} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
