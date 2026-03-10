@@ -2858,164 +2858,417 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
 });
 
 // - IDEAS -
-const IdeasLab=React.memo(({notes,setNotes,tasks,setTasks,isMobile})=>{
-  const [folder,setFolder]=useState('notes');
-  const [activeId,setActiveId]=useState(()=>notes.find(n=>!n.deleted)?.id||null);
-  const [newTask,setNewTask]=useState('');
-  // Local draft state — avoids flushing to global on every keystroke (fixes mobile cursor reset)
+const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
+  // tab: 'projects' | 'notes' | 'trash'
+  const [tab,setTab]=useState('notes');
+
+  // ── QUICK NOTES ──
+  const [activeNoteId,setActiveNoteId]=useState(()=>notes.find(n=>(!n.type||n.type==='note')&&!n.deleted)?.id||null);
   const [localTitle,setLocalTitle]=useState('');
   const [localContent,setLocalContent]=useState('');
   const flushTitleRef=useRef(null);
   const flushContentRef=useRef(null);
-  const isDirtyRef=useRef(false);
   const contentAreaRef=useRef(null);
-  const visible=useMemo(()=>notes.filter(n=>folder==='notes'?!n.deleted:n.deleted),[notes,folder]);
-  const active=useMemo(()=>notes.find(n=>n.id===activeId&&(folder==='notes'?!n.deleted:n.deleted))||null,[notes,activeId,folder]);
+  const newNoteCooldownRef=useRef(0);
 
-  // Only sync local drafts when switching notes (activeId changes).
-  // Previously watched activeTitle/activeContent too, which caused a race:
-  // debounce flush → notes update → effect fires → resets local state mid-typing → data loss on mobile.
+  const quickNotes=useMemo(()=>notes.filter(n=>(!n.type||n.type==='note')&&!n.deleted),[notes]);
+  const trashed=useMemo(()=>notes.filter(n=>n.deleted),[notes]);
+  const activeNote=useMemo(()=>notes.find(n=>n.id===activeNoteId&&!n.deleted)||null,[notes,activeNoteId]);
+
   useEffect(()=>{
-    isDirtyRef.current=false;
-    clearTimeout(flushTitleRef.current);
-    clearTimeout(flushContentRef.current);
-    if(active){setLocalTitle(active.title);setLocalContent(active.content||'');}
-  },[activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+    clearTimeout(flushTitleRef.current);clearTimeout(flushContentRef.current);
+    if(activeNote){setLocalTitle(activeNote.title);setLocalContent(activeNote.content||'');}
+  },[activeNoteId]);
 
-  // Auto-resize textarea height on mobile when note changes
   useEffect(()=>{
     if(isMobile&&contentAreaRef.current){
       contentAreaRef.current.style.height='auto';
       contentAreaRef.current.style.height=contentAreaRef.current.scrollHeight+'px';
     }
-  },[localContent,activeId,isMobile]);
+  },[localContent,activeNoteId,isMobile]);
 
-  const flushToGlobal=(field,value)=>{
-    setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
-  };
-
-  const handleTitleChange=e=>{
-    const v=e.target.value;isDirtyRef.current=true;setLocalTitle(v);
-    clearTimeout(flushTitleRef.current);
-    flushTitleRef.current=setTimeout(()=>flushToGlobal('title',v),1500);
-  };
+  const flushNote=(field,value)=>setNotes(p=>p.map(n=>n.id===activeNoteId?{...n,[field]:value}:n));
+  const handleTitleChange=e=>{const v=e.target.value;setLocalTitle(v);clearTimeout(flushTitleRef.current);flushTitleRef.current=setTimeout(()=>flushNote('title',v),1200);};
   const handleContentChange=e=>{
-    const v=e.target.value;isDirtyRef.current=true;setLocalContent(v);
+    const v=e.target.value;setLocalContent(v);
     if(isMobile&&e.target){e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}
-    clearTimeout(flushContentRef.current);
-    flushContentRef.current=setTimeout(()=>flushToGlobal('content',v),1500);
+    clearTimeout(flushContentRef.current);flushContentRef.current=setTimeout(()=>flushNote('content',v),1200);
   };
-  // Flush immediately on blur
-  const handleBlur=(field,value)=>{
-    isDirtyRef.current=false;
-    clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);
-    flushToGlobal(field,value);
+  const handleNoteBlur=(field,value)=>{clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);flushNote(field,value);};
+  const newNote=()=>{
+    const n={id:Date.now(),type:'note',title:'Nova Nota',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
+    newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setActiveNoteId(n.id);setTab('notes');
+  };
+  const trashNote=id=>{
+    if(Date.now()-newNoteCooldownRef.current<600)return;
+    setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true}:n));
+    const next=quickNotes.find(n=>n.id!==id);setActiveNoteId(next?.id||null);
+  };
+  const restoreNote=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false}:n));
+  const hardDeleteNote=id=>{if(window.confirm('Excluir permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));}};
+
+  // ── MINI PROJECTS ──
+  const [activeProjId,setActiveProjId]=useState(null);
+  const [activeEntryId,setActiveEntryId]=useState(null);
+  const [entryTitle,setEntryTitle]=useState('');
+  const [entryContent,setEntryContent]=useState('');
+  const flushEntryTitleRef=useRef(null);
+  const flushEntryContentRef=useRef(null);
+  const entryAreaRef=useRef(null);
+
+  const miniProjects=useMemo(()=>notes.filter(n=>n.type==='project'&&!n.deleted),[notes]);
+  const activeProj=useMemo(()=>notes.find(n=>n.id===activeProjId&&n.type==='project'&&!n.deleted)||null,[notes,activeProjId]);
+  const activeEntry=useMemo(()=>activeProj?.entries?.find(e=>e.id===activeEntryId)||null,[activeProj,activeEntryId]);
+
+  useEffect(()=>{
+    clearTimeout(flushEntryTitleRef.current);clearTimeout(flushEntryContentRef.current);
+    if(activeEntry){setEntryTitle(activeEntry.title);setEntryContent(activeEntry.content||'');}
+    else{setEntryTitle('');setEntryContent('');}
+  },[activeEntryId]);
+
+  useEffect(()=>{
+    if(isMobile&&entryAreaRef.current){
+      entryAreaRef.current.style.height='auto';
+      entryAreaRef.current.style.height=entryAreaRef.current.scrollHeight+'px';
+    }
+  },[entryContent,activeEntryId,isMobile]);
+
+  const updProj=(id,fn)=>setNotes(p=>p.map(n=>n.id===id&&n.type==='project'?fn(n):n));
+  const flushEntry=(field,value)=>{
+    if(!activeProjId||!activeEntryId)return;
+    updProj(activeProjId,proj=>({...proj,entries:(proj.entries||[]).map(e=>e.id===activeEntryId?{...e,[field]:value}:e)}));
+  };
+  const handleEntryTitleChange=e=>{const v=e.target.value;setEntryTitle(v);clearTimeout(flushEntryTitleRef.current);flushEntryTitleRef.current=setTimeout(()=>flushEntry('title',v),1200);};
+  const handleEntryContentChange=e=>{
+    const v=e.target.value;setEntryContent(v);
+    if(isMobile&&e.target){e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}
+    clearTimeout(flushEntryContentRef.current);flushEntryContentRef.current=setTimeout(()=>flushEntry('content',v),1200);
+  };
+  const handleEntryBlur=(field,value)=>{clearTimeout(field==='title'?flushEntryTitleRef.current:flushEntryContentRef.current);flushEntry(field,value);};
+
+  const newProject=()=>{
+    const p={id:Date.now(),type:'project',title:'Novo Projeto',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};
+    setNotes(prev=>[p,...prev]);setActiveProjId(p.id);setActiveEntryId(null);setTab('projects');
+  };
+  const renameProject=(id,title)=>updProj(id,p=>({...p,title}));
+  const trashProject=id=>{
+    updProj(id,p=>({...p,deleted:true}));
+    if(activeProjId===id){setActiveProjId(null);setActiveEntryId(null);}
+  };
+  const addEntry=()=>{
+    if(!activeProjId)return;
+    const e={id:Date.now(),title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR')};
+    updProj(activeProjId,p=>({...p,entries:[...(p.entries||[]),e]}));
+    setActiveEntryId(e.id);
+  };
+  const deleteEntry=id=>{
+    if(!activeProjId)return;
+    updProj(activeProjId,p=>({...p,entries:(p.entries||[]).filter(e=>e.id!==id)}));
+    if(activeEntryId===id){const entries=activeProj?.entries||[];const next=entries.find(e=>e.id!==id);setActiveEntryId(next?.id||null);}
   };
 
-  const newNoteCooldownRef=useRef(0);
-  const update=(field,value)=>setNotes(p=>p.map(n=>n.id===activeId?{...n,[field]:value}:n));
-  const toggleTrash=id=>{
-    if(Date.now()-newNoteCooldownRef.current<600)return; // guard against ghost-tap after note creation
-    setNotes(p=>p.map(n=>n.id===id?{...n,deleted:!n.deleted}:n));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);
-  };
-  const hardDelete=id=>{if(window.confirm('Excluir nota permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));const next=notes.find(n=>n.id!==id&&(folder==='notes'?!n.deleted:n.deleted));setActiveId(next?.id||null);}};
-  const newNote=()=>{const n={id:Date.now(),title:"Nova Nota",content:"",date:"Agora",deleted:false};newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setActiveId(n.id);};
-  const noteToTask=()=>{if(!active)return;setTasks(p=>[...p,{id:Date.now(),text:active.title,done:false,noteId:active.id}]);};
-  const isAlreadyTask=active&&tasks.some(t=>t.noteId===active.id);
-  const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
-  const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
-  const removeTask=id=>setTasks(p=>p.filter(t=>t.id!==id));
-  return(
-    <div className="fade-up" style={{maxWidth:'100%',margin:'0 auto',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',gap:isMobile?0:20,flexDirection:isMobile?'column':'row'}}>
-      {/* Left */}
-      {(!isMobile||(isMobile&&!activeId))&&(
-      <div style={{width:isMobile?'100%':200,flexShrink:0,display:'flex',flexDirection:'column',gap:14}}>
-        <h1 className="serif" style={{fontSize:isMobile?'1.6rem':'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Ideias</h1>
-        <div style={{display:'flex',flexDirection:isMobile?'row':'column',gap:4}}>
-          {[['notes','Notas'],['trash','Lixeira']].map(([v,l])=>(
-            <button key={v} onClick={()=>{setFolder(v);const first=notes.find(n=>v==='notes'?!n.deleted:n.deleted);setActiveId(isMobile?null:(first?.id||null));}} style={{textAlign:'left',padding:'8px 12px',borderRadius:7,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,cursor:'pointer',background:folder===v?(v==='trash'?'#FEE2E2':'var(--text)'):'transparent',color:folder===v?(v==='trash'?'#991B1B':'white'):'var(--muted)',transition:'all .15s'}}>
-              {l} <span style={{opacity:.6,fontSize:'.75rem'}}>({notes.filter(n=>v==='notes'?!n.deleted:n.deleted).length})</span>
-            </button>
-          ))}
+  // ── SHARED NAV ──
+  // mobile drill-down state
+  const [mobileView,setMobileView]=useState('list'); // 'list'|'editor'|'entry'
+
+  const TABS=[['notes','Notas','file-text'],['projects','Mini Projetos','folder-open'],['trash','Lixeira','trash-2']];
+
+  // ── RENDER helpers ──
+  const NoteList=({items,activeId,onSelect,emptyMsg})=>(
+    <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:3}}>
+      {items.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px'}}>{emptyMsg}</div>}
+      {items.map(n=>(
+        <div key={n.id} onClick={()=>onSelect(n.id)}
+          style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
+          onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
+          onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
+          <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+          <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
         </div>
-        <div style={{flex:isMobile?undefined:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
-          {visible.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px'}}>Nenhuma nota aqui.</div>}
-          {visible.map(n=>(
-            <div key={n.id} onClick={()=>setActiveId(n.id)}
-              style={{padding:isMobile?'14px 14px':'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeId===n.id?'var(--text)':'transparent'}`,background:activeId===n.id?'var(--surface)':'transparent',transition:'all .15s',minHeight:isMobile?48:undefined}}
-              onMouseEnter={e=>{if(activeId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-              onMouseLeave={e=>{if(activeId!==n.id)e.currentTarget.style.background='transparent';}}>
-              <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-              <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{n.date}</div>
-            </div>
-          ))}
+      ))}
+    </div>
+  );
+
+  // ── DESKTOP LAYOUT ──
+  if(!isMobile)return(
+    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
+      {/* Header + tabs */}
+      <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14,flexShrink:0}}>
+        <h1 className="serif" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Ideias</h1>
+        <div style={{display:'flex',gap:6}}>
+          {tab==='notes'&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newNote}><Icon name="plus" size={12}/> Nova Nota</button>}
+          {tab==='projects'&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newProject}><Icon name="plus" size={12}/> Novo Projeto</button>}
         </div>
-        {folder==='notes'&&<button className="btn btn-dark" style={{width:'100%',justifyContent:'center'}} onClick={newNote}><Icon name="plus" size={14}/> Nova Nota</button>}
       </div>
-      )}
-      {/* Center */}
-      {(!isMobile||activeId)&&(
-      <div className="card" style={{flex:1,padding:isMobile?20:32,display:'flex',flexDirection:'column',minWidth:0,marginTop:isMobile?12:0}}>
-        {isMobile&&activeId&&(
-          <button onClick={()=>setActiveId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',marginBottom:12,padding:'8px 12px',fontSize:'.88rem'}}>
-            <Icon name="arrow-left" size={16}/> Voltar às notas
+      <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:16,flexShrink:0}}>
+        {TABS.map(([v,l,ic])=>(
+          <button key={v} onClick={()=>setTab(v)} className="tab-btn" style={{color:tab===v?'var(--text)':'var(--muted)',borderBottom:tab===v?'2px solid var(--text)':'2px solid transparent',display:'flex',alignItems:'center',gap:5}}>
+            <Icon name={ic} size={12}/>{l}
+            {v==='trash'&&trashed.length>0&&<span style={{fontSize:'.68rem',opacity:.6}}>({trashed.length})</span>}
+            {v==='notes'&&<span style={{fontSize:'.68rem',opacity:.5}}>({quickNotes.length})</span>}
+            {v==='projects'&&<span style={{fontSize:'.68rem',opacity:.5}}>({miniProjects.length})</span>}
           </button>
-        )}
-        {active?(
-          <>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
-              <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleBlur('title',localTitle)} disabled={folder==='trash'}
-                style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-              <div style={{display:'flex',gap:4,flexShrink:0}}>
-                {folder==='notes'&&<button onClick={noteToTask} disabled={isAlreadyTask} title={isAlreadyTask?"Já na lista":"Adicionar à lista"} className="btn btn-ghost" style={{padding:6,opacity:isAlreadyTask?.4:1}}><Icon name="check-square" size={16}/></button>}
-                <button onClick={()=>toggleTrash(active.id)} className="btn btn-ghost" style={{padding:6}}
-                  onMouseEnter={e=>e.currentTarget.style.color=folder==='notes'?'#DC2626':'#276b3e'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}>
-                  <Icon name={folder==='notes'?'trash-2':'undo-2'} size={17}/>
-                </button>
-                {folder==='trash'&&<button onClick={()=>hardDelete(active.id)} className="btn btn-ghost text-link-danger" style={{padding:6}} title="Excluir permanentemente"><Icon name="trash" size={17}/></button>}
+        ))}
+      </div>
+
+      {/* Notes tab */}
+      {tab==='notes'&&(
+        <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
+          {/* List */}
+          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            <NoteList items={quickNotes} activeId={activeNoteId} onSelect={setActiveNoteId} emptyMsg="Nenhuma nota ainda."/>
+          </div>
+          {/* Editor */}
+          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+            {activeNote?(
+              <>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
+                  <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
+                    style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+                  <button onClick={()=>trashNote(activeNote.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
+                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+                </div>
+                <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleNoteBlur('content',localContent)} placeholder="Comece a escrever..."
+                  style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
+              </>
+            ):(
+              <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+                <Icon name="file-text" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                <p style={{fontSize:'.85rem'}}>Selecione ou crie uma nota</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Projects tab */}
+      {tab==='projects'&&(
+        <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
+          {/* Project list */}
+          <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:3,overflowY:'auto'}}>
+            {miniProjects.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px'}}>Nenhum projeto ainda.</div>}
+            {miniProjects.map(p=>(
+              <div key={p.id} onClick={()=>{setActiveProjId(p.id);setActiveEntryId((p.entries||[])[0]?.id||null);}}
+                style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${activeProjId===p.id?'var(--text)':'transparent'}`,background:activeProjId===p.id?'var(--surface)':'transparent',transition:'all .15s'}}
+                onMouseEnter={e=>{if(activeProjId!==p.id)e.currentTarget.style.background='var(--surface)';}}
+                onMouseLeave={e=>{if(activeProjId!==p.id)e.currentTarget.style.background='transparent';}}>
+                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
+                <div style={{fontSize:'.7rem',color:'var(--muted)',marginTop:2}}>{(p.entries||[]).length} entradas · {p.date}</div>
+              </div>
+            ))}
+          </div>
+          {/* Project workspace */}
+          {activeProj?(
+            <div style={{flex:1,display:'flex',gap:12,minWidth:0}}>
+              {/* Entries sidebar */}
+              <div className="card" style={{width:200,flexShrink:0,padding:'16px 12px',display:'flex',flexDirection:'column',gap:8}}>
+                {/* Project title */}
+                <input value={activeProj.title} onChange={e=>renameProject(activeProj.id,e.target.value)}
+                  style={{fontWeight:700,fontSize:'.88rem',background:'transparent',border:'none',outline:'none',color:'var(--text)',borderBottom:'1px solid var(--border)',paddingBottom:6,marginBottom:4,width:'100%'}}/>
+                <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
+                  {(activeProj.entries||[]).length===0&&<div style={{fontSize:'.78rem',color:'var(--muted)',padding:'8px 0'}}>Nenhuma entrada.</div>}
+                  {(activeProj.entries||[]).map((e,i)=>(
+                    <div key={e.id} onClick={()=>setActiveEntryId(e.id)}
+                      style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}
+                      onMouseEnter={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='var(--surface)';}}
+                      onMouseLeave={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='transparent';}}>
+                      <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
+                      <span style={{fontSize:'.8rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid var(--border)'}}>
+                  <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',fontSize:'.78rem',padding:'6px 0'}} onClick={addEntry}><Icon name="plus" size={12}/> Adicionar</button>
+                  <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}}
+                    onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+                    onClick={()=>trashProject(activeProj.id)}><Icon name="trash-2" size={11}/> Excluir projeto</button>
+                </div>
+              </div>
+              {/* Entry editor */}
+              <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
+                {activeEntry?(
+                  <>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
+                      <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={()=>handleEntryBlur('title',entryTitle)}
+                        style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+                      <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
+                        <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{activeEntry.date}</span>
+                        <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
+                          onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
+                      </div>
+                    </div>
+                    <textarea ref={entryAreaRef} value={entryContent} onChange={handleEntryContentChange} onBlur={()=>handleEntryBlur('content',entryContent)} placeholder="Escreva suas anotações aqui..."
+                      style={{flex:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
+                  </>
+                ):(
+                  <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+                    <Icon name="book-open" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                    <p style={{fontSize:'.85rem'}}>Selecione ou adicione uma entrada</p>
+                  </div>
+                )}
               </div>
             </div>
-            <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleBlur('content',localContent)} disabled={folder==='trash'} placeholder="Comece a escrever..."
-              style={{flex:isMobile?undefined:1,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',opacity:folder==='trash'?.5:1,minHeight:isMobile?160:undefined,overflow:isMobile?'hidden':undefined}}/>
-          </>
-        ):(
-          !isMobile&&<div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
-            <Icon name="file-text" size={28} style={{display:'block',margin:'0 auto 10px'}}/>
-            <p style={{fontSize:'.85rem'}}>Selecione ou crie uma nota</p>
-          </div>
-        )}
-      </div>
+          ):(
+            <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)'}}>
+              <Icon name="folder-open" size={32} style={{opacity:.3}}/>
+              <p style={{fontSize:'.85rem'}}>Selecione ou crie um projeto</p>
+            </div>
+          )}
+        </div>
       )}
-      {/* Right tasks - below on mobile, sidebar on desktop */}
-      {(!isMobile||!activeId)&&(
-      <div style={{width:isMobile?'100%':260,flexShrink:0,marginTop:isMobile?16:0}}>
-        <div className="card" style={{height:isMobile?'auto':'100%',padding:20,display:'flex',flexDirection:'column'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
-            <span className="label">Atividades</span>
-            <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{tasks.filter(t=>!t.done).length} pendentes</span>
-          </div>
-          <div style={{display:'flex',gap:6,marginBottom:12}}>
-            <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
-              placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',color:'var(--text)',paddingBottom:3}}/>
-            <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px'}}><Icon name="plus" size={12}/></button>
-          </div>
-          <div style={{flex:isMobile?undefined:1,overflowY:'auto'}}>
-            {tasks.length===0&&<p style={{fontSize:'.8rem',color:'var(--muted)',textAlign:'center',marginTop:16}}>Nenhuma atividade.</p>}
-            {tasks.map(t=>(
-              <div key={t.id} className="task-row" style={{padding:'7px 0'}}>
-                <div className={`task-check ${t.done?'done':''}`} onClick={()=>toggleTask(t.id)}/>
-                <span style={{flex:1,fontSize:'.82rem',textDecoration:t.done?'line-through':'none',color:t.done?'var(--muted)':'var(--text)',lineHeight:1.4,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.text}</span>
-                <button onClick={()=>removeTask(t.id)} className="btn btn-ghost" style={{padding:2,flexShrink:0}}><Icon name="x" size={12}/></button>
+
+      {/* Trash tab */}
+      {tab==='trash'&&(
+        <div style={{flex:1,overflowY:'auto'}}>
+          {trashed.length===0&&<div style={{textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.88rem'}}><Icon name="trash-2" size={26} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Lixeira vazia.</div>}
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {trashed.map(n=>(
+              <div key={n.id} className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+                <Icon name={n.type==='project'?'folder':'file-text'} size={14} style={{color:'var(--muted)',flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)'}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:'Nota'} · {n.date}</div>
+                </div>
+                <button onClick={()=>restoreNote(n.id)} className="btn btn-outline" style={{padding:'4px 12px',fontSize:'.75rem'}}><Icon name="undo-2" size={11}/> Restaurar</button>
+                <button onClick={()=>hardDeleteNote(n.id)} className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
               </div>
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+
+  // ── MOBILE LAYOUT ──
+  // Three levels: tab list → item list → editor
+  const [mobileProjView,setMobileProjView]=useState('list'); // 'list'|'entries'|'editor'
+
+  const goBackMobile=()=>{
+    if(tab==='projects'){
+      if(mobileProjView==='editor'){setMobileProjView('entries');return;}
+      if(mobileProjView==='entries'){setMobileProjView('list');setActiveProjId(null);return;}
+    }
+    if(tab==='notes'&&activeNoteId){setActiveNoteId(null);return;}
+  };
+
+  const showMobileBack=(tab==='notes'&&activeNoteId)||(tab==='projects'&&mobileProjView!=='list');
+
+  return(
+    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        {showMobileBack
+          ?<button className="btn btn-ghost" style={{padding:'8px 12px',fontSize:'.88rem'}} onClick={goBackMobile}><Icon name="arrow-left" size={16}/> Voltar</button>
+          :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Ideias</h1>
+        }
+        {tab==='notes'&&!activeNoteId&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={newNote}><Icon name="plus" size={13}/> Nova Nota</button>}
+        {tab==='projects'&&mobileProjView==='list'&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{newProject();setMobileProjView('entries');}}><Icon name="plus" size={13}/> Novo</button>}
+        {tab==='projects'&&mobileProjView==='entries'&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{addEntry();setMobileProjView('editor');}}><Icon name="plus" size={13}/> Entrada</button>}
       </div>
+
+      {/* Tabs */}
+      {!showMobileBack&&(
+        <div style={{display:'flex',background:'var(--bg)',borderRadius:10,padding:3,gap:2,marginBottom:16}}>
+          {TABS.map(([v,l,ic])=>(
+            <button key={v} onClick={()=>{setTab(v);setMobileProjView('list');setActiveNoteId(null);setActiveProjId(null);}}
+              style={{flex:1,padding:'7px 0',borderRadius:8,border:'none',fontFamily:'Figtree,sans-serif',fontSize:'.75rem',fontWeight:600,cursor:'pointer',
+                background:tab===v?'var(--surface)':'transparent',color:tab===v?'var(--text)':'var(--muted)',transition:'all .15s',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+              <Icon name={ic} size={11}/>{l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Notes tab */}
+      {tab==='notes'&&!activeNoteId&&(
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          {quickNotes.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma nota ainda.</div>}
+          {quickNotes.map(n=>(
+            <div key={n.id} onClick={()=>setActiveNoteId(n.id)} style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)',transition:'all .15s'}}>
+              <div style={{fontWeight:600,fontSize:'.88rem'}}>{n.title}</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:3}}>{n.date}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='notes'&&activeNoteId&&activeNote&&(
+        <div className="card" style={{padding:20,display:'flex',flexDirection:'column'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,borderBottom:'1px solid var(--border)',paddingBottom:10}}>
+            <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
+              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+            <button onClick={()=>trashNote(activeNote.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}><Icon name="trash-2" size={16}/></button>
+          </div>
+          <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleNoteBlur('content',localContent)} placeholder="Comece a escrever..."
+            style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.93rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',minHeight:240,overflow:'hidden'}}/>
+        </div>
+      )}
+
+      {/* Projects tab */}
+      {tab==='projects'&&mobileProjView==='list'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {miniProjects.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhum projeto ainda.</div>}
+          {miniProjects.map(p=>(
+            <div key={p.id} onClick={()=>{setActiveProjId(p.id);setActiveEntryId((p.entries||[])[p.entries.length-1]?.id||null);setMobileProjView('entries');}}
+              style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
+              <div style={{fontWeight:700,fontSize:'.88rem'}}>{p.title}</div>
+              <div style={{fontSize:'.75rem',color:'var(--muted)',marginTop:3}}>{(p.entries||[]).length} entradas · {p.date}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==='projects'&&mobileProjView==='entries'&&activeProj&&(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          <input value={activeProj.title} onChange={e=>renameProject(activeProj.id,e.target.value)}
+            style={{fontSize:'1.3rem',fontWeight:700,background:'transparent',border:'none',outline:'none',color:'var(--text)',borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:4,width:'100%'}}/>
+          {(activeProj.entries||[]).length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Nenhuma entrada ainda.</div>}
+          {(activeProj.entries||[]).map((e,i)=>(
+            <div key={e.id} onClick={()=>{setActiveEntryId(e.id);setMobileProjView('editor');}}
+              style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:`1px solid ${activeEntryId===e.id?'var(--text)':'var(--border)'}`,display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontSize:'.72rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</div>
+                <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2}}>{e.date}</div>
+              </div>
+              <Icon name="chevron-right" size={14} style={{color:'var(--muted)',flexShrink:0}}/>
+            </div>
+          ))}
+          <button className="btn btn-ghost" style={{alignSelf:'flex-start',marginTop:8,fontSize:'.78rem',color:'var(--muted)'}}
+            onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+            onClick={()=>trashProject(activeProj.id)}><Icon name="trash-2" size={12}/> Excluir projeto</button>
+        </div>
+      )}
+      {tab==='projects'&&mobileProjView==='editor'&&activeEntry&&(
+        <div className="card" style={{padding:20,display:'flex',flexDirection:'column'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,borderBottom:'1px solid var(--border)',paddingBottom:10}}>
+            <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={()=>handleEntryBlur('title',entryTitle)}
+              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+            <button onClick={()=>{deleteEntry(activeEntry.id);setMobileProjView('entries');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}><Icon name="trash-2" size={16}/></button>
+          </div>
+          <textarea ref={entryAreaRef} value={entryContent} onChange={handleEntryContentChange} onBlur={()=>handleEntryBlur('content',entryContent)} placeholder="Escreva suas anotações aqui..."
+            style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.93rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',minHeight:240,overflow:'hidden'}}/>
+        </div>
+      )}
+
+      {/* Trash tab */}
+      {tab==='trash'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {trashed.length===0&&<div style={{textAlign:'center',padding:32,color:'var(--muted)',fontSize:'.85rem'}}><Icon name="trash-2" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Lixeira vazia.</div>}
+          {trashed.map(n=>(
+            <div key={n.id} className="card" style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10}}>
+              <Icon name={n.type==='project'?'folder':'file-text'} size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:'.83rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+                <div style={{fontSize:'.7rem',color:'var(--muted)'}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:'Nota'}</div>
+              </div>
+              <button onClick={()=>restoreNote(n.id)} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.73rem'}}><Icon name="undo-2" size={10}/></button>
+              <button onClick={()=>hardDeleteNote(n.id)} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.73rem'}}><Icon name="trash-2" size={10}/></button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 });
-
 // - SOCIAL -
 const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
 
@@ -4031,7 +4284,7 @@ const App=()=>{
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
-        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} tasks={tasks} setTasks={setTasks} isMobile={isMobile}/>}
+        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
