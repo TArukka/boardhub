@@ -1637,6 +1637,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
 
     </div>
   );
+  return content;
 });
 
 // - NEW PROJECT MODAL -
@@ -1694,27 +1695,6 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       {/* All-tasks popup */}
-      {showAllTasks&&ReactDOM.createPortal(
-        <div style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setShowAllTasks(false)}>
-          <div style={{background:'var(--bg)',borderRadius:14,width:'100%',maxWidth:480,maxHeight:'80vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
-              <span className="label">Todas as Atividades <span style={{color:'var(--muted)',fontWeight:400}}>({tasks.length})</span></span>
-              <button onClick={()=>setShowAllTasks(false)} className="btn btn-ghost" style={{padding:6}}><Icon name="x" size={18}/></button>
-            </div>
-            <div style={{flex:1,overflowY:'auto',padding:'8px 12px'}}>
-              {tasks.length===0&&<p style={{textAlign:'center',color:'var(--muted)',fontSize:'.85rem',padding:24}}>Nenhuma atividade.</p>}
-              {tasks.map(t=>(
-                <div key={t.id} className="task-row" style={{paddingTop:8,paddingBottom:8}}>
-                  <div className={`task-check ${t.done?'done':''}`} onClick={()=>setTasks(p=>p.map(x=>x.id===t.id?{...x,done:!x.done}:x))}/>
-                  <span style={{flex:1,fontSize:'.88rem',textDecoration:t.done?'line-through':'none',color:t.done?'var(--muted)':'var(--text)',lineHeight:1.4}}>{t.text}</span>
-                  <button onClick={()=>setTasks(p=>p.filter(x=>x.id!==t.id))} className="btn btn-ghost" style={{padding:4}}><Icon name="x" size={13}/></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
       <div style={{display:'flex',gap:28,alignItems:'flex-start',flexDirection:isMobile?'column':'row',flex:1}}>
         {/* LEFT: projects list */}
         <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
@@ -2894,7 +2874,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
     </div>
   );
 
-  return(
+  return(<>
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
         <div><h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Galeria</h1>
@@ -2948,7 +2928,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
       ))}
     </div>
     {bannerPickerPortal}
-  );
+  </>);
 });
 
 // - IDEAS -
