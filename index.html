@@ -2290,6 +2290,28 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     upd('miniProjects',updated);
     if(activeInnerNoteId===id)setActiveInnerNoteId(null);
   };
+  const dragNoteRef=useRef(null);
+  const dragOverNoteRef=useRef(null);
+  const reorderInnerNotes=(miniId,fromIdx,toIdx)=>{
+    if(fromIdx===toIdx)return;
+    const minis=(local.miniProjects||[]).map(m=>{
+      if(m.id!==miniId)return m;
+      const notes=[...(m.innerNotes||[])];
+      const[moved]=notes.splice(fromIdx,1);
+      notes.splice(toIdx,0,moved);
+      return{...m,innerNotes:notes};
+    });
+    upd('miniProjects',minis);
+  };
+  const dragMiniRef=useRef(null);
+  const dragOverMiniRef=useRef(null);
+  const reorderMinis=(fromIdx,toIdx)=>{
+    if(fromIdx===toIdx)return;
+    const minis=[...(local.miniProjects||[])];
+    const[moved]=minis.splice(fromIdx,1);
+    minis.splice(toIdx,0,moved);
+    upd('miniProjects',minis);
+  };
   const miniImgRef=useRef();
   const handleMiniImgs=async e=>{
     const files=Array.from(e.target.files);
@@ -2544,12 +2566,18 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
-            {(local.miniProjects||[]).map(m=>{
+            {(local.miniProjects||[]).map((m,mIdx)=>{
               const expanded=expandedMiniIds.has(m.id);
               const isMiniActive=activeMiniId===m.id&&!activeInnerNoteId;
               const toggleExpand=e=>{e.stopPropagation();const s=new Set(expandedMiniIds);expanded?s.delete(m.id):s.add(m.id);setExpandedMiniIds(s);};
               return(
-                <div key={m.id}>
+                <div key={m.id}
+                  draggable
+                  onDragStart={e=>{dragMiniRef.current=mIdx;e.dataTransfer.effectAllowed='move';}}
+                  onDragOver={e=>{e.preventDefault();dragOverMiniRef.current=mIdx;}}
+                  onDrop={e=>{e.preventDefault();reorderMinis(dragMiniRef.current,dragOverMiniRef.current);dragMiniRef.current=null;dragOverMiniRef.current=null;}}
+                  onDragEnd={()=>{dragMiniRef.current=null;dragOverMiniRef.current=null;}}
+                >
                   {/* Animatic row */}
                   <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
@@ -2557,6 +2585,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       background:isMiniActive?'var(--text)':'transparent',transition:'all .15s'}}
                     onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
+                    <span style={{cursor:'grab',color:isMiniActive?'rgba(255,255,255,.4)':'var(--border)',display:'flex',flexShrink:0}} onMouseDown={e=>e.stopPropagation()}><Icon name="grip-vertical" size={11}/></span>
                     <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
                       <Icon name="chevron-right" size={13}/>
                     </button>
@@ -2570,15 +2599,22 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   {/* Expanded inner notes */}
                   {expanded&&(
                     <div style={{paddingLeft:20,display:'flex',flexDirection:'column',gap:2,marginTop:2,marginBottom:2}}>
-                      {(m.innerNotes||[]).map(n=>{
+                      {(m.innerNotes||[]).map((n,nIdx)=>{
                         const isNoteActive=activeInnerNoteId===n.id&&activeMiniId===m.id;
                         return(
-                          <div key={n.id} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
+                          <div key={n.id}
+                            draggable
+                            onDragStart={e=>{dragNoteRef.current={miniId:m.id,idx:nIdx};e.dataTransfer.effectAllowed='move';e.stopPropagation();}}
+                            onDragOver={e=>{e.preventDefault();e.stopPropagation();dragOverNoteRef.current=nIdx;}}
+                            onDrop={e=>{e.preventDefault();e.stopPropagation();if(dragNoteRef.current&&dragNoteRef.current.miniId===m.id)reorderInnerNotes(m.id,dragNoteRef.current.idx,dragOverNoteRef.current);dragNoteRef.current=null;dragOverNoteRef.current=null;}}
+                            onDragEnd={()=>{dragNoteRef.current=null;dragOverNoteRef.current=null;}}
+                            onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(n.id);}}
                             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',borderRadius:6,cursor:'pointer',
                               border:`1px solid ${isNoteActive?'var(--text)':'transparent'}`,
                               background:isNoteActive?'var(--surface)':'transparent',transition:'all .15s'}}
                             onMouseEnter={e=>{if(!isNoteActive)e.currentTarget.style.background='var(--surface)';}}
                             onMouseLeave={e=>{if(!isNoteActive)e.currentTarget.style.background='transparent';}}>
+                            <span style={{cursor:'grab',color:'var(--border)',display:'flex',flexShrink:0}}><Icon name="grip-vertical" size={10}/></span>
                             <Icon name="file-text" size={11} style={{flexShrink:0,color:'var(--muted)'}}/>
                             <span style={{fontSize:'.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,color:isNoteActive?'var(--text)':'var(--muted)'}}>{n.title||'Sem título'}</span>
                           </div>
