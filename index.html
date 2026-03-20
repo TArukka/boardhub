@@ -3137,7 +3137,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
   );
 
   return(<>
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto'}}>
+    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
         <div><h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)'}}>Acervo visual & estudos</p>}</div>
