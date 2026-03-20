@@ -9,8 +9,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
-  BoardHub v18 — Performance Build
-  • Instant CSS loading screen (renders before any JS)
+  BoardHub v19 — Optimized Build
+  • P0: XSS fix in splash error handler, mobile data URL crash, clearSave confirmation
+  • P1: useCallback on App handlers (React.memo now effective), shared AudioContext,
+        content-visibility scoped to .fade-up, Pomodoro "Hoje" counter live updates
+  • P2: ProjectDetail upd() deferred parent update, applyAutoLate persisted,
+        parseHash NaN guard, GanttTimeline todayISO memoized, stale popstate closure fixed
+  • P3: Dynamic seed dates, icon pre-resolve, CSS hover classes, dropdown Escape handler
   • Firebase lazy-loaded after first paint (~400KB off critical path)
   • Babel runs JSX-only transform (skips unnecessary env polyfills)
   • Preconnect hints at top of <head> for parallel DNS/TLS
@@ -23,58 +28,84 @@
 <!-- Firebase loaded LAZILY after first paint — see _lazyFirebase() below -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;}
+:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(28,25,23,.18);}
 *,*::before,*::after{box-sizing:border-box;}
-/* Offscreen rendering optimization - browser skips layout/paint for non-visible content */
-main>div{content-visibility:auto;contain-intrinsic-size:auto 500px;}
+/* Selection color */
+::selection{background:rgba(28,25,23,.12);color:var(--text);}
+/* Smooth scroll for scrollable containers */
+html{scroll-behavior:smooth;}
+/* Offscreen rendering optimization - scoped to view containers only (not overlays/modals) */
+main>.fade-up{content-visibility:auto;contain-intrinsic-size:auto 500px;}
 /* Image performance: prevent layout shift, smooth decode */
 img{max-width:100%;display:block;}
-body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;}
+body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
 h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
-::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
+::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s,transform .15s;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
 .card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
 .card:hover .card-delete-btn{opacity:1;}
 .card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
-.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;}
-.btn-dark{background:var(--text);color:white;}.btn-dark:hover{opacity:.85;transform:translateY(-1px);}
-.btn-outline{background:transparent;color:var(--muted);border:1px solid var(--border);}.btn-outline:hover{border-color:var(--text);color:var(--text);}
-.btn-ghost{background:transparent;color:var(--muted);border:none;padding:6px 10px;border-radius:6px;}.btn-ghost:hover{color:var(--text);background:var(--bg);}
-.btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}.btn-danger:hover{background:#FEE2E2;}
+.card-click:active{transform:scale(.985);box-shadow:0 1px 8px rgba(28,25,23,.06)!important;}
+/* Buttons — improved hover lift + press feedback */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;position:relative;}
+.btn:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);}
+.btn-dark{background:var(--text);color:white;}.btn-dark:hover{box-shadow:0 2px 10px rgba(28,25,23,.2);transform:translateY(-1px);}.btn-dark:active{transform:translateY(0);box-shadow:none;opacity:.9;}
+.btn-outline{background:transparent;color:var(--muted);border:1px solid var(--border);}.btn-outline:hover{border-color:var(--text);color:var(--text);}.btn-outline:active{background:var(--bg);}
+.btn-ghost{background:transparent;color:var(--muted);border:none;padding:6px 10px;border-radius:6px;}.btn-ghost:hover{color:var(--text);background:var(--bg);}.btn-ghost:active{background:var(--border);}
+.btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}.btn-danger:hover{background:#FEE2E2;}.btn-danger:active{background:#FECACA;}
+/* Nav items with subtle left accent on active */
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.85rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;background:transparent;border:none;outline:none;width:100%;font-family:'Figtree',sans-serif;letter-spacing:.01em;}
-.nav-item:hover{background:rgba(28,25,23,.05);color:var(--text);}.nav-item.active{background:var(--text);color:white;}
+.nav-item:hover{background:rgba(28,25,23,.05);color:var(--text);}.nav-item.active{background:var(--text);color:white;box-shadow:0 1px 4px rgba(28,25,23,.15);}
+.nav-item:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);}
 .tag{display:inline-block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:4px;}
 .tag-green{background:#E8F5EC;color:#276b3e;}.tag-yellow{background:#FEF9E7;color:#92700b;}.tag-gray{background:#F0EDE9;color:var(--muted);}.tag-red{background:#FDEDED;color:#9B1C1C;}.tag-blue{background:#EFF6FF;color:#1e40af;}
-.input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;color:var(--text);transition:border-color .2s;}.input-bare:focus{border-color:var(--text);}
-.input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Figtree',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s;width:100%;}.input-box:focus{border-color:var(--text);}
+.input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;color:var(--text);transition:border-color .2s,box-shadow .2s;}.input-bare:focus{border-color:var(--text);box-shadow:0 1px 0 0 var(--text);}
+/* Input — subtle focus glow */
+.input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Figtree',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}.input-box:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(28,25,23,.06);}
 input[type="date"]{font-family:'Figtree',sans-serif;}
 .label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
 .tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
+.tab-btn:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);border-radius:4px;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
 .fade-up{animation:fadeUp .35s ease both;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
-.overlay{position:fixed;inset:0;height:100vh;background:transparent;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
-.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.15);max-height:95vh;overflow-y:auto;}
-.upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s;padding:24px;text-align:center;color:var(--muted);}
-.upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}
+/* Overlay now has a visible backdrop */
+.overlay{position:fixed;inset:0;height:100vh;background:rgba(28,25,23,.3);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
+.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.18);max-height:95vh;overflow-y:auto;}
+.upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s,transform .15s;padding:24px;text-align:center;color:var(--muted);}
+.upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}.upload-zone:active{transform:scale(.98);}
 .cover-wrap{position:relative;}.cover-edit-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .25s;cursor:pointer;}
 .cover-wrap:hover .cover-edit-overlay{background:rgba(0,0,0,.45);opacity:1;}
-.task-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}.task-row:last-child{border-bottom:none;}
-.task-check{width:18px;height:18px;border-radius:5px;border:2px solid var(--border-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;background:transparent;}
-.task-check.done{background:var(--text);border-color:var(--text);}.task-check.done::after{content:'';width:5px;height:9px;border:2px solid white;border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);display:block;}
+.task-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);transition:background .1s;}.task-row:last-child{border-bottom:none;}
+/* Task checkbox with smooth fill animation */
+.task-check{width:18px;height:18px;border-radius:5px;border:2px solid var(--border-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.4,0,.2,1);background:transparent;}
+.task-check:hover{border-color:var(--muted);}
+.task-check.done{background:var(--text);border-color:var(--text);transform:scale(1);animation:checkPop .25s cubic-bezier(.34,1.56,.64,1);}
+.task-check.done::after{content:'';width:5px;height:9px;border:2px solid white;border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);display:block;animation:checkDraw .2s ease .05s both;}
+@keyframes checkPop{0%{transform:scale(.8);}50%{transform:scale(1.1);}100%{transform:scale(1);}}
+@keyframes checkDraw{from{opacity:0;transform:rotate(45deg) translate(-1px,-1px) scale(.5);}to{opacity:1;transform:rotate(45deg) translate(-1px,-1px) scale(1);}}
 @keyframes lbIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
-.lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
+.lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
 .lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;}
 .ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Figtree',sans-serif;transition:all .12s;}
+.ptask-pill:active{transform:scale(.92);}
 .ptask-Pendente{background:#F0EDE9;color:var(--muted);}.ptask-Fazendo{background:#FEF9E7;color:#92700b;}.ptask-Concluído{background:#E8F5EC;color:#276b3e;}.ptask-Atrasado{background:#FDEDED;color:#9B1C1C;}
-@keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
-.save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .25s ease;display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;}
+@keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px) scale(.95);}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
+.save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .3s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(28,25,23,.2);}
+.drag-handle{cursor:grab;color:var(--border-2);opacity:0;transition:opacity .15s;display:flex;align-items:center;flex-shrink:0;padding:2px 3px;}
+.drag-handle:active{cursor:grabbing;}
+.drag-row:hover .drag-handle,.drag-card:hover .drag-handle{opacity:1;}
+.drag-over-top{border-top:2px solid var(--text)!important;}
+.drag-over-left{outline:2px solid var(--text)!important;}
 
 /* Gantt styles */
 .gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
 .gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
+/* Gallery image hover zoom — replaces JS onMouseEnter/Leave handlers */
+.img-zoom{transition:transform .4s;}.img-zoom:hover{transform:scale(1.06);}
+.img-zoom-sm{transition:transform .3s;}.img-zoom-sm:hover{transform:scale(1.03);}
 
 /* Hover utilities - replaces onMouseEnter/Leave JS handlers */
 .hover-text:hover{color:var(--text)!important;}
@@ -88,29 +119,29 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 
 /* - BOTTOM TAB BAR - */
-.bottom-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:80;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:stretch;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
-.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
+.bottom-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:80;background:rgba(253,252,250,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);display:flex;align-items:stretch;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
+.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s,transform .1s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
 .bottom-tab-item.active{color:var(--text);}
-.bottom-tab-item:active{opacity:.7;}
+.bottom-tab-item:active{transform:scale(.9);opacity:.7;}
 @keyframes moreSheetIn{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
 @keyframes moreOverlayIn{from{opacity:0;}to{opacity:1;}}
-.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);z-index:90;animation:moreOverlayIn .2s ease;}
-.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .25s ease;max-height:70vh;overflow-y:auto;}
+.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:90;animation:moreOverlayIn .2s ease;}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .3s cubic-bezier(.32,0.72,.5,1.02);max-height:70vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(28,25,23,.15);}
 .more-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--border-2);margin:0 auto 16px;}
-.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s;-webkit-tap-highlight-color:transparent;}
-.more-sheet-item:active{background:var(--bg);}
+.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent;}
+.more-sheet-item:active{background:var(--bg);transform:scale(.97);}
 .more-sheet-item.active-sheet{background:var(--bg);font-weight:600;}
-/* Mobile header bar */
-.mobile-header{position:sticky;top:0;z-index:50;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+/* Mobile header bar — frosted glass */
+.mobile-header{position:sticky;top:0;z-index:50;background:rgba(253,252,250,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .mobile-header-title{font-family:'Cormorant Garamond',serif;font-size:1.15rem;font-weight:500;letter-spacing:-.02em;}
 /* FAB */
-.fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25);z-index:70;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
-.fab:active{transform:scale(.92);}
+.fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25),0 1px 3px rgba(28,25,23,.1);z-index:70;transition:transform .15s,box-shadow .15s;-webkit-tap-highlight-color:transparent;}
+.fab:active{transform:scale(.88);box-shadow:0 2px 8px rgba(28,25,23,.2);}
 
 /* - MOBILE-LAYOUT COMPONENT STYLES (always applied - used whenever isMobile=true) - */
 /* Compact list rows */
-.compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s;min-height:64px;}
-.compact-row:active{background:var(--bg);}
+.compact-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s,transform .1s;min-height:64px;}
+.compact-row:active{background:var(--bg);transform:scale(.985);}
 .compact-row:last-child{border-bottom:none;}
 .compact-row-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;background-color:var(--bg);overflow:hidden;}
 .compact-row-info{flex:1;min-width:0;}
@@ -118,8 +149,9 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .compact-row-meta{font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* Segmented tabs */
 .seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
-.seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .15s;background:transparent;color:var(--muted);}
-.seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .2s cubic-bezier(.4,0,.2,1);background:transparent;color:var(--muted);}
+.seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1);}
+.seg-tab:active:not(.active){background:rgba(28,25,23,.04);}
 /* Vertical timeline */
 .vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
 .vtimeline-item:last-child{border-bottom:none;}
@@ -127,6 +159,9 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .vtimeline-dot.done{background:var(--text);border-color:var(--text);}
 .vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
 .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
+.drag-item .drag-handle{opacity:0;transition:opacity .12s;}
+.drag-item:hover .drag-handle{opacity:1;}
+.drag-item.drag-over{outline:2px dashed var(--text);outline-offset:-2px;border-radius:8px;background:rgba(28,25,23,.02);}
 
 /* - RESPONSIVE - */
 @media(max-width:768px){
@@ -136,8 +171,8 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
   .main-mobile{margin-left:0!important;padding:16px 16px 72px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;overflow-x:hidden!important;width:100%!important;box-sizing:border-box!important;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
-  /* Overlay / Modals */
-  .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
+  /* Overlay / Modals — slide up from bottom on mobile */
+  .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
   
   /* Save toast - above tab bar */
@@ -184,7 +219,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
       <div style="width:40%;height:100%;background:#1C1917;border-radius:3px;animation:splashBar 1.2s ease infinite"></div>
     </div>
   </div>
-  <style>#splash{transition:opacity .3s}@keyframes splashBar{0%{transform:translateX(-100%)}50%{transform:translateX(150%)}100%{transform:translateX(250%)}}</style>
+  <style>#splash{transition:opacity .4s ease}@keyframes splashBar{0%{transform:translateX(-100%)}50%{transform:translateX(150%)}100%{transform:translateX(250%)}}</style>
   <script>
     window.__splashTimeout=setTimeout(function(){
       var s=document.getElementById('splash');if(!s)return;
@@ -193,12 +228,14 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
     window.addEventListener('error',function(e){
       clearTimeout(window.__splashTimeout);
       var s=document.getElementById('splash');if(!s)return;
-      s.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:sans-serif;padding:24px;text-align:center"><div style="font-size:2.4rem;font-weight:500;font-family:serif;color:#1C1917">BoardHub</div><div style="font-size:.8rem;color:#DC2626;max-width:400px">Erro: '+e.message+'</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#1C1917;color:white;border:none;border-radius:8px;cursor:pointer">Recarregar</button></div>';
+      var safeMsg=document.createElement('div');
+      safeMsg.textContent=e.message||'Erro desconhecido';
+      s.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:12px;font-family:sans-serif;padding:24px;text-align:center"><div style="font-size:2.4rem;font-weight:500;font-family:serif;color:#1C1917">BoardHub</div><div style="font-size:.8rem;color:#DC2626;max-width:400px">Erro: '+safeMsg.innerHTML+'</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#1C1917;color:white;border:none;border-radius:8px;cursor:pointer">Recarregar</button></div>';
     });
   </script>
 </div>
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
@@ -253,23 +290,26 @@ const loadIdentity = () => { try { const s = localStorage.getItem(ID_KEY); retur
 const saveIdentity = id => { try { localStorage.setItem(ID_KEY, JSON.stringify(id)); } catch {} };
 
 // - SEED DATA -
+// Dynamic dates relative to today so new users see relevant timelines
+const _seedDate=(daysOffset)=>{const d=new Date();d.setDate(d.getDate()+daysOffset);return d.toISOString().slice(0,10);};
+const _seedFmt=(daysOffset)=>{const d=new Date();d.setDate(d.getDate()+daysOffset);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');};
 const SEED = {
   projects:[
-    {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:"2024-11-01",deadline:"2024-11-22",deleted:false,
+    {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:_seedDate(-14),deadline:_seedDate(21),deleted:false,
      cover:"https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&q=80&w=1200",
      notes:"Referências de motion blur e cores saturadas. Diretor quer câmera baixa nas cenas de corrida.",
      mentors:[],researchImages:[],researchNotes:[],
-     timelineEvents:[{id:1,date:"10/Nov",title:"Briefing"},{id:2,date:"15/Nov",title:"Roughs v1"}]},
-    {id:2,type:'personal',title:"Graphic Novel 'Ecos'",client:"Projeto Autoral",status:"Pausado",startDate:"2024-10-01",deadline:"2024-12-30",deleted:false,
+     timelineEvents:[{id:1,date:_seedFmt(-7),title:"Briefing"},{id:2,date:_seedFmt(7),title:"Roughs v1"}]},
+    {id:2,type:'personal',title:"Graphic Novel 'Ecos'",client:"Projeto Autoral",status:"Pausado",startDate:_seedDate(-45),deadline:_seedDate(60),deleted:false,
      cover:"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200",
      notes:"Estudo de arquitetura brutalista. Personagem principal precisa de redesign.",
      mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[]},
-    {id:3,type:'work',title:"Série Documental — Amazônia",client:"TV Cultura",status:"Concluído",startDate:"2024-09-01",deadline:"2024-10-15",deleted:false,
+    {id:3,type:'work',title:"Série Documental — Amazônia",client:"TV Cultura",status:"Concluído",startDate:_seedDate(-90),deadline:_seedDate(-30),deleted:false,
      cover:"https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1200",
      notes:"Projeto concluído. Feedback excelente da produtora.",
      mentors:[],researchImages:[],researchNotes:[],
      projectTasks:[{id:1,text:"Entrega final",status:"Concluído"}],
-     timelineEvents:[{id:1,date:"02/Set",title:"Kickoff"},{id:2,date:"15/Set",title:"Animatic"},{id:3,date:"15/Out",title:"Entrega final"}]}
+     timelineEvents:[{id:1,date:_seedFmt(-85),title:"Kickoff"},{id:2,date:_seedFmt(-60),title:"Animatic"},{id:3,date:_seedFmt(-30),title:"Entrega final"}]}
   ],
   clients:[
     {id:1,name:"Fernanda Costa",company:"O2 Filmes",email:"fer@o2.com",role:"Produtora Executiva",status:"Ativo",notes:"",photo:"",deleted:false},
@@ -291,10 +331,10 @@ const SEED = {
   ],
   socialPosts:[],
   galleryPosts:[
-    {id:1,folder:'movie-studies',title:"Luz em Blade Runner",date:"2024-02-14",content:"Análise de silhuetas e luz contrastante.",images:["https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=800"],deleted:false},
-    {id:2,folder:'sketchbooks',title:"Metrô — Linha 4",date:"2024-02-10",content:"Gestos rápidos no trajeto diário.",images:["https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&q=80&w=800"],deleted:false},
-    {id:3,folder:'movie-studies',title:"Monocromia de Dune",date:"2024-01-20",content:"Estudo de paleta laranja/areia.",images:["https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=800"],deleted:false},
-    {id:4,folder:'gestures',title:"Estudo de Movimento",date:"2024-01-15",content:"30 segundos por pose.",images:["https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800"],deleted:false}
+    {id:1,folder:'movie-studies',title:"Luz em Blade Runner",date:_seedDate(-35),content:"Análise de silhuetas e luz contrastante.",images:["https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:2,folder:'sketchbooks',title:"Metrô — Linha 4",date:_seedDate(-40),content:"Gestos rápidos no trajeto diário.",images:["https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:3,folder:'movie-studies',title:"Monocromia de Dune",date:_seedDate(-55),content:"Estudo de paleta laranja/areia.",images:["https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=800"],deleted:false},
+    {id:4,folder:'gestures',title:"Estudo de Movimento",date:_seedDate(-60),content:"30 segundos por pose.",images:["https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800"],deleted:false}
   ]
 };
 
@@ -341,6 +381,14 @@ const Icon=({name,size=16,style={}})=>{
   _resolveIcon(name);
   return React.createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
 };
+// Pre-resolve high-frequency icons so first render avoids DOM fallback
+['layout-dashboard','folder-open','image','lightbulb','graduation-cap','share-2','users','refresh-cw',
+ 'plus','x','check','trash-2','arrow-left','arrow-right','search','calendar','star','hard-drive',
+ 'check-circle','play','pause','brain','coffee','timer','clock','rotate-ccw','grip-vertical',
+ 'chevron-right','file-text','folder','menu','smartphone','monitor','camera','book-open',
+ 'list-checks','check-square','user-plus','image-plus','calendar-days','maximize-2','loader',
+ 'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle'
+].forEach(_resolveIcon);
 
 const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
@@ -1011,7 +1059,19 @@ const pomoTimerSave = d => { try { localStorage.setItem(POMO_TIMER_LS, JSON.stri
 const pomoTimerLoad = () => { try { const s = localStorage.getItem(POMO_TIMER_LS); return s ? JSON.parse(s) : null; } catch(e) { return null; } };
 const pomoTimerClear = () => { try { localStorage.removeItem(POMO_TIMER_LS); } catch(e) {} };
 
-// Web Audio sounds
+// Web Audio sounds — elevator music aesthetic
+// Shared AudioContext — avoids browser's ~6 concurrent context limit
+let _sharedAudioCtx = null;
+const _getAudioCtx = () => {
+  try {
+    if (!_sharedAudioCtx || _sharedAudioCtx.state === 'closed') {
+      _sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (_sharedAudioCtx.state === 'suspended') _sharedAudioCtx.resume();
+    return _sharedAudioCtx;
+  } catch(e) { return null; }
+};
+// _playNote used by medal sounds (routes to ctx.destination directly)
 const _playNote = (ctx, freq, startT, vol, decay, type='triangle', detune=0) => {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -1025,30 +1085,81 @@ const _playNote = (ctx, freq, startT, vol, decay, type='triangle', detune=0) => 
   osc.start(startT); osc.stop(startT + decay + 0.05);
 };
 
+// Convolution reverb — creates a warm, roomy ambience
+const _makeReverb = (ctx, secs=1.8) => {
+  const len = Math.ceil(ctx.sampleRate * secs);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for(let ch=0; ch<2; ch++){
+    const d = buf.getChannelData(ch);
+    for(let i=0; i<len; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.2) * 0.5;
+  }
+  const conv = ctx.createConvolver();
+  conv.buffer = buf;
+  return conv;
+};
+
 const playPomoSound = (type) => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+
+    // Reverb wet/dry chain
+    const reverb   = _makeReverb(ctx);
+    const dryBus   = ctx.createGain();
+    const wetBus   = ctx.createGain();
+    dryBus.gain.value = 0.62;
+    wetBus.gain.value = 0.42;
+    reverb.connect(wetBus);
+    wetBus.connect(ctx.destination);
+    dryBus.connect(ctx.destination);
+
+    // All notes feed into this bus → split to dry + reverb
+    const bus = ctx.createGain();
+    bus.connect(dryBus);
+    bus.connect(reverb);
+
+    const note = (freq, t, vol, decay, type='triangle', detune=0) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(bus);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if(detune) osc.detune.setValueAtTime(detune, t);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(vol, t + 0.04);   // soft mallet attack
+      gain.gain.exponentialRampToValueAtTime(0.001, t + decay);
+      osc.start(t); osc.stop(t + decay + 0.15);
+    };
+
+    const T = ctx.currentTime;
+
     if (type === 'work_end') {
-      // Elevator ding — smooth Fmaj7 descending arpeggio, vibraphone feel
-      // F5 → C5 → A4 → F4, triangle + slight shimmer layer
-      const seq = [349.23, 523.25, 440.00, 349.23]; // F4→C5→A4→F4 warm descent
-      seq.forEach((freq, i) => {
-        const t = ctx.currentTime + i * 0.32;
-        _playNote(ctx, freq * 2, t, 0.30, 1.6, 'triangle');        // main bell
-        _playNote(ctx, freq * 2, t, 0.10, 1.2, 'sine', 4);         // shimmer layer
+      // Grand lobby chime — lush Cmaj9 descending arpeggio, 5 notes over ~1.5s
+      // B4 → G4 → E4 → C4 → G3  (warm, resolved, "you may proceed")
+      [
+        [493.88, 0.00, 0.24, 2.8],
+        [392.00, 0.30, 0.22, 2.6],
+        [329.63, 0.60, 0.21, 2.5],
+        [261.63, 0.90, 0.20, 2.4],
+        [196.00, 1.20, 0.16, 2.2],
+      ].forEach(([f,dt,v,d]) => {
+        note(f,  T+dt, v,    d,      'triangle');
+        note(f,  T+dt, v*0.15, d*0.7, 'sine', 3); // warmth shimmer
       });
     } else if (type === 'break_end') {
-      // Single warm elevator "ding" — classic lobby bell
-      const t = ctx.currentTime;
-      _playNote(ctx, 880, t,        0.28, 2.0, 'triangle');
-      _playNote(ctx, 880, t,        0.10, 1.6, 'sine', 3);
-      _playNote(ctx, 1320, t+0.01,  0.08, 1.0, 'sine');             // gentle overtone
+      // Single resonant lobby ding — A5, clean and clear with a fading bloom
+      note(880.00, T,      0.22, 3.0, 'triangle');
+      note(880.00, T,      0.09, 2.2, 'sine', 2.5);
+      note(1174.66,T+0.01, 0.06, 1.8, 'sine');        // soft maj3rd overtone
     } else if (type === 'pause') {
-      _playNote(ctx, 440, ctx.currentTime, 0.18, 0.22, 'triangle');
+      // Two descending notes — a settling "going down" fifth, G4→D4
+      note(392.00, T,      0.16, 1.4, 'triangle');
+      note(293.66, T+0.22, 0.14, 1.3, 'triangle');
     } else if (type === 'start') {
-      // Two soft upward elevator chimes
-      _playNote(ctx, 523.25, ctx.currentTime,        0.22, 0.7, 'triangle');
-      _playNote(ctx, 659.25, ctx.currentTime + 0.18, 0.22, 0.7, 'triangle');
+      // Rising pentatonic triad — C5→E5→G5, optimistic lift
+      note(523.25, T,      0.18, 1.5, 'triangle');
+      note(659.25, T+0.20, 0.18, 1.5, 'triangle');
+      note(783.99, T+0.40, 0.20, 1.7, 'triangle');
     }
   } catch(e) {}
 };
@@ -1056,7 +1167,8 @@ const playPomoSound = (type) => {
 // Medal achievement sounds — escalating celebration
 const playMedalSound = (level) => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t0 = ctx.currentTime;
     if (level === 'bronze') {
       // Warm 3-note rise — modest win
@@ -1104,10 +1216,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     const saved = pomoTimerLoad();
     if (saved && saved.isActive && saved.endTimestamp) {
       const remaining = Math.max(0, Math.ceil((saved.endTimestamp - Date.now()) / 1000));
-      return { timeLeft: remaining, isActive: remaining > 0, mode: saved.mode || 'focus' };
+      return { timeLeft: remaining, isActive: remaining > 0, mode: saved.mode || 'focus', endTimestamp: saved.endTimestamp };
     }
-    if (saved) return { timeLeft: saved.timeLeft ?? FOCUS_SECS, isActive: false, mode: saved.mode || 'focus' };
-    return { timeLeft: FOCUS_SECS, isActive: false, mode: 'focus' };
+    if (saved) return { timeLeft: saved.timeLeft ?? FOCUS_SECS, isActive: false, mode: saved.mode || 'focus', endTimestamp: null };
+    return { timeLeft: FOCUS_SECS, isActive: false, mode: 'focus', endTimestamp: null };
   };
   const _init = _initState();
 
@@ -1120,7 +1232,8 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const isActiveRef = useRef(_init.isActive);
   const unsavedSecsRef = useRef(0);
   const pendingSecsRef = useRef(0);
-  const endTimestampRef = useRef(_init.isActive ? (_init.timeLeft * 1000 + Date.now()) : null);
+  const [displayUnsaved,setDisplayUnsaved]=useState(0); // mirrors unsavedSecsRef for re-render
+  const endTimestampRef = useRef(_init.endTimestamp ?? (_init.isActive ? (Date.now() + _init.timeLeft * 1000) : null));
   modeRef.current = mode;
   timeLeftRef.current = timeLeft;
   isActiveRef.current = isActive;
@@ -1147,6 +1260,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     if (unsavedSecsRef.current > 0) {
       const secs = unsavedSecsRef.current;
       unsavedSecsRef.current = 0;
+      setDisplayUnsaved(0);
       pendingSecsRef.current += secs;
       setPomoData(prev => {
         const key = pomoTodayKey();
@@ -1179,8 +1293,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
   useEffect(() => {
     if (!isActive) return;
-    // Set/refresh the end anchor whenever we start
-    endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
+    // Only anchor if not already set (toggle() or localStorage restore already set it)
+    if (!endTimestampRef.current) {
+      endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
+    }
     persistTimerState(true, timeLeftRef.current, modeRef.current);
 
     const id = setInterval(() => {
@@ -1222,6 +1338,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         const prev = timeLeftRef.current;
         const delta = Math.max(0, prev - remaining);
         unsavedSecsRef.current += delta;
+        setDisplayUnsaved(unsavedSecsRef.current); // trigger re-render for "Hoje" counter
         if (unsavedSecsRef.current >= 30) flushPomoSecs();
       }
       timeLeftRef.current = remaining;
@@ -1265,12 +1382,9 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const secs = timeLeft % 60;
   const timeStr = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
   const pct = mode === 'focus' ? timeLeft / FOCUS_SECS : timeLeft / BREAK_SECS;
-  const r = 46;
-  const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - pct);
   const isFocus = mode === 'focus';
   const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
-  const todayDisplay = todaySecs + unsavedSecsRef.current + pendingSecsRef.current;
+  const todayDisplay = todaySecs + displayUnsaved + pendingSecsRef.current;
 
   // Day medal tiers — Bronze: 2h, Silver: 4h, Gold: 6h, Diamond: 8h
   const DAY_TIERS = [
@@ -1365,7 +1479,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
           <div style={{position:'relative',width:76,height:76,flexShrink:0}}>
             <svg width="76" height="76" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
               <circle cx="38" cy="38" r={34} fill="none" stroke="var(--border)" strokeWidth="4"/>
-              <circle cx="38" cy="38" r={34} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4" strokeDasharray={2*Math.PI*34} strokeDashoffset={2*Math.PI*34*(1-pct)} strokeLinecap="round" style={{transition:'stroke-dashoffset 1s linear,stroke .4s'}}/>
+              <circle cx="38" cy="38" r={34} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4" strokeDasharray={2*Math.PI*34} strokeDashoffset={2*Math.PI*34*(1-pct)} strokeLinecap="round" style={{transition:'stroke-dashoffset .8s cubic-bezier(.4,0,.2,1),stroke .4s'}}/>
             </svg>
             <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
               <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.25rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
@@ -1503,6 +1617,35 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 };
 
 // - DASHBOARD -
+// Drag-to-reorder hook — used by IdeasLab, Clients, Mentors
+const useDragReorder = (setList) => {
+  const srcId = useRef(null);
+  const [dragId,  setDragId]  = useState(null);
+  const [overId,  setOverId]  = useState(null);
+  const start = (e, id) => {
+    srcId.current = id; setDragId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(id));
+  };
+  const over = (e, id) => { e.preventDefault(); e.dataTransfer.dropEffect='move'; setOverId(id); };
+  const drop = (e, id) => {
+    e.preventDefault(); setOverId(null); setDragId(null);
+    if (!srcId.current || srcId.current === id) { srcId.current = null; return; }
+    setList(prev => {
+      const arr = [...prev];
+      const fi = arr.findIndex(x => x.id === srcId.current);
+      const ti = arr.findIndex(x => x.id === id);
+      if (fi < 0 || ti < 0) return prev;
+      const [item] = arr.splice(fi, 1);
+      arr.splice(ti, 0, item);
+      return arr;
+    });
+    srcId.current = null;
+  };
+  const end = () => { srcId.current = null; setDragId(null); setOverId(null); };
+  return { start, over, drop, end, dragId, overId };
+};
+
 const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile,setSelectedProject})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
@@ -1553,7 +1696,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               <span className="label">Em andamento</span>
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={10}/></button>
             </div>
-            {active.length===0&&<div className="card" style={{padding:12,textAlign:'center',color:'var(--muted)',fontSize:'.78rem'}}>Nenhum projeto ativo.</div>}
+            {active.length===0&&<div className="card" style={{padding:'20px 12px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+              <Icon name="folder-open" size={20} style={{opacity:.3}}/>
+              <span>Nenhum projeto ativo no momento.</span>
+            </div>}
             <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6}}>
               {active.map(p=>(
                 <div key={p.id} className="card card-click" onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:9}}>
@@ -1616,7 +1762,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                   placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.8rem',color:'var(--text)',paddingBottom:3}}/>
                 <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px',fontSize:'.73rem'}}><Icon name="plus" size={12}/></button>
               </div>
-              {tasks.length===0&&<p style={{fontSize:'.78rem',color:'var(--muted)',margin:'5px 0 0',textAlign:'center'}}>Nenhuma atividade.</p>}
+              {tasks.length===0&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'12px 0',color:'var(--muted)'}}>
+                <Icon name="check-circle" size={18} style={{opacity:.25}}/>
+                <p style={{fontSize:'.78rem',margin:0}}>Tudo limpo! Adicione uma atividade acima.</p>
+              </div>}
               <div style={{overflow:'auto',flex:1}}>
                 {tasks.map(t=>(
                   <div key={t.id} className="task-row" style={{paddingTop:isSmall?4:6,paddingBottom:isSmall?4:6}}>
@@ -1638,7 +1787,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               <span className="label">Notas Recentes</span>
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('ideas')}>Ver todas <Icon name="arrow-right" size={10}/></button>
             </div>
-            {recentNotes.length===0&&<div className="card" style={{padding:10,textAlign:'center',color:'var(--muted)',fontSize:'.76rem'}}>Nenhuma nota.</div>}
+            {recentNotes.length===0&&<div className="card" style={{padding:'20px 12px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+              <Icon name="lightbulb" size={20} style={{opacity:.25}}/>
+              <span>Suas notas e ideias vão aparecer aqui.</span>
+            </div>}
             <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:5}}>
               {recentNotes.map(n=>(
                 <div key={n.id} className="card card-click" onClick={()=>setView('ideas')} style={{padding:isSmall?'6px 10px':'7px 12px'}}>
@@ -1920,7 +2072,7 @@ const todayISO=()=>new Date().toISOString().slice(0,10);
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
 
 const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=>{
-  const today=todayISO();
+  const today=useMemo(()=>todayISO(),[]);
   const [selectedId,setSelectedId]=useState(null);
   const [editDraft,setEditDraft]=useState(null);
   const [newTaskName,setNewTaskName]=useState('');
@@ -1990,8 +2142,9 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
   const barGeom=t=>{
     const s=t.startDate||(projectStart||today);
     const e=t.dueDate||(projectEnd||addDays(today,7));
+    const visStart=s<chartStart?chartStart:s;
     const left=Math.max(0,daysBetween(chartStart,s))*DAY_W;
-    const width=Math.max(DAY_W,(daysBetween(s,e)+1)*DAY_W);
+    const width=Math.max(DAY_W,(daysBetween(visStart,e)+1)*DAY_W);
     return{left,width};
   };
 
@@ -2215,6 +2368,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const coverRef=useRef();
 
   const projectRef=useRef(project);
+  // On mount: persist auto-late status changes back to parent
+  useEffect(()=>{
+    const original=project.projectTasks||[];
+    const updated=applyAutoLate(original);
+    const changed=updated.some((t,i)=>t.status!==original[i]?.status);
+    if(changed)onUpdate({...project,projectTasks:updated});
+  },[]);// runs once on mount
   useEffect(()=>{
     // Only update local if the project changed externally (not from our own upd())
     if(projectRef.current!==project){
@@ -2224,15 +2384,23 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     }
   },[project]);
 
-  // Safe update using functional setState to avoid stale closures
+  // Safe update — defers onUpdate to avoid calling parent setter inside child setState
+  const _pendingUpdate=useRef(null);
   const upd=(field,value)=>{
     setLocal(prev=>{
       const updated={...prev,[field]:value};
       projectRef.current=updated;
-      onUpdate(updated);
+      _pendingUpdate.current=updated;
       return updated;
     });
   };
+  // Flush pending updates to parent after React commits the state
+  useEffect(()=>{
+    if(_pendingUpdate.current){
+      onUpdate(_pendingUpdate.current);
+      _pendingUpdate.current=null;
+    }
+  });
 
 
   // Mentors
@@ -2261,6 +2429,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const updateResearch=(field,val)=>{const rn=(local.researchNotes||[]).map(n=>n.id===activeResearchId?{...n,[field]:val}:n);upd('researchNotes',rn);};
   const deleteResearch=id=>{upd('researchNotes',(local.researchNotes||[]).filter(n=>n.id!==id));setActiveResearchId((local.researchNotes||[]).find(n=>n.id!==id)?.id||null);};
   const researchImgRef=useRef();
+  const researchTextareaRef=useRef();
+  useEffect(()=>{
+    if(researchTextareaRef.current){
+      researchTextareaRef.current.style.height='auto';
+      researchTextareaRef.current.style.height=researchTextareaRef.current.scrollHeight+'px';
+    }
+  },[activeResearchId,activeResearch?.content]);
   const linkedMentors=useMemo(()=>globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id)),[globalMentors,local.mentors]);
 
   // Mini-projects (Animatics)
@@ -2780,7 +2955,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
                   {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} className="text-link"><Icon name="external-link" size={13}/></a>}
                 </div>
-                <textarea value={activeResearch.content} onChange={e=>{updateResearch('content',e.target.value);}} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}}
+                <textarea ref={researchTextareaRef} value={activeResearch.content} onChange={e=>{updateResearch('content',e.target.value);}} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}}
                   placeholder="Notas, análises, referências..."
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,overflow:'hidden',marginBottom:16,width:'100%'}}/>
                 {/* Images - 3 column grid */}
@@ -2813,16 +2988,30 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
 });
 
 // - GALLERY -
-const Gallery=React.memo(({posts,setPosts,isMobile})=>{
-  const FOLDERS=[
-    {id:'work',        label:'Work'},
-    {id:'movie-studies',label:'Movie Studies'},
-    {id:'sketchbooks', label:'Sketchbook'},
-    {id:'gestures',    label:'Gesture'},
-  ];
-  const [activeFolder,setActiveFolder]=useState('work');
+const DEFAULT_GALLERY_FOLDERS=[
+  {id:'work',label:'Work',deleted:false},
+  {id:'movie-studies',label:'Movie Studies',deleted:false},
+  {id:'sketchbooks',label:'Sketchbook',deleted:false},
+  {id:'gestures',label:'Gesture',deleted:false},
+];
+const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
+  const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted),[folders]);
+  const trashedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.deleted),[folders]);
+  const FOLDERS=liveFolders;
+  const [activeFolder,setActiveFolder]=useState(()=>(liveFolders[0]||{id:'work'}).id);
+  const [folderTrash,setFolderTrash]=useState(false);
+  const [editingFolderId,setEditingFolderId]=useState(null);
+  const [editingLabel,setEditingLabel]=useState('');
+  const folderDragRef=useRef(null);
   const [selected,setSelected]=useState(null);
   const [lightbox,setLightbox]=useState(null);
+
+  const addFolder=()=>{const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false};setFolders(p=>[...(p||[]),n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label);};
+  const renameFolder=(id,label)=>{if(label.trim())setFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f));};
+  const trashFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,deleted:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
+  const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false}:f));
+  const hardDeleteFolder=id=>{if(window.confirm('Excluir pasta permanentemente?'))setFolders(p=>p.filter(f=>f.id!==id));};
+  const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted);const dead=prev.filter(f=>f.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});};
 
   const [trash,setTrash]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -2894,7 +3083,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i)=>(
             <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <Img src={img} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>
+              <Img src={img} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
               <button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
                 style={{position:'absolute',top:6,left:6,background:selected.bannerImage===img?'rgba(251,191,36,.9)':'rgba(28,25,23,.55)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',transition:'background .2s'}}>
@@ -2933,9 +3122,60 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
         </div>
       </div>
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
+      {/* Tab bar with folder trash toggle */}
       {!trash&&(
-        <div style={isMobile?{display:'flex',background:'var(--bg)',borderRadius:10,padding:3,gap:2,marginBottom:16}:{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:'clamp(10px,1.5vh,18px)',flexShrink:0}}>
-          {FOLDERS.map(f=><button key={f.id} onClick={()=>setActiveFolder(f.id)} className="tab-btn" style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{f.label}</button>)}
+        <div style={{display:'flex',alignItems:'stretch',borderBottom:'1px solid var(--border)',marginBottom:'clamp(10px,1.5vh,18px)',flexShrink:0,gap:0,overflowX:'auto'}}>
+          {liveFolders.map((f,idx)=>(
+            <div key={f.id}
+              className="drag-item"
+              draggable
+              onDragStart={e=>{e.dataTransfer.effectAllowed='move';folderDragRef.current=idx;e.currentTarget.style.opacity='0.45';}}
+              onDragEnd={e=>{e.currentTarget.style.opacity='1';folderDragRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
+              onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
+              onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
+              onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(folderDragRef.current!=null&&folderDragRef.current!==idx){reorderFolders(folderDragRef.current,idx);folderDragRef.current=null;}}}
+              style={{display:'flex',alignItems:'center',gap:4,paddingRight:2,marginRight:4,borderBottom:activeFolder===f.id?'2px solid var(--text)':'2px solid transparent',marginBottom:-1}}
+            >
+              <Icon name="grip-vertical" size={11} className="drag-handle" style={{color:'var(--muted)',opacity:0,transition:'opacity .12s'}}
+                onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}/>
+              {editingFolderId===f.id
+                ? <input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)}
+                    onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}}
+                    onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}}
+                    style={{background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}
+                  />
+                : <button className="tab-btn" onClick={()=>setActiveFolder(f.id)}
+                    onDoubleClick={()=>{setEditingFolderId(f.id);setEditingLabel(f.label);}}
+                    style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:'none',margin:0,padding:'10px 6px 10px 2px',whiteSpace:'nowrap',userSelect:'none'}}
+                  >{f.label}</button>
+              }
+              <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
+                style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,opacity:0,transition:'opacity .12s',lineHeight:0}}
+                onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}
+              ><Icon name="x" size={11}/></button>
+            </div>
+          ))}
+          <button onClick={addFolder} className="tab-btn"
+            style={{color:'var(--muted)',borderBottom:'2px solid transparent',marginBottom:-1,padding:'10px 10px',whiteSpace:'nowrap',opacity:.6}}
+            title="Nova pasta"><Icon name="plus" size={13}/></button>
+          {trashedFolders.length>0&&(
+            <button onClick={()=>setFolderTrash(t=>!t)} className="tab-btn"
+              style={{color:folderTrash?'var(--text)':'var(--muted)',borderBottom:folderTrash?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,marginLeft:'auto',padding:'10px 10px',whiteSpace:'nowrap',fontSize:'.75rem'}}
+            ><Icon name="trash-2" size={12}/> {trashedFolders.length}</button>
+          )}
+        </div>
+      )}
+      {/* Trashed folders panel */}
+      {folderTrash&&!trash&&(
+        <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+          <span style={{fontSize:'.75rem',color:'var(--muted)',fontWeight:600,marginRight:4}}>Pastas na lixeira</span>
+          {trashedFolders.map(f=>(
+            <div key={f.id} style={{display:'flex',alignItems:'center',gap:4,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:'.78rem'}}>
+              <span style={{color:'var(--text)'}}>{f.label}</span>
+              <button onClick={()=>restoreFolder(f.id)} title="Restaurar" style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',lineHeight:0,padding:'0 2px'}}><Icon name="refresh-cw" size={11}/></button>
+              <button onClick={()=>hardDeleteFolder(f.id)} title="Excluir" style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
+            </div>
+          ))}
         </div>
       )}
       {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:isMobile?40:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
@@ -2947,7 +3187,7 @@ const Gallery=React.memo(({posts,setPosts,isMobile})=>{
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
                 <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
-                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} style={{width:'100%',height:'100%',objectFit:'cover',display:'block',transition:'transform .4s'}} onMouseEnter={e=>!trash&&(e.target.style.transform='scale(1.06)')} onMouseLeave={e=>e.target.style.transform='scale(1)'}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
+                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} className={trash?'':'img-zoom'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
 
                 </div>
                 <div style={{padding:'12px 14px'}}>
@@ -2975,6 +3215,17 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
   const [selectedId,setSelectedId]=useState(null);
   const [showTrash,setShowTrash]=useState(false);
   const [showCreateMenu,setShowCreateMenu]=useState(false);
+  // Close dropdown on Escape or click outside
+  useEffect(()=>{
+    if(!showCreateMenu)return;
+    const close=e=>{if(e.key==='Escape')setShowCreateMenu(false);};
+    const clickOut=()=>setShowCreateMenu(false);
+    document.addEventListener('keydown',close);
+    // Delay to avoid catching the click that opened the menu
+    const t=setTimeout(()=>document.addEventListener('click',clickOut),0);
+    return()=>{document.removeEventListener('keydown',close);clearTimeout(t);document.removeEventListener('click',clickOut);};
+  },[showCreateMenu]);
+  const {start:dStart,over:dOver,drop:dDrop,end:dEnd,dragId:dDragId,overId:dOverId}=useDragReorder(setNotes);
 
   // note fields
   const [localTitle,setLocalTitle]=useState('');
@@ -2983,6 +3234,16 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
   const flushContentRef=useRef(null);
   const contentAreaRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
+  const dragIdxRef=useRef(null);
+  const reorderNotes=(from,to)=>{
+    if(from===to)return;
+    setNotes(prev=>{
+      const live=prev.filter(n=>!n.deleted);
+      const dead=prev.filter(n=>n.deleted);
+      const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);
+      return[...next,...dead];
+    });
+  };
 
   // entry fields
   const [activeEntryId,setActiveEntryId]=useState(null);
@@ -3115,12 +3376,21 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
           {(showTrash?trashed:allItems).length===0&&(
             <div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>{showTrash?'Lixeira vazia.':'Nenhum item ainda.'}</div>
           )}
-          {(showTrash?trashed:allItems).map(n=>(
-            <div key={n.id} onClick={()=>{setSelectedId(n.id);if(n.type==='project')setActiveEntryId((n.entries||[])[0]?.id||null);}}
+          {(showTrash?trashed:allItems).map((n,idx)=>(
+            <div key={n.id}
+              className="drag-item"
+              draggable={!showTrash}
+              onDragStart={e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.4';}}
+              onDragEnd={e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
+              onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
+              onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
+              onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderNotes(dragIdxRef.current,idx);dragIdxRef.current=null;}}}
+              onClick={()=>{setSelectedId(n.id);if(n.type==='project')setActiveEntryId((n.entries||[])[0]?.id||null);}}
               style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${selectedId===n.id?'var(--text)':'transparent'}`,background:selectedId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
               onMouseEnter={e=>{if(selectedId!==n.id)e.currentTarget.style.background='var(--surface)';}}
               onMouseLeave={e=>{if(selectedId!==n.id)e.currentTarget.style.background='transparent';}}>
               <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                {!showTrash&&<span className="drag-handle" style={{color:'var(--muted)',flexShrink:0,lineHeight:0}}><Icon name="grip-vertical" size={11}/></span>}
                 <Icon name={n.type==='project'?'folder':'file-text'} size={11} style={{color:'var(--muted)',flexShrink:0}}/>
                 <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
               </div>
@@ -3587,6 +3857,25 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
   const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
+  const dragIdxRef=useRef(null);
+  const reorderClients=(from,to)=>{
+    if(from===to)return;
+    setClients(prev=>{
+      const live=prev.filter(c=>!c.deleted);
+      const dead=prev.filter(c=>c.deleted);
+      const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);
+      return[...next,...dead];
+    });
+  };
+  const dragProps=(idx)=>({
+    className:'drag-item',
+    draggable:!trash,
+    onDragStart:e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.45';},
+    onDragEnd:e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));},
+    onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');},
+    onDragLeave:e=>{e.currentTarget.classList.remove('drag-over');},
+    onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderClients(dragIdxRef.current,idx);dragIdxRef.current=null;}},
+  });
   if(selected&&!trash)return <ClientDetail client={selected} onBack={()=>setSelected(null)} onSave={save} onDelete={softDelete} isMobile={isMobile}/>;
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
@@ -3603,8 +3892,9 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
       {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
       {isMobile&&!trash?(
         <div className="card" style={{overflow:'hidden',borderRadius:12}}>
-          {visible.map(c=>(
-            <div key={c.id} className="compact-row" onClick={()=>setSelected(c)}>
+          {visible.map((c,idx)=>(
+            <div key={c.id} {...(trash?{}:dragProps(idx))} className={`compact-row${trash?'':' drag-item'}`} onClick={()=>setSelected(c)}>
+              {!trash&&<span className="drag-handle" style={{color:'var(--muted)',marginRight:2,lineHeight:0,flexShrink:0}}><Icon name="grip-vertical" size={12}/></span>}
               {c.photo?<Img src={c.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:44,height:44,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
               <div className="compact-row-info">
@@ -3618,8 +3908,9 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
         </div>
       ):(
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:14}}>
-        {visible.map(c=>(
-          <div key={c.id} className="card" style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(c)}>
+        {visible.map((c,idx)=>(
+          <div key={c.id} {...(trash?{}:dragProps(idx))} className={`card drag-item`} style={{padding:22,cursor:trash?'default':'pointer',position:'relative'}} onClick={()=>!trash&&setSelected(c)}>
+            {!trash&&<span className="drag-handle" style={{position:'absolute',top:8,right:8,color:'var(--muted)',lineHeight:0,zIndex:1}}><Icon name="grip-vertical" size={13}/></span>}
             <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
               {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:40,height:40,borderRadius:'50%',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,flexShrink:0}}>{c.name.charAt(0)}</div>}
@@ -3987,6 +4278,20 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
     (!search||m.name.toLowerCase().includes(search.toLowerCase())||(m.area||'').toLowerCase().includes(search.toLowerCase()))
   );
 
+  const dragIdxRef=useRef(null);
+  const reorderMentors=(from,to)=>{
+    if(from===to)return;
+    setMentors(prev=>{const live=prev.filter(m=>!m.deleted);const dead=prev.filter(m=>m.deleted);const next=[...live];const[mv]=next.splice(from,1);next.splice(to,0,mv);return[...next,...dead];});
+  };
+  const dp=(idx)=>({
+    className:'card card-click drag-item',
+    draggable:true,
+    onDragStart:e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.45';},
+    onDragEnd:e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));},
+    onDragOver:e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');},
+    onDragLeave:e=>{e.currentTarget.classList.remove('drag-over');},
+    onDrop:e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderMentors(dragIdxRef.current,idx);dragIdxRef.current=null;}},
+  });
   const add=()=>{
     const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',year:currentYear,notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};
     setMentors(p=>[n,...p]);
@@ -4050,8 +4355,15 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
       )}
       {isMobile?(
         <div className="card" style={{overflow:'hidden',borderRadius:12}}>
-          {visible.map(m=>(
-            <div key={m.id} className="compact-row" onClick={()=>setSelected(m)}>
+          {visible.map((m,idx)=>(
+            <div key={m.id} draggable className="compact-row drag-item"
+              onDragStart={e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.45';}}
+              onDragEnd={e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
+              onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
+              onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
+              onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderMentors(dragIdxRef.current,idx);dragIdxRef.current=null;}}}
+              onClick={()=>setSelected(m)}>
+              <span className="drag-handle" style={{color:'var(--muted)',marginRight:2,lineHeight:0,flexShrink:0}}><Icon name="grip-vertical" size={12}/></span>
               {m.photo
                 ?<Img src={m.photo} style={{width:44,height:44,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
                 :<div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.2rem',fontWeight:500}}>{(m.name||'?').charAt(0)}</div>
@@ -4070,10 +4382,11 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
         </div>
       ):(
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
-        {visible.map(m=>{
+        {visible.map((m,idx)=>{
           const photos=(m.photos||[]).filter(Boolean);
           return(
-            <div key={m.id} className="card card-click" style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSelected(m)}>
+            <div key={m.id} {...dp(idx)} style={{padding:0,overflow:'hidden',cursor:'pointer',position:'relative'}} onClick={()=>setSelected(m)}>
+              <span className="drag-handle" style={{position:'absolute',top:8,right:8,color:'white',lineHeight:0,zIndex:5,filter:'drop-shadow(0 1px 2px rgba(0,0,0,.4))'}}><Icon name="grip-vertical" size={13}/></span>
               {photos.length>0
                 ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
                     {photos.slice(0,4).map((img,i)=><Img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
@@ -4128,7 +4441,8 @@ const App=()=>{
   const parseHash=()=>{
     const h=window.location.hash.slice(1)||'dashboard';
     const [v,id]=h.split('/');
-    return{view:v||'dashboard',projectId:id?Number(id):null};
+    const parsed=id?Number(id):null;
+    return{view:v||'dashboard',projectId:(parsed&&!isNaN(parsed))?parsed:null};
   };
 
   const [view,setView]=useState(()=>parseHash().view);
@@ -4151,6 +4465,7 @@ const App=()=>{
   const [tasks,setTasks]=useState(()=>persisted?.tasks||SEED.tasks);
   const [socialPosts,setSocialPosts]=useState(()=>persisted?.socialPosts||SEED.socialPosts);
   const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
+  const [galleryFolders,setGalleryFolders]=useState(()=>persisted?.galleryFolders||DEFAULT_GALLERY_FOLDERS);
   const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
   const [noteGroups,setNoteGroups]=useState(()=>persisted?.noteGroups||DEFAULT_NOTE_GROUPS);
   const [pomoData,setPomoData]=useState(()=>pomoLoad());
@@ -4203,6 +4518,7 @@ const App=()=>{
       if(data.tasks&&isArr(data.tasks))setTasks(data.tasks);
       if(data.socialPosts&&isArr(data.socialPosts))setSocialPosts(data.socialPosts);
       if(data.galleryPosts&&isArr(data.galleryPosts))setGalleryPosts(data.galleryPosts);
+          if(data.galleryFolders&&isArr(data.galleryFolders))setGalleryFolders(data.galleryFolders);
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
@@ -4235,7 +4551,7 @@ const App=()=>{
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
-      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups,identity};
+      const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
       lsSave(state);
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
@@ -4274,23 +4590,29 @@ const App=()=>{
       },2000);
     },2500);
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups,identity]);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity]);
 
-  const navigate=v=>{
-    const hash=v==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${v}`;
+  const selectedProjectRef=useRef(selectedProject);
+  selectedProjectRef.current=selectedProject;
+
+  const navigate=useCallback(v=>{
+    const sp=selectedProjectRef.current;
+    const hash=v==='project-detail'&&sp?`#project-detail/${sp.id}`:`#${v}`;
     if(window.location.hash!==hash)window.history.pushState(null,'',hash);
     setView(v);
     if(v!=='project-detail')setSelectedProject(null);
-  };
+  },[]);
 
   // Listen to browser back/forward
+  const projectsRef=useRef(projects);
+  projectsRef.current=projects;
   useEffect(()=>{
     const onPop=()=>{
       const{view:v,projectId}=parseHash();
       setView(v);
       if(v==='project-detail'&&projectId){
         setSelectedProject(prev=>{
-          const found=projects.find(p=>p.id===projectId);
+          const found=projectsRef.current.find(p=>p.id===projectId);
           return found||prev;
         });
       }else{
@@ -4299,35 +4621,52 @@ const App=()=>{
     };
     window.addEventListener('popstate',onPop);
     // Set initial hash without pushing a new entry
-    const initHash=view==='project-detail'&&selectedProject?`#project-detail/${selectedProject.id}`:`#${view}`;
+    const sp=selectedProjectRef.current;
+    const initHash=view==='project-detail'&&sp?`#project-detail/${sp.id}`:`#${view}`;
     if(!window.location.hash)window.history.replaceState(null,'',initHash);
     return()=>window.removeEventListener('popstate',onPop);
   },[]);//eslint-disable-line react-hooks/exhaustive-deps
-  const handleUpdateProject=p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);};
-  const addProject=p=>{
+  const handleUpdateProject=useCallback(p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);},[]);
+  const addProject=useCallback(p=>{
     setProjects(prev=>[p,...prev]);
     setShowNewProject(false);
     setSelectedProject(p);
     setView('project-detail');
     window.history.pushState(null,'',`#project-detail/${p.id}`);
-  };
-  const softDeleteProject=id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p));
+  },[]);
+  const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p)),[]);
+  const handleSelectProject=useCallback(p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);},[]);
+  const handleAddProject=useCallback(()=>setShowNewProject(true),[]);
+  const handleCloseNewProject=useCallback(()=>setShowNewProject(false),[]);
+  const handleBackToProjects=useCallback(()=>navigate('projects'),[navigate]);
+  const handleAddGlobalMentor=useCallback(m=>{setMentors(prev=>[...prev,m]);},[]);
+  const handleResetIdentity=useCallback(()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);},[]);
 
   const clearSave=()=>{
+    if(!window.confirm('⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'))return;
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
-    setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);
+    setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);
     setPomoData({days:{}});
     navigate('dashboard');
   };
 
-  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,pomoData,noteGroups};
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups};
 
   // When importing data: store any base64 images in IDB, replace with idb:// refs
   const ingestImages=async obj=>{
     if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
     if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
     if(typeof obj==='string'&&obj.startsWith('data:image')){
-      try{const res=await fetch(obj);const blob=await res.blob();const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;}catch{}
+      try{
+        // Use atob pipeline — fetch() on data URLs is unreliable on mobile Safari/Android
+        const [header,b64]=obj.split(',');
+        const mime=(header.match(/:(.*?);/)||[])[1]||'image/jpeg';
+        const bin=atob(b64);
+        const arr=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+        const blob=new Blob([arr],{type:mime});
+        const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return 'idb://'+key;
+      }catch{}
     }
     return obj;
   };
@@ -4341,6 +4680,7 @@ const App=()=>{
     if(ingested.tasks)setTasks(ingested.tasks);
     if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
     if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
+    if(ingested.galleryFolders)setGalleryFolders(ingested.galleryFolders);
     if(ingested.noteGroups)setNoteGroups(ingested.noteGroups);
     if(ingested.pomoData)setPomoData(ingested.pomoData);
   };
@@ -4350,26 +4690,26 @@ const App=()=>{
     if(identity){document.title=`${identity.hubName} — ${identity.osName}`;}
   },[identity]);
 
-  const handleSetupDone=id=>{setIdentity(id);};
+  const handleSetupDone=useCallback(id=>{setIdentity(id);},[]);
 
   return(
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
       {!identity&&<SetupModal onDone={handleSetupDone}/>}
-      {showNewProject&&<NewProjectModal onSave={addProject} onClose={()=>setShowNewProject(false)} isMobile={isMobile}/>}
+      {showNewProject&&<NewProjectModal onSave={addProject} onClose={handleCloseNewProject} isMobile={isMobile}/>}
       {isMobile
         ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName}/>
         :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName}/>
       }
       <main className={isMobile?'main-mobile':''} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
-        {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);}} onAdd={()=>setShowNewProject(true)} isMobile={isMobile}/>}
-        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={()=>setView('projects')} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={m=>{setMentors(prev=>[...prev,m]);}} isMobile={isMobile}/>}
-        {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} isMobile={isMobile}/>}
+        {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} isMobile={isMobile}/>}
+        {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} noteGroups={noteGroups} setNoteGroups={setNoteGroups} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile} onResetIdentity={()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);}}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
       </main>
     </div>
   );
