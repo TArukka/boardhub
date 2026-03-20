@@ -385,7 +385,7 @@ const Icon=({name,size=16,style={}})=>{
 ['layout-dashboard','folder-open','image','lightbulb','graduation-cap','share-2','users','refresh-cw',
  'plus','x','check','trash-2','arrow-left','arrow-right','search','calendar','star','hard-drive',
  'check-circle','play','pause','brain','coffee','timer','clock','rotate-ccw','grip-vertical',
- 'chevron-right','file-text','folder','menu','smartphone','monitor','camera','book-open',
+ 'chevron-right','chevron-up','chevron-down','file-text','folder','menu','smartphone','monitor','camera','book-open',
  'list-checks','check-square','user-plus','image-plus','calendar-days','maximize-2','loader',
  'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle'
 ].forEach(_resolveIcon);
@@ -1811,17 +1811,28 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
             <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('mentors')}>Ver todos <Icon name="arrow-right" size={10}/></button>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isSmall?7:10}}>
-            {mentors.filter(m=>!m.deleted&&m.main).slice(0,3).map(m=>(
-              <div key={m.id} className="card" style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:9}}>
-                <div style={{width:28,height:28,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500,color:'var(--muted)'}}>
-                  {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                  <div style={{fontSize:'.65rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' — '+m.medium:''}</div>
+            {mentors.filter(m=>!m.deleted&&m.main).slice(0,3).map(m=>{
+              const firstImg=(m.photos||[]).find(Boolean);
+              return(
+              <div key={m.id} className="card" style={{padding:0,overflow:'hidden'}}>
+                {firstImg
+                  ?<Img src={firstImg} style={{width:'100%',height:isSmall?56:72,objectFit:'cover',display:'block'}}/>
+                  :<div style={{width:'100%',height:isSmall?56:72,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
+                  </div>
+                }
+                <div style={{padding:isSmall?'6px 10px':'8px 12px',display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.72rem',fontWeight:500,color:'var(--muted)'}}>
+                    {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:'.76rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                    <div style={{fontSize:'.62rem',color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.area}{m.medium?' — '+m.medium:''}</div>
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1938,7 +1949,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
             </div>
           ):(
             /* Desktop: card grid (and trash on both) */
-            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:isMobile?12:16}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
               <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?0.85:1,position:'relative'}}
                 onClick={()=>!trash&&onSelect(p)}>
@@ -2071,12 +2082,14 @@ const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
 
-const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=>{
+const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   const today=useMemo(()=>todayISO(),[]);
   const [selectedId,setSelectedId]=useState(null);
   const [editDraft,setEditDraft]=useState(null);
   const [newTaskName,setNewTaskName]=useState('');
   const [thisWeek,setThisWeek]=useState(true);
+  const [expanded,setExpanded]=useState(false);
+  const scrollRef=useRef(null);
   const dragRef=useRef(null);
   const [, forceUpdate]=useState(0);
 
@@ -2135,6 +2148,14 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
     weekMarkers.push({offset:i*DAY_W,label:dt.getDate()+'/'+(dt.getMonth()+1)});
   }
 
+  // Weekend columns (Sat=6, Sun=0)
+  const weekendCols=[];
+  for(let i=0;i<=totalDays;i++){
+    const dt=new Date(chartStart+'T12:00:00');dt.setDate(dt.getDate()+i);
+    const dow=dt.getDay();
+    if(dow===0||dow===6)weekendCols.push(i);
+  }
+
   const todayOffset=daysBetween(chartStart,today)*DAY_W;
   const gridW=totalDays*DAY_W;
 
@@ -2186,6 +2207,14 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
     setNewTaskName('');
   };
 
+  // Auto-scroll to center "today" in the visible area
+  useEffect(()=>{
+    const el=scrollRef.current;
+    if(!el)return;
+    const targetX=todayOffset-(el.clientWidth/2);
+    el.scrollLeft=Math.max(0,targetX);
+  },[todayOffset,thisWeek,expanded]);
+
   return(
     <div className="card" style={{padding:0,overflow:'hidden',marginBottom:12,flexShrink:0}}>
       {/* Top bar */}
@@ -2195,9 +2224,6 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
           <button onClick={()=>setThisWeek(w=>!w)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem',background:thisWeek?'var(--text)':'transparent',color:thisWeek?'white':'var(--muted)',borderColor:thisWeek?'var(--text)':'var(--border)'}}>
             <Icon name="calendar" size={10}/> Esta semana
           </button>
-          {onExpandAll&&<button onClick={onExpandAll} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}}>
-            <Icon name="maximize-2" size={10}/> Ver tudo
-          </button>}
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <input value={newTaskName} onChange={e=>setNewTaskName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
@@ -2208,8 +2234,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
         </div>
       </div>
 
-      {/* Grid — maxHeight so it never overflows at 720p, scrolls if many tasks */}
-      <div style={{display:'flex',position:'relative',maxHeight:180,overflow:'hidden'}}>
+      {/* Grid */}
+      <div style={{display:'flex',position:'relative',maxHeight:expanded?2000:180,overflow:'hidden',transition:'max-height .3s ease'}}>
         {/* Left panel */}
         <div style={{width:LEFT_W,flexShrink:0,borderRight:'1px solid var(--border)',zIndex:2,background:'var(--surface)',overflowY:'auto'}}>
           <div style={{height:HEADER_H,borderBottom:'1px solid var(--border)',background:'var(--bg)',display:'flex',alignItems:'flex-end',padding:'0 14px 8px',flexShrink:0}}>
@@ -2238,7 +2264,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
         </div>
 
         {/* Scrollable chart */}
-        <div style={{flex:1,overflowX:'auto',overflowY:'auto',position:'relative'}}>
+        <div ref={scrollRef} style={{flex:1,overflowX:'auto',overflowY:'auto',position:'relative'}}>
           <div style={{width:gridW,position:'relative',minWidth:'100%'}}>
             {/* Month row */}
             <div style={{height:HEADER_H/2,display:'flex',borderBottom:'1px solid var(--border)',background:'var(--bg)'}}>
@@ -2257,7 +2283,18 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
                   {mk.label}
                 </div>
               ))}
+              {weekendCols.map(d=>{
+                const dt=new Date(chartStart+'T12:00:00');dt.setDate(dt.getDate()+d);
+                const lbl=dt.getDay()===0?'Dom':'Sáb';
+                return <div key={'wl'+d} style={{position:'absolute',left:d*DAY_W,width:DAY_W,height:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:'.55rem',fontWeight:700,color:'var(--muted)',opacity:.7,pointerEvents:'none',letterSpacing:'.03em'}}>{lbl}</div>;
+              })}
             </div>
+
+            {/* Weekend columns */}
+            {weekendCols.map(d=>(
+              <div key={'we'+d} style={{position:'absolute',left:d*DAY_W,top:0,bottom:0,width:DAY_W,background:'rgba(28,25,23,.045)',pointerEvents:'none',zIndex:0}}/>
+            ))}
 
             {/* Task rows */}
             {visibleTasks.map((t,i)=>{
@@ -2304,6 +2341,17 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onExpandAll})=
           </div>
         </div>
       </div>
+
+      {/* Expand/Collapse arrow */}
+      {visibleTasks.length>0&&(
+        <div onClick={()=>setExpanded(x=>!x)}
+          style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'4px 0',cursor:'pointer',
+            borderTop:'1px solid var(--border)',background:'var(--surface)',transition:'background .15s',userSelect:'none'}}
+          onMouseEnter={e=>e.currentTarget.style.background='rgba(28,25,23,.04)'}
+          onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}>
+          <Icon name={expanded?'chevron-up':'chevron-down'} size={16} style={{color:'var(--muted)',transition:'transform .2s'}}/>
+        </div>
+      )}
 
       {/* Edit drawer */}
       {editDraft&&(
@@ -2364,7 +2412,6 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   });
   const [tab,setTab]=useState('Visão Geral');
   const [showTimelineModal,setShowTimelineModal]=useState(false);
-  const [showFullTimeline,setShowFullTimeline]=useState(false);
   const coverRef=useRef();
 
   const projectRef=useRef(project);
@@ -2598,27 +2645,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           onUpdateTasks={tasks=>upd('projectTasks',tasks)}
           projectStart={local.startDate}
           projectEnd={local.deadline}
-          onExpandAll={()=>setShowFullTimeline(true)}
         />
-        {showFullTimeline&&ReactDOM.createPortal(
-          <div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}} onClick={()=>setShowFullTimeline(false)}>
-            <div style={{background:'var(--bg)',borderRadius:14,width:'100%',maxWidth:1100,maxHeight:'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
-                <span className="label">Timeline Completa — {local.title}</span>
-                <button onClick={()=>setShowFullTimeline(false)} className="btn btn-ghost" style={{padding:6}}><Icon name="x" size={18}/></button>
-              </div>
-              <div style={{flex:1,overflow:'auto',padding:16}}>
-                <GanttTimeline
-                  tasks={applyAutoLate(local.projectTasks||[])}
-                  onUpdateTasks={tasks=>upd('projectTasks',tasks)}
-                  projectStart={local.startDate}
-                  projectEnd={local.deadline}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
         </>
       )}
 
