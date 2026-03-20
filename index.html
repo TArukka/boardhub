@@ -531,6 +531,25 @@ const BgImg=({src,className,style,children,...props})=>{
   return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
+// Video detection helper — checks extension in any URL format (idb://, https://, data:)
+const isVideoSrc=src=>{
+  if(!src||typeof src!=='string')return false;
+  return /\.(mp4|webm|mov|avi|mkv|m4v|ogv)(\?|$|#)/i.test(src);
+};
+
+// Vid component: auto-resolves idb:// references for video elements
+const Vid=({src,...props})=>{
+  const url=useIdbUrl(src);
+  if(!url)return null;
+  return <video src={url} {...props}/>;
+};
+
+// Media component: renders Img or Vid based on source
+const Media=({src,videoProps,imgProps,...shared})=>{
+  if(isVideoSrc(src))return <Vid src={src} {...shared} {...(videoProps||{})}/>;
+  return <Img src={src} {...shared} {...(imgProps||{})}/>;
+};
+
 // - FIREBASE CONFIG & INIT -
 const FB_CFG_LS='boardhub_firebase_cfg';
 const loadFbCfg=()=>{try{return JSON.parse(localStorage.getItem(FB_CFG_LS))||{};}catch{return{};}};
@@ -637,19 +656,23 @@ const _uploadImgur=async(file)=>{
 
 // IDB local fallback
 const _storeIdb=async(file)=>{
-  const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const ext=(file.name||'').split('.').pop()||'bin';
+  const key='media_'+Date.now()+'_'+Math.random().toString(36).slice(2)+'.'+ext;
   await idbPut(key,file);
   return 'idb://'+key;
 };
 
-// Core upload: Firebase Storage \u2192 Imgur \u2192 IDB
+// Core upload: Firebase Storage \u2192 Imgur (images only) \u2192 IDB
+const _isVideoFile=f=>/^video\//i.test(f.type||'');
 const _uploadSingle=async(file)=>{
   if(_fbReady&&_fbAuth?.currentUser){
     try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
     catch(e){console.warn('[BoardHub] Firebase Storage failed:',e.message);}
   }
-  try{return await _uploadImgur(file);}catch(e){console.warn('[BoardHub] Imgur failed:',e.message);}
-  console.warn('[BoardHub] Falling back to local IDB. Image will NOT sync across devices.');
+  if(!_isVideoFile(file)){
+    try{return await _uploadImgur(file);}catch(e){console.warn('[BoardHub] Imgur failed:',e.message);}
+  }
+  console.warn('[BoardHub] Falling back to local IDB. File will NOT sync across devices.');
   return await _storeIdb(file);
 };
 
@@ -3085,7 +3108,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
 
   if(selected)return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
-      <input ref={addImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleAddImages}/>
+      <input ref={addImgRef} type="file" accept="image/*,video/*,.gif" multiple style={{display:'none'}} onChange={handleAddImages}/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}>
         <button className="btn btn-outline" onClick={()=>setSelected(null)}><Icon name="arrow-left" size={13}/> Voltar</button>
         <button className="btn btn-danger" onClick={()=>{softDelete(selected.id);setSelected(null);}}><Icon name="trash-2" size={13}/> Mover para Lixeira</button>
@@ -3109,12 +3132,15 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i)=>(
-            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:'zoom-in'}} onClick={()=>setLightbox(img)}>
-              <Img src={img} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-              <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
-              <button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
-                style={{position:'absolute',top:6,left:6,background:selected.bannerImage===img?'rgba(251,191,36,.9)':'rgba(28,25,23,.55)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',transition:'background .2s'}}>
-                <Icon name="star" size={11} style={{fill:selected.bannerImage===img?'white':'none'}}/></button>
+            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
+              {isVideoSrc(img)
+                ?<Vid src={img} controls playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block',borderRadius:10}}/>
+                :<Img src={img} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+              }
+              <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',zIndex:2}}><Icon name="x" size={11}/></button>
+              {!isVideoSrc(img)&&<button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
+                style={{position:'absolute',top:6,left:6,background:selected.bannerImage===img?'rgba(251,191,36,.9)':'rgba(28,25,23,.55)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',transition:'background .2s',zIndex:2}}>
+                <Icon name="star" size={11} style={{fill:selected.bannerImage===img?'white':'none'}}/></button>}
             </div>
           ))}
           <div className="upload-zone" style={{aspectRatio:'16/9',minHeight:0,opacity:uploading?.6:1,pointerEvents:uploading?'none':'auto'}} onClick={()=>addImgRef.current.click()}>
@@ -3214,8 +3240,16 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
                 <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
-                    ?<Img src={post.bannerImage||(post.images[0]||post.images[post.images.length-1])} className={trash?'':'img-zoom'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
-
+                    ?(()=>{const src=post.bannerImage||(post.images[0]||post.images[post.images.length-1]);
+                      return isVideoSrc(src)
+                        ?<><Vid src={src} muted playsInline loop preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}
+                            onMouseEnter={e=>{try{e.target.play();}catch{}}} onMouseLeave={e=>{try{e.target.pause();e.target.currentTime=0;}catch{}}}/>
+                          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+                            <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(2px)'}}>
+                              <Icon name="play" size={14} style={{color:'white',marginLeft:2}}/></div></div></>
+                        :<Img src={src} className={trash?'':'img-zoom'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                    ;})()
+                    :<Icon name="image" size={28} style={{opacity:.2}}/>}
                 </div>
                 <div style={{padding:'12px 14px'}}>
                   <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:2}}>{post.title}</div>
