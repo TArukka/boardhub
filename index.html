@@ -72,7 +72,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 /* Overlay now has a visible backdrop */
-.overlay{position:fixed;inset:0;height:100vh;background:rgba(28,25,23,.3);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
+.overlay{position:fixed;inset:0;height:100vh;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
 .modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.18);max-height:95vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s,transform .15s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}.upload-zone:active{transform:scale(.98);}
@@ -125,7 +125,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .bottom-tab-item:active{transform:scale(.9);opacity:.7;}
 @keyframes moreSheetIn{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
 @keyframes moreOverlayIn{from{opacity:0;}to{opacity:1;}}
-.more-sheet-overlay{position:fixed;inset:0;background:rgba(28,25,23,.45);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:90;animation:moreOverlayIn .2s ease;}
+.more-sheet-overlay{position:fixed;inset:0;z-index:90;animation:moreOverlayIn .2s ease;}
 .more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .3s cubic-bezier(.32,0.72,.5,1.02);max-height:70vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(28,25,23,.15);}
 .more-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--border-2);margin:0 auto 16px;}
 .more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent;}
@@ -172,7 +172,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
   /* Overlay / Modals — slide up from bottom on mobile */
-  .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+  .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
   
   /* Save toast - above tab bar */
@@ -213,7 +213,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .view-enter{animation:viewEnter .28s cubic-bezier(.4,0,.2,1) both;}
 @keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 @keyframes cmdOverlayIn{from{opacity:0;}to{opacity:1;}}
-.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
+.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.12);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
 .cmd-palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 80px rgba(28,25,23,.18),0 4px 16px rgba(28,25,23,.08);overflow:hidden;animation:cmdIn .2s cubic-bezier(.32,.72,.5,1.02);}
 .cmd-input-wrap{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);}
 .cmd-input{flex:1;border:none;outline:none;background:transparent;font-family:'Figtree',sans-serif;font-size:1rem;color:var(--text);}
@@ -826,7 +826,7 @@ const Modal=({title,onClose,children,width=480})=>{
     document.addEventListener('keydown',h);
     return()=>document.removeEventListener('keydown',h);
   },[onClose]);
-  return(
+  return ReactDOM.createPortal(
   <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal" style={{maxWidth:width}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
@@ -836,7 +836,7 @@ const Modal=({title,onClose,children,width=480})=>{
       {children}
     </div>
   </div>
-);};
+  , document.body);};
 
 
 // - COMMAND PALETTE (Cmd+K) -
@@ -1707,7 +1707,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
       )}
 
       {/* Stats panel - replaces timer card inline */}
-      {showStats && (
+      {showStats && ReactDOM.createPortal(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'20px 24px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
@@ -1799,7 +1799,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 };
@@ -3989,7 +3989,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
   return(
     <div className="fade-up" style={{width:'100%',maxWidth:'100%',boxSizing:'border-box',overflowX:'hidden',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       {/* Template edit modal */}
-      {editingTpl&&(
+      {editingTpl&&ReactDOM.createPortal(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setEditingTpl(null)}>
           <div className="modal" style={{maxWidth:480}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
@@ -4010,7 +4010,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap'}}>
         <h1 className="serif" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
@@ -4523,7 +4523,8 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   const [form,setForm]=useState({...mentor});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const photoRef=useRef();
-  const imgRefs=[useRef(),useRef(),useRef(),useRef()];
+  const imgRef0=useRef();const imgRef1=useRef();const imgRef2=useRef();const imgRef3=useRef();
+  const imgRefs=[imgRef0,imgRef1,imgRef2,imgRef3];
 
   const handlePhoto=async e=>{const file=e.target.files[0];if(!file)return;set('photo',await uploadImage(file));};
   const handleRefImg=async(idx,e)=>{
@@ -4538,7 +4539,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
   };
   const photos=form.photos||[null,null,null,null];
 
-  return(
+  return ReactDOM.createPortal(
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal" style={{maxWidth:580}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
@@ -4617,7 +4618,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
         </div>
       </div>
     </div>
-  );
+  , document.body);
 };
 
 const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
