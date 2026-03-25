@@ -2105,7 +2105,7 @@ const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
 
-const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
+const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,onSyncAdd,onSyncDelete})=>{
   const today=useMemo(()=>todayISO(),[]);
   const [selectedId,setSelectedId]=useState(null);
   const [editDraft,setEditDraft]=useState(null);
@@ -2114,6 +2114,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   const [expanded,setExpanded]=useState(false);
   const scrollRef=useRef(null);
   const dragRef=useRef(null);
+  const dragRowRef=useRef(null);
+  const dragOverRowRef=useRef(null);
   const [, forceUpdate]=useState(0);
 
   // Compute this week Mon-Sun
@@ -2218,7 +2220,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
   // - Edit -
   const selectTask=t=>{setSelectedId(t.id);setEditDraft({...t,startDate:t.startDate||(projectStart||today),dueDate:t.dueDate||(projectEnd||addDays(today,7)),notes:t.notes||''});};
   const saveEdit=()=>{if(!editDraft)return;onUpdateTasks(tasks.map(t=>t.id===editDraft.id?{...editDraft}:t));setSelectedId(null);setEditDraft(null);};
-  const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));setSelectedId(null);setEditDraft(null);};
+  const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));if(onSyncDelete)onSyncDelete(editDraft.id);setSelectedId(null);setEditDraft(null);};
   const cycleStatus=id=>{const upd=tasks.map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);onUpdateTasks(upd);if(editDraft&&editDraft.id===id)setEditDraft(d=>({...d,status:PTASK_NEXT[d.status]||'Pendente'}));};
   const addTask=()=>{
     if(!newTaskName.trim())return;
@@ -2226,7 +2228,9 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
     // When "this week" view is active, default to today so the task is visible immediately.
     const s=thisWeek ? today : (projectStart||today);
     const e=thisWeek ? addDays(today,7) : (projectEnd||addDays(today,7));
-    onUpdateTasks([...tasks,{id,text:newTaskName.trim(),status:'Pendente',startDate:s,dueDate:e,notes:''}]);
+    const newTask={id,text:newTaskName.trim(),status:'Pendente',startDate:s,dueDate:e,notes:''};
+    onUpdateTasks([...tasks,newTask]);
+    if(onSyncAdd)onSyncAdd(newTask);
     setNewTaskName('');
   };
 
@@ -2270,17 +2274,31 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd})=>{
               Adicione tarefas para começar.
             </div>
           )}
-          {visibleTasks.map(t=>{
+          {visibleTasks.map((t,tIdx)=>{
             const colors=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];
             const isSelected=selectedId===t.id;
+            const realIdx=tasks.findIndex(x=>x.id===t.id);
             return(
-              <div key={t.id} onClick={()=>isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t)}
-                style={{height:ROW_H,display:'flex',alignItems:'center',gap:8,padding:'0 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',
+              <div key={t.id}
+                draggable
+                onDragStart={e=>{dragRowRef.current=realIdx;e.dataTransfer.effectAllowed='move';}}
+                onDragOver={e=>{e.preventDefault();dragOverRowRef.current=realIdx;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const from=dragRowRef.current;const to=dragOverRowRef.current;
+                  if(from===null||from===to){dragRowRef.current=null;dragOverRowRef.current=null;return;}
+                  const reordered=[...tasks];const[moved]=reordered.splice(from,1);reordered.splice(to,0,moved);
+                  onUpdateTasks(reordered);dragRowRef.current=null;dragOverRowRef.current=null;
+                }}
+                onDragEnd={()=>{dragRowRef.current=null;dragOverRowRef.current=null;}}
+                onClick={()=>isSelected?(setSelectedId(null),setEditDraft(null)):selectTask(t)}
+                style={{height:ROW_H,display:'flex',alignItems:'center',gap:6,padding:'0 8px 0 10px',borderBottom:'1px solid var(--border)',cursor:'pointer',
                   background:isSelected?'rgba(28,25,23,.05)':'transparent',transition:'background .15s'}}>
+                <span style={{color:'var(--border)',display:'flex',cursor:'grab',flexShrink:0,opacity:.5}} onMouseDown={e=>e.stopPropagation()}><Icon name="grip-vertical" size={10}/></span>
                 <button onClick={e=>{e.stopPropagation();cycleStatus(t.id);}} style={{width:12,height:12,borderRadius:'50%',background:colors.dot,border:'none',cursor:'pointer',flexShrink:0,padding:0,transition:'transform .15s'}}
-                  title={`Status: ${t.status}`} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.4)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>
-                <span style={{fontSize:'.83rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
-                  textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)'}}>{t.text}</span>
+                  title={`Status: ${t.status}`} onMouseEnter={e=>e.currentTarget.style.transform='scale(1.4)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}/>                <span onClick={e=>{if(onTaskClick){e.stopPropagation();onTaskClick(t.id);}}} style={{fontSize:'.83rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                  textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--muted)':'var(--text)',
+                  cursor:onTaskClick?'pointer':'default'}}>{t.text}</span>
               </div>
             );
           })}
@@ -2508,17 +2526,39 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   },[activeResearchId,activeResearch?.content]);
   const linkedMentors=useMemo(()=>globalMentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id)),[globalMentors,local.mentors]);
 
-  // Mini-projects (Animatics)
+  // Tasks (linked with timeline)
   const [activeMiniId,setActiveMiniId]=useState(()=>(project.miniProjects||[])[0]?.id||null);
   const [expandedMiniIds,setExpandedMiniIds]=useState(()=>new Set([(project.miniProjects||[])[0]?.id].filter(Boolean)));
   const activeMini=(local.miniProjects||[]).find(m=>m.id===activeMiniId)||null;
+  const miniStatusToPTask=s=>({'Em Andamento':'Fazendo','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
+  const ptaskStatusToMini=s=>({'Fazendo':'Em Andamento','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
   const addMini=()=>{
-    const n={id:Date.now(),title:'Novo Animatic',status:'Em Andamento',notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};
-    upd('miniProjects',[...(local.miniProjects||[]),n]);
-    setActiveMiniId(n.id);
+    const id=Date.now();
+    const n={id,title:'Nova Tarefa',status:'Pendente',notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};
+    const pt={id,text:'Nova Tarefa',status:'Pendente',startDate:local.startDate||todayISO(),dueDate:local.deadline||addDays(todayISO(),7),notes:''};
+    setLocal(prev=>{const updated={...prev,miniProjects:[...(prev.miniProjects||[]),n],projectTasks:[...(prev.projectTasks||[]),pt]};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
+    setActiveMiniId(id);
   };
-  const updateMini=(field,val)=>{upd('miniProjects',(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,[field]:val}:m));};
-  const deleteMini=id=>{upd('miniProjects',(local.miniProjects||[]).filter(m=>m.id!==id));setActiveMiniId((local.miniProjects||[]).find(m=>m.id!==id)?.id||null);};
+  const updateMini=(field,val)=>{
+    const newMinis=(local.miniProjects||[]).map(m=>m.id===activeMiniId?{...m,[field]:val}:m);
+    if(field==='title'||field==='status'){
+      const newPTasks=(local.projectTasks||[]).map(t=>{
+        if(t.id!==activeMiniId)return t;
+        if(field==='title')return{...t,text:val};
+        if(field==='status')return{...t,status:miniStatusToPTask(val)};
+        return t;
+      });
+      setLocal(prev=>{const updated={...prev,miniProjects:newMinis,projectTasks:newPTasks};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
+    }else{
+      upd('miniProjects',newMinis);
+    }
+  };
+  const deleteMini=id=>{
+    const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);
+    const newPTasks=(local.projectTasks||[]).filter(t=>t.id!==id);
+    setLocal(prev=>{const updated={...prev,miniProjects:newMinis,projectTasks:newPTasks};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
+    setActiveMiniId((local.miniProjects||[]).find(m=>m.id!==id)?.id||null);
+  };
   const [activeInnerNoteId,setActiveInnerNoteId]=useState(null);
   const addInnerNote=()=>{
     const n={id:Date.now(),title:'Nova nota',content:'',createdAt:new Date().toLocaleDateString('pt-BR')};
@@ -2565,7 +2605,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     if(urls.length)upd('cover',urls[urls.length-1]);
     e.target.value='';
   };
-  const MINI_STATUSES=['Em Andamento','Revisão','Aprovado','Arquivado'];
+  const MINI_STATUSES=['Pendente','Em Andamento','Concluído','Atrasado'];
 
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',display:'flex',flexDirection:'column'}}>
@@ -2613,7 +2653,18 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             <div style={{padding:'12px 8px',flex:1}}>
               <GanttTimeline
                 tasks={applyAutoLate(local.projectTasks||[])}
-                onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+                onUpdateTasks={tasks=>{
+                  const synced=tasks.map(pt=>{
+                    const mini=(local.miniProjects||[]).find(m=>m.id===pt.id);
+                    return mini?pt:pt;// ptask is source of truth for dates
+                  });
+                  // Sync text/status back to miniProjects
+                  const newMinis=(local.miniProjects||[]).map(m=>{const pt=tasks.find(t=>t.id===m.id);if(!pt)return m;return{...m,title:pt.text,status:ptaskStatusToMini(pt.status)};});
+                  setLocal(prev=>{const updated={...prev,projectTasks:tasks,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
+                }}
+                onTaskClick={(id)=>{setShowTimelineModal(false);setTab('Tarefas');setActiveMiniId(id);setActiveInnerNoteId(null);}}
+                onSyncAdd={(pt)=>{const n={id:pt.id,title:pt.text,status:ptaskStatusToMini(pt.status),notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};setLocal(prev=>{const updated={...prev,miniProjects:[...(prev.miniProjects||[]),n]};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
+                onSyncDelete={(id)=>{const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);setLocal(prev=>{const updated={...prev,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
                 projectStart={local.startDate}
                 projectEnd={local.deadline}
               />
@@ -2665,9 +2716,15 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
         <>
         <GanttTimeline
           tasks={applyAutoLate(local.projectTasks||[])}
-          onUpdateTasks={tasks=>upd('projectTasks',tasks)}
+          onUpdateTasks={tasks=>{
+            const newMinis=(local.miniProjects||[]).map(m=>{const pt=tasks.find(t=>t.id===m.id);if(!pt)return m;return{...m,title:pt.text,status:ptaskStatusToMini(pt.status)};});
+            setLocal(prev=>{const updated={...prev,projectTasks:tasks,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
+          }}
           projectStart={local.startDate}
           projectEnd={local.deadline}
+          onTaskClick={(id)=>{setTab('Tarefas');setActiveMiniId(id);setActiveInnerNoteId(null);window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}}
+          onSyncAdd={(pt)=>{const n={id:pt.id,title:pt.text,status:ptaskStatusToMini(pt.status),notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};setLocal(prev=>{const updated={...prev,miniProjects:[...(prev.miniProjects||[]),n]};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
+          onSyncDelete={(id)=>{const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);setLocal(prev=>{const updated={...prev,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
         />
         </>
       )}
@@ -2675,13 +2732,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       {/* Tabs */}
       {isMobile?(
         <div className="seg-tabs">
-          {['Visão Geral','Animatics','Pesquisa','Mentores'].map(t=>(
+          {['Visão Geral','Tarefas','Pesquisa','Mentores'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} className={`seg-tab ${tab===t?'active':''}`}>{t}</button>
           ))}
         </div>
       ):(
         <div style={{display:'flex',borderBottom:'1px solid var(--border)',marginBottom:20}}>
-          {['Visão Geral','Animatics','Pesquisa','Mentores'].map(t=>(
+          {['Visão Geral','Tarefas','Pesquisa','Mentores'].map(t=>(
             <button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--text)':'var(--muted)',borderBottom:tab===t?'2px solid var(--text)':'2px solid transparent',whiteSpace:'nowrap'}}>{t}</button>
           ))}
         </div>
@@ -2784,13 +2841,13 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
         </div>
       )}
 
-      {tab==='Animatics'&&(
+      {tab==='Tarefas'&&(
         <div style={{display:'flex',gap:16,flexDirection:isMobile?'column':'row'}}>
-          {/* Left: animatics with expandable notes */}
+          {/* Left: tasks list */}
           {(!isMobile||(isMobile&&!activeMiniId))&&(
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
-            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Novo Animatic</button>
-            {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhum animatic.</div>}
+            <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Nova Tarefa</button>
+            {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma tarefa.</div>}
             {(local.miniProjects||[]).map((m,mIdx)=>{
               const expanded=expandedMiniIds.has(m.id);
               const isMiniActive=activeMiniId===m.id&&!activeInnerNoteId;
@@ -2803,7 +2860,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   onDrop={e=>{e.preventDefault();reorderMinis(dragMiniRef.current,dragOverMiniRef.current);dragMiniRef.current=null;dragOverMiniRef.current=null;}}
                   onDragEnd={()=>{dragMiniRef.current=null;dragOverMiniRef.current=null;}}
                 >
-                  {/* Animatic row */}
+                  {/* Task row */}
                   <div onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 10px',borderRadius:8,cursor:'pointer',
                       border:`1px solid ${isMiniActive?'var(--text)':'transparent'}`,
@@ -2819,7 +2876,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:isMiniActive?'white':'var(--text)'}}>{m.title}</div>
                     </div>
                     <span style={{fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',padding:'1px 5px',borderRadius:3,flexShrink:0,
-                      background:isMiniActive?'rgba(255,255,255,.2)':'var(--bg)',color:isMiniActive?'rgba(255,255,255,.8)':'var(--muted)'}}>{m.status==='Em Andamento'?'Ativo':m.status==='Aprovado'?'OK':m.status==='Revisão'?'Rev':m.status}</span>
+                      background:isMiniActive?'rgba(255,255,255,.2)':'var(--bg)',color:isMiniActive?'rgba(255,255,255,.8)':'var(--muted)'}}>{m.status==='Em Andamento'?'Ativo':m.status==='Concluído'?'OK':m.status==='Atrasado'?'Late':m.status==='Pendente'?'--':m.status}</span>
                   </div>
                   {/* Expanded inner notes */}
                   {expanded&&(
@@ -2864,17 +2921,17 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div className="card" style={{flex:1,padding:isMobile?20:28,display:'flex',flexDirection:'column',minWidth:0,minHeight:320}}>
             {isMobile&&(
               <button onClick={()=>setActiveMiniId(null)} className="btn btn-ghost" style={{alignSelf:'flex-start',padding:'4px 8px',fontSize:'.78rem',marginBottom:10}}>
-                <Icon name="arrow-left" size={13}/> Voltar aos animatics
+                <Icon name="arrow-left" size={13}/> Voltar às tarefas
               </button>
             )}
             {activeMini&&!activeInnerNoteId&&(
-              /* Animatic editor: title, status, description, frames */
+              /* Task editor: title, status, notes, frames */
               <>
                 <input ref={miniImgRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={handleMiniImgs}/>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
                   <input value={activeMini.title} onChange={e=>updateMini('title',e.target.value)}
                     style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}
-                    placeholder="Título do animatic"/>
+                    placeholder="Título da tarefa"/>
                   <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
                     <select value={activeMini.status} onChange={e=>updateMini('status',e.target.value)}
                       style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
@@ -2886,7 +2943,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   </div>
                 </div>
                 <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)}
-                  placeholder="Notas, intenções, referências para este animatic..."
+                  placeholder="Notas, intenções, referências para esta tarefa..."
                   style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
@@ -2955,7 +3012,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             {!activeMini&&!isMobile&&(
               <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
                 <Icon name="folder" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
-                <p style={{fontSize:'.85rem'}}>Selecione ou crie um animatic</p>
+                <p style={{fontSize:'.85rem'}}>Selecione ou crie uma tarefa</p>
               </div>
             )}
           </div>
@@ -4008,6 +4065,29 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   const [reuploadProgress,setReuploadProgress]=useState(null);
   const importRef=useRef();
 
+  // Pre-sync backup
+  const getBackupMeta=()=>{
+    try{
+      const raw=localStorage.getItem('boardhub_backup_pre_sync');
+      if(!raw)return null;
+      const parsed=JSON.parse(raw);
+      return parsed._snapAt?parsed:null;
+    }catch{return null;}
+  };
+  const [backupMeta,setBackupMeta]=useState(()=>getBackupMeta());
+
+  const handleRestoreBackup=()=>{
+    const backup=getBackupMeta();
+    if(!backup)return;
+    const dt=new Date(backup._snapAt).toLocaleString('pt-BR');
+    if(!window.confirm(\`Restaurar o snapshot salvo em \${dt}? Isso vai substituir seus dados atuais com a versão antes do último sync.\`))return;
+    const{_snapAt,...data}=backup;
+    onImport(data);
+    showStatus('ok',\`✓ Backup de \${dt} restaurado!\`);
+    setBackupMeta(null);
+    localStorage.removeItem('boardhub_backup_pre_sync');
+  };
+
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
   const localImgCount=collectIdbKeys(appState).size;
 
@@ -4029,6 +4109,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
 
   const handleManualPush=async()=>{
     if(!fbUser){showStatus('err','Faça login com Google primeiro.');return;}
+    if(!window.confirm('Forçar sync vai enviar seus dados locais para a nuvem, sobrescrevendo qualquer versão mais recente no Firestore. Continuar?'))return;
     setLoading(true);
     try{
       await pushState(appState,fbUser.uid);
@@ -4149,6 +4230,18 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
                 <Icon name="log-out" size={13}/> Sair
               </button>
             </div>
+            {backupMeta&&(
+              <div style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'1px solid #FCD34D',background:'#FEF9E7',display:'flex',alignItems:'center',gap:10}}>
+                <Icon name="clock" size={14} style={{color:'#92700B',flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'.78rem',fontWeight:600,color:'#92700B'}}>Backup disponível</div>
+                  <div style={{fontSize:'.72rem',color:'#92700B',opacity:.8}}>Salvo em {new Date(backupMeta._snapAt).toLocaleString('pt-BR')}</div>
+                </div>
+                <button onClick={handleRestoreBackup} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',borderColor:'#FCD34D',color:'#92700B',flexShrink:0}}>
+                  <Icon name="undo-2" size={12}/> Restaurar
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -4570,6 +4663,13 @@ const App=()=>{
       // Safety valve: never block for more than 12 s (handles permanent push failures).
       if(_hasPendingLocalEdit.current)return;
       const isArr=v=>Array.isArray(v);
+      // Snapshot current local state before overwriting with remote data
+      try{
+        const snap=lsLoad();
+        if(snap&&Object.keys(snap).length>0){
+          localStorage.setItem('boardhub_backup_pre_sync',JSON.stringify({...snap,_snapAt:new Date().toISOString()}));
+        }
+      }catch(e){}
       _isApplyingRemote.current=true;
       _remoteApplyId.current=_remoteApplyId.current+1; // signal to auto-save effect
       if(data.projects&&isArr(data.projects))setProjects(data.projects);
