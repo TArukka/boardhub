@@ -594,16 +594,16 @@ const useIdbUrl=(src)=>{
 };
 
 // Img component that auto-resolves idb:// references
-const Img=({src,...props})=>{
+const Img=({src,priority,...props})=>{
   const url=useIdbUrl(src);
-  if(!url)return null;
-  return <img src={url} loading="lazy" decoding="async" {...props}/>;
+  if(!url)return <div style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}}/>;
+  return <img src={url} loading={priority?'eager':'lazy'} decoding="async" {...props}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs
 const BgImg=({src,className,style,children,...props})=>{
   const url=useIdbUrl(src);
-  return <div className={className} style={{...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
+  return <div className={className} style={{background:url?'none':'var(--border)',backgroundSize:'cover',...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
 // Video detection helper — checks extension in any URL format (idb://, https://, data:)
@@ -739,7 +739,33 @@ const _storeIdb=async(file)=>{
 
 // Core upload: Firebase Storage \u2192 Imgur (images only) \u2192 IDB
 const _isVideoFile=f=>/^video\//i.test(f.type||'');
+
+// Compress image to max 1400px longest side, 0.82 quality WebP/JPEG before any store/upload.
+// Skips videos, GIFs, and files already under 60KB.
+const _compressImage=async(file)=>{
+  if(_isVideoFile(file)||file.type==='image/gif')return file;
+  if(file.size<60*1024)return file;
+  return new Promise(res=>{
+    const img=new Image();
+    const objUrl=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(objUrl);
+      const MAX=1400;
+      let{width:w,height:h}=img;
+      if(w>MAX||h>MAX){const r=MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const fmt=file.type==='image/png'?'image/png':'image/webp';
+      canvas.toBlob(blob=>res(blob||file),fmt,fmt==='image/png'?undefined:0.82);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(objUrl);res(file);};
+    img.src=objUrl;
+  });
+};
+
 const _uploadSingle=async(file)=>{
+  if(!_isVideoFile(file))file=await _compressImage(file);
   if(_fbReady&&_fbAuth?.currentUser){
     try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
     catch(e){console.warn('[BoardHub] Firebase Storage failed:',e.message);}
@@ -3577,13 +3603,13 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     e.preventDefault();
     const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
     if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
-    files.forEach(f=>{const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);});
+    files.forEach(async f=>{const c=await _compressImage(f);const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);});
   };
   const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
   const handlePaste=e=>{
     const items=e.clipboardData?.items||[];
     const img=[...items].find(i=>i.type.startsWith('image/'));
-    if(img){e.preventDefault();const f=img.getAsFile();const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);}
+    if(img){e.preventDefault();const f=img.getAsFile();_compressImage(f).then(c=>{const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);});}
   };
   const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{}};
 
@@ -3617,9 +3643,10 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         ))}
         <div style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
         <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
-          <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{
+          <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={async e=>{
             const f=e.target.files[0];if(!f)return;
-            const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);
+            const c=await _compressImage(f);
+            const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);
             e.target.value='';
           }}/>
           <Icon name="image" size={13}/>
