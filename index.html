@@ -213,7 +213,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .view-enter{animation:viewEnter .28s cubic-bezier(.4,0,.2,1) both;}
 @keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 @keyframes cmdOverlayIn{from{opacity:0;}to{opacity:1;}}
-.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.12);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
+.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.08);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
 .cmd-palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 80px rgba(28,25,23,.18),0 4px 16px rgba(28,25,23,.08);overflow:hidden;animation:cmdIn .2s cubic-bezier(.32,.72,.5,1.02);}
 .cmd-input-wrap{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);}
 .cmd-input{flex:1;border:none;outline:none;background:transparent;font-family:'Figtree',sans-serif;font-size:1rem;color:var(--text);}
@@ -256,6 +256,32 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
   .cmd-overlay{padding-top:0;align-items:flex-start;}
   .quick-capture{bottom:72px;min-width:0;width:calc(100% - 32px);left:16px;transform:none;}
 }
+.rich-editor{outline:none;word-break:break-word;overflow-y:auto;min-height:80px;}
+.rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
+.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;}
+.rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
+.rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
+.rich-editor ul,.rich-editor ol{padding-left:1.5em;margin:.3em 0;}
+.rich-editor li{line-height:1.8;}
+.rich-editor code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.88em;font-family:monospace;}
+.rich-editor blockquote{border-left:3px solid var(--border);margin:.4em 0;padding:.2em 0 .2em 1em;color:var(--muted);}
+.rich-toolbar-btn{display:flex;align-items:center;justify-content:center;width:28px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:var(--muted);transition:background .12s,color .12s;flex-shrink:0;}
+.rich-toolbar-btn:hover{background:var(--bg);color:var(--text);}
+.rich-toolbar-btn.active{background:var(--bg);color:var(--text);}
+.rich-editor{outline:none;word-break:break-word;overflow-y:auto;}
+.rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
+.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:grab;}
+.rich-editor img:active{cursor:grabbing;}
+.rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
+.rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
+.rich-editor h3{font-size:1rem;font-weight:700;margin:.4em 0 .2em;}
+.rich-editor ul,.rich-editor ol{padding-left:1.5em;margin:.3em 0;}
+.rich-editor li{line-height:1.8;}
+.rich-editor code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.88em;font-family:monospace;}
+.rich-editor blockquote{border-left:3px solid var(--border);margin:.4em 0;padding:.2em 0 .2em 1em;color:var(--muted);}
+.rich-toolbar-btn{display:flex;align-items:center;justify-content:center;width:28px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:var(--muted);transition:background .12s,color .12s;flex-shrink:0;}
+.rich-toolbar-btn:hover{background:var(--bg);color:var(--text);}
+.rich-toolbar-btn.active{background:var(--bg);color:var(--text);}
 </style>
 </head>
 <body>
@@ -853,7 +879,7 @@ const CommandPalette=({projects,notes,mentors,clients,galleryPosts,onNavigate,on
       {title:'Vis\u00e3o Geral',icon:'layout-dashboard',action:()=>onNavigate('dashboard'),type:'Navegar'},
       {title:'Projetos',icon:'folder-open',action:()=>onNavigate('projects'),type:'Navegar'},
       {title:'Galeria',icon:'image',action:()=>onNavigate('gallery'),type:'Navegar'},
-      {title:'Ideias',icon:'lightbulb',action:()=>onNavigate('ideas'),type:'Navegar'},
+      {title:'Anotações',icon:'notebook-pen',action:()=>onNavigate('ideas'),type:'Navegar'},
       {title:'Mentores',icon:'graduation-cap',action:()=>onNavigate('mentors'),type:'Navegar'},
       {title:'Social Media',icon:'share-2',action:()=>onNavigate('social'),type:'Navegar'},
       {title:'Clientes',icon:'users',action:()=>onNavigate('clients'),type:'Navegar'},
@@ -938,7 +964,7 @@ const NAV_ITEMS=[
   {id:'dashboard',icon:'layout-dashboard',label:'Visão Geral'},
   {id:'projects', icon:'folder-open',     label:'Projetos'},
   {id:'gallery',  icon:'image',           label:'Galeria'},
-  {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
+  {id:'ideas',    icon:'notebook-pen',       label:'Anotações'},
   {id:'mentors',  icon:'graduation-cap',  label:'Mentores'},
   {id:'social',   icon:'share-2',         label:'Social'},
   {id:'clients',  icon:'users',           label:'Clientes'},
@@ -1107,7 +1133,7 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
 const TAB_ITEMS=[
   {id:'dashboard',icon:'layout-dashboard',label:'Início'},
   {id:'projects', icon:'folder-open',     label:'Projetos'},
-  {id:'ideas',    icon:'lightbulb',       label:'Ideias'},
+  {id:'ideas',    icon:'notebook-pen',       label:'Anotações'},
   {id:'gallery',  icon:'image',           label:'Galeria'},
 ];
 const MORE_ITEMS=[
@@ -1396,83 +1422,71 @@ const playMedalSound = (level) => {
 };
 
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
-  const FOCUS_SECS = 30 * 60;
   const BREAK_SECS = 5 * 60;
+  const MAX_FOCUS_MINS = 60;
 
-  // Restore persisted timer state (survives tab switches and browser minimize)
-  const _initState = () => {
+  const _init = (() => {
     const saved = pomoTimerLoad();
+    const focusMins = saved?.focusMins ?? 30;
     if (saved && saved.isActive && saved.endTimestamp) {
-      const remaining = Math.max(0, Math.ceil((saved.endTimestamp - Date.now()) / 1000));
-      return { timeLeft: remaining, isActive: remaining > 0, mode: saved.mode || 'focus', endTimestamp: saved.endTimestamp };
+      const remaining = Math.max(0, Math.round((saved.endTimestamp - Date.now()) / 1000));
+      return { timeLeft: remaining > 0 ? remaining : focusMins*60, isActive: remaining > 0, mode: saved.mode||'focus', endTimestamp: remaining > 0 ? saved.endTimestamp : null, focusMins };
     }
-    if (saved) return { timeLeft: saved.timeLeft ?? FOCUS_SECS, isActive: false, mode: saved.mode || 'focus', endTimestamp: null };
-    return { timeLeft: FOCUS_SECS, isActive: false, mode: 'focus', endTimestamp: null };
-  };
-  const _init = _initState();
+    return { timeLeft: saved?.timeLeft ?? focusMins*60, isActive: false, mode: saved?.mode||'focus', endTimestamp: null, focusMins };
+  })();
 
-  const [timeLeft, setTimeLeft] = useState(_init.timeLeft);
-  const [isActive, setIsActive] = useState(_init.isActive);
-  const [mode, setMode] = useState(_init.mode);
+  const [focusMins, setFocusMins] = useState(_init.focusMins);
+  const [timeLeft, setTimeLeft]   = useState(_init.timeLeft);
+  const [isActive, setIsActive]   = useState(_init.isActive);
+  const [mode, setMode]           = useState(_init.mode);
   const [showStats, setShowStats] = useState(false);
-  const modeRef = useRef(mode);
-  const timeLeftRef = useRef(_init.timeLeft);
-  const isActiveRef = useRef(_init.isActive);
-  const unsavedSecsRef = useRef(0);
-  const pendingSecsRef = useRef(0);
-  const [displayUnsaved,setDisplayUnsaved]=useState(0); // mirrors unsavedSecsRef for re-render
-  const endTimestampRef = useRef(_init.endTimestamp ?? (_init.isActive ? (Date.now() + _init.timeLeft * 1000) : null));
-  modeRef.current = mode;
-  timeLeftRef.current = timeLeft;
-  isActiveRef.current = isActive;
+  const [isDragging, setIsDragging] = useState(false);
 
-  const requestNotifPermission = () => {
-    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
-  };
-  const fireNotification = (title, body) => {
-    if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body, icon: '' });
-  };
+  const focusMinsRef    = useRef(focusMins);
+  const modeRef         = useRef(mode);
+  const timeLeftRef     = useRef(_init.timeLeft);
+  const isActiveRef     = useRef(_init.isActive);
+  const endTimestampRef = useRef(_init.endTimestamp ?? (_init.isActive ? Date.now() + _init.timeLeft*1000 : null));
+  const unsavedSecsRef  = useRef(0);
+  const pendingSecsRef  = useRef(0);
+  const circleRef       = useRef(null);
+  const [displayUnsaved, setDisplayUnsaved] = useState(0);
 
-  // Persist timer state to localStorage so background tabs stay in sync
-  const persistTimerState = (active, tLeft, m) => {
-    if (active && tLeft > 0) {
-      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft * 1000, timeLeft: tLeft });
-    } else {
-      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft });
-    }
+  focusMinsRef.current = focusMins;
+  modeRef.current      = mode;
+  timeLeftRef.current  = timeLeft;
+  isActiveRef.current  = isActive;
+
+  const persist = (active, tLeft, m, fMins) => {
+    const fm = fMins ?? focusMinsRef.current;
+    if (active && tLeft > 0)
+      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft*1000, timeLeft: tLeft, focusMins: fm });
+    else
+      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft, focusMins: fm });
   };
 
-  // Flush unsaved seconds to state — stored in a ref so effects always call the latest version
   const flushPomoSecsRef = useRef(null);
   flushPomoSecsRef.current = () => {
-    if (unsavedSecsRef.current > 0) {
-      const secs = unsavedSecsRef.current;
-      unsavedSecsRef.current = 0;
-      setDisplayUnsaved(0);
-      pendingSecsRef.current += secs;
-      setPomoData(prev => {
-        const key = pomoTodayKey();
-        const newDays = { ...prev.days };
-        newDays[key] = (newDays[key] || 0) + secs;
-        pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
-        return { days: newDays };
-      });
-    }
+    if (unsavedSecsRef.current <= 0) return;
+    const secs = unsavedSecsRef.current;
+    unsavedSecsRef.current = 0; setDisplayUnsaved(0);
+    pendingSecsRef.current += secs;
+    setPomoData(prev => {
+      const key = pomoTodayKey();
+      const newDays = { ...prev.days };
+      newDays[key] = (newDays[key] || 0) + secs;
+      pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
+      return { days: newDays };
+    });
   };
-  const flushPomoSecs = () => flushPomoSecsRef.current && flushPomoSecsRef.current();
+  const flushPomoSecs = () => flushPomoSecsRef.current?.();
+  useEffect(() => { return () => flushPomoSecsRef.current?.(); }, [isActive]);
 
-  // Flush on unmount or when timer stops
-  useEffect(() => {
-    return () => flushPomoSecsRef.current && flushPomoSecsRef.current();
-  }, [isActive]);
-
-  // Recalculate elapsed time when tab becomes visible again
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && isActiveRef.current && endTimestampRef.current) {
-        const remaining = Math.max(0, Math.ceil((endTimestampRef.current - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        timeLeftRef.current = remaining;
+        const remaining = Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining); timeLeftRef.current = remaining;
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -1481,203 +1495,193 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
   useEffect(() => {
     if (!isActive) return;
-    // Only anchor if not already set (toggle() or localStorage restore already set it)
-    if (!endTimestampRef.current) {
+    if (!endTimestampRef.current)
       endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
-    }
-    persistTimerState(true, timeLeftRef.current, modeRef.current);
-
+    persist(true, timeLeftRef.current, modeRef.current);
     const id = setInterval(() => {
-      // Always derive time from wall clock — immune to tab throttling
-      const remaining = endTimestampRef.current
-        ? Math.max(0, Math.ceil((endTimestampRef.current - Date.now()) / 1000))
-        : timeLeftRef.current - 1;
-
+      const remaining = Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000));
       if (remaining <= 0) {
         if (modeRef.current === 'focus') {
-          flushPomoSecs();
-          playPomoSound('work_end');
+          flushPomoSecs(); playPomoSound('work_end');
           fireNotification('Pomodoro', 'Sessão de foco encerrada! Hora de pausar. ☕');
-          setMode('break');
-          modeRef.current = 'break';
-          setTimeLeft(BREAK_SECS);
-          timeLeftRef.current = BREAK_SECS;
-          // Auto-start break — reset end anchor and keep interval running
+          setMode('break'); modeRef.current = 'break';
+          setTimeLeft(BREAK_SECS); timeLeftRef.current = BREAK_SECS;
           endTimestampRef.current = Date.now() + BREAK_SECS * 1000;
-          persistTimerState(true, BREAK_SECS, 'break');
-          return; // interval keeps running
+          persist(true, BREAK_SECS, 'break'); return;
         } else {
-          clearInterval(id);
-          playPomoSound('break_end');
+          clearInterval(id); playPomoSound('break_end');
           fireNotification('Pomodoro', 'Pausa encerrada! Pronto para focar?');
-          setMode('focus');
-          modeRef.current = 'focus';
-          setTimeLeft(FOCUS_SECS);
-          timeLeftRef.current = FOCUS_SECS;
-          setIsActive(false);
-          endTimestampRef.current = null;
-          persistTimerState(false, FOCUS_SECS, 'focus');
-          return;
+          const fm = focusMinsRef.current; const fs = fm * 60;
+          setMode('focus'); modeRef.current = 'focus';
+          setTimeLeft(fs); timeLeftRef.current = fs;
+          setIsActive(false); isActiveRef.current = false;
+          endTimestampRef.current = null; persist(false, fs, 'focus', fm); return;
         }
       }
-
-      setTimeLeft(remaining);
-      if (modeRef.current === 'focus') {
-        const prev = timeLeftRef.current;
-        const delta = Math.max(0, prev - remaining);
-        unsavedSecsRef.current += delta;
-        setDisplayUnsaved(unsavedSecsRef.current); // trigger re-render for "Hoje" counter
+      const prev = timeLeftRef.current; const delta = Math.max(0, prev - remaining);
+      if (modeRef.current === 'focus' && delta > 0) {
+        unsavedSecsRef.current += delta; setDisplayUnsaved(unsavedSecsRef.current);
         if (unsavedSecsRef.current >= 30) flushPomoSecs();
       }
-      timeLeftRef.current = remaining;
-      // Refresh persist every ~10s
-      if (remaining % 10 === 0) persistTimerState(true, remaining, modeRef.current);
-    }, 500); // Poll every 500ms for snappy display; wall-clock corrects drift
+      setTimeLeft(remaining); timeLeftRef.current = remaining;
+      if (remaining % 10 === 0) persist(true, remaining, modeRef.current);
+    }, 500);
     return () => clearInterval(id);
   }, [isActive]);
+
+  const requestNotifPermission = () => { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); };
+  const fireNotification = (title, body) => { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); };
 
   const toggle = () => {
     requestNotifPermission();
     setIsActive(a => {
       const next = !a;
-      if (next) {
-        // Starting — set end anchor
-        playPomoSound('start');
-        endTimestampRef.current = Date.now() + timeLeftRef.current * 1000;
-        persistTimerState(true, timeLeftRef.current, modeRef.current);
-      } else {
-        // Pausing
-        playPomoSound('pause');
-        endTimestampRef.current = null;
-        persistTimerState(false, timeLeftRef.current, modeRef.current);
-        flushPomoSecs();
-      }
+      if (next) { playPomoSound('start'); endTimestampRef.current = Date.now() + timeLeftRef.current*1000; persist(true, timeLeftRef.current, modeRef.current); }
+      else { playPomoSound('pause'); endTimestampRef.current = null; persist(false, timeLeftRef.current, modeRef.current); flushPomoSecs(); }
       return next;
     });
   };
   const reset = () => {
-    setIsActive(false);
-    endTimestampRef.current = null;
-    setMode('focus');
-    modeRef.current = 'focus';
-    setTimeLeft(FOCUS_SECS);
-    timeLeftRef.current = FOCUS_SECS;
-    persistTimerState(false, FOCUS_SECS, 'focus');
-    flushPomoSecs();
+    setIsActive(false); isActiveRef.current = false; endTimestampRef.current = null;
+    setMode('focus'); modeRef.current = 'focus';
+    const fs = focusMinsRef.current * 60;
+    setTimeLeft(fs); timeLeftRef.current = fs;
+    persist(false, fs, 'focus'); flushPomoSecs();
   };
 
-  const mins = Math.floor(timeLeft / 60);
-  const secs = timeLeft % 60;
-  const timeStr = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
-  const pct = mode === 'focus' ? timeLeft / FOCUS_SECS : timeLeft / BREAK_SECS;
+  // Circle drag to set duration
+  const getAngleMins = (e) => {
+    if (!circleRef.current) return null;
+    const rect = circleRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
+    let angle = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+    if (angle < 0) angle += 2 * Math.PI;
+    return Math.max(1, Math.min(MAX_FOCUS_MINS, Math.round((angle / (2*Math.PI)) * MAX_FOCUS_MINS)));
+  };
+  const handlePointerDown = (e) => {
+    if (isActive || mode !== 'focus') return;
+    e.preventDefault(); circleRef.current?.setPointerCapture(e.pointerId); setIsDragging(true);
+    const mins = getAngleMins(e);
+    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
+  };
+  const handlePointerMove = (e) => {
+    if (!isDragging) return;
+    const mins = getAngleMins(e);
+    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
+  };
+  const handlePointerUp = (e) => {
+    if (!isDragging) return; setIsDragging(false);
+    const mins = getAngleMins(e);
+    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; const fs=mins*60; setTimeLeft(fs); timeLeftRef.current=fs; persist(false,fs,'focus',mins); }
+  };
+
+  // Display
+  const R = 34; const CX = 38; const CY = 38;
+  const pct = mode === 'focus'
+    ? (isActive ? timeLeft / (focusMins*60) : focusMins / MAX_FOCUS_MINS)
+    : timeLeft / BREAK_SECS;
   const isFocus = mode === 'focus';
-  const todaySecs = ((pomoData.days || {})[pomoTodayKey()]) || 0;
+  const mins = Math.floor(timeLeft/60); const secs = timeLeft % 60;
+  const timeStr = (mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs;
+  const knobAngle = isActive ? (1-pct)*2*Math.PI : (focusMins/MAX_FOCUS_MINS)*2*Math.PI;
+  const kx = CX + R*Math.sin(knobAngle); const ky = CY - R*Math.cos(knobAngle);
+  const showKnob = !isActive && isFocus;
+
+  const todaySecs = ((pomoData.days||{})[pomoTodayKey()])||0;
   const todayDisplay = todaySecs + displayUnsaved + pendingSecsRef.current;
 
-  // Day medal tiers — Bronze: 2h, Silver: 4h, Gold: 6h, Diamond: 8h
   const DAY_TIERS = [
-    { level: 'none',    icon: '⭐', name: 'Iniciante', color: 'var(--muted)', floor: 0        },
-    { level: 'bronze',  icon: '🥉', name: 'Bronze',    color: '#CD7F32',      floor: 2 * 3600 },
-    { level: 'silver',  icon: '🥈', name: 'Prata',     color: '#94A3B8',      floor: 4 * 3600 },
-    { level: 'golden',  icon: '🏆', name: 'Ouro',      color: '#FBBF24',      floor: 6 * 3600 },
-    { level: 'diamond', icon: '💎', name: 'Diamante',  color: '#60A5FA',      floor: 8 * 3600 },
+    {level:'none',   icon:'⭐',name:'Iniciante',color:'var(--muted)',floor:0},
+    {level:'bronze', icon:'🥉',name:'Bronze',   color:'#CD7F32',    floor:2*3600},
+    {level:'silver', icon:'🥈',name:'Prata',    color:'#94A3B8',    floor:4*3600},
+    {level:'golden', icon:'🏆',name:'Ouro',     color:'#FBBF24',    floor:6*3600},
+    {level:'diamond',icon:'💎',name:'Diamante', color:'#60A5FA',    floor:8*3600},
   ];
-  const getStarLevel = (secs) => {
-    for (let i = DAY_TIERS.length - 1; i >= 0; i--)
-      if (secs >= DAY_TIERS[i].floor) return DAY_TIERS[i];
-    return DAY_TIERS[0];
-  };
-
+  const getStarLevel = s => { for(let i=DAY_TIERS.length-1;i>=0;i--) if(s>=DAY_TIERS[i].floor) return DAY_TIERS[i]; return DAY_TIERS[0]; };
   const currentStar = getStarLevel(todayDisplay);
   const prevStarLevelRef = React.useRef(currentStar.level);
   React.useEffect(()=>{
-    if(prevStarLevelRef.current !== currentStar.level && currentStar.level !== 'none'){
-      playMedalSound(currentStar.level);
-    }
-    prevStarLevelRef.current = currentStar.level;
+    if(prevStarLevelRef.current!==currentStar.level&&currentStar.level!=='none') playMedalSound(currentStar.level);
+    prevStarLevelRef.current=currentStar.level;
   },[currentStar.level]);
-  const nextStarTier = DAY_TIERS.find(t => t.floor > currentStar.floor) || null;
-  const nextStar = nextStarTier || null;
-  const progressToNext = nextStarTier
-    ? Math.min(100, ((todayDisplay - currentStar.floor) / (nextStarTier.floor - currentStar.floor)) * 100)
-    : 100;
+  const nextStarTier = DAY_TIERS.find(t=>t.floor>currentStar.floor)||null;
+  const progressToNext = nextStarTier ? Math.min(100,((todayDisplay-currentStar.floor)/(nextStarTier.floor-currentStar.floor))*100) : 100;
 
-  // Month medal tiers — Bronze: 40h, Silver: 80h, Gold: 120h, Diamond: 160h
   const MONTH_TIERS = [
-    { level: 'none',    icon: '⭐', name: 'Iniciante', color: 'var(--muted)', floor: 0          },
-    { level: 'bronze',  icon: '🥉', name: 'Bronze',    color: '#CD7F32',      floor: 40 * 3600  },
-    { level: 'silver',  icon: '🥈', name: 'Prata',     color: '#94A3B8',      floor: 80 * 3600  },
-    { level: 'golden',  icon: '🏆', name: 'Ouro',      color: '#FBBF24',      floor: 120 * 3600 },
-    { level: 'diamond', icon: '💎', name: 'Diamante',  color: '#60A5FA',      floor: 160 * 3600 },
+    {level:'none',   icon:'⭐',name:'Iniciante',color:'var(--muted)',floor:0},
+    {level:'bronze', icon:'🥉',name:'Bronze',   color:'#CD7F32',    floor:40*3600},
+    {level:'silver', icon:'🥈',name:'Prata',    color:'#94A3B8',    floor:80*3600},
+    {level:'golden', icon:'🏆',name:'Ouro',     color:'#FBBF24',    floor:120*3600},
+    {level:'diamond',icon:'💎',name:'Diamante', color:'#60A5FA',    floor:160*3600},
   ];
-  const getMonthMedal = (secs) => {
-    for (let i = MONTH_TIERS.length - 1; i >= 0; i--)
-      if (secs >= MONTH_TIERS[i].floor) return MONTH_TIERS[i];
-    return MONTH_TIERS[0];
-  };
+  const getMonthMedal = s => { for(let i=MONTH_TIERS.length-1;i>=0;i--) if(s>=MONTH_TIERS[i].floor) return MONTH_TIERS[i]; return MONTH_TIERS[0]; };
 
-  // - Stats data -
-  const dayEntries = useMemo(() => {
-    const entries = Object.entries(pomoData.days || {});
-    const filtered = entries.filter(e => e[0] !== '_total' && e[0].length === 10 && e[1] > 0);
-    filtered.sort((a, b) => b[0].localeCompare(a[0]));
-    return filtered.slice(0, 60);
-  }, [pomoData]);
-
-  const monthEntries = useMemo(() => {
-    const months = {};
-    for (const [day, s] of Object.entries(pomoData.days || {})) {
-      if (day === '_total' || day.length !== 10) continue;
-      const mk = day.slice(0, 7);
-      months[mk] = (months[mk] || 0) + s;
+  const dayEntries = useMemo(()=>{
+    const entries=Object.entries(pomoData.days||{});
+    const filtered=entries.filter(e=>e[0]!=='_total'&&e[0].length===10&&e[1]>0);
+    filtered.sort((a,b)=>b[0].localeCompare(a[0]));
+    return filtered.slice(0,60);
+  },[pomoData]);
+  const monthEntries = useMemo(()=>{
+    const months={};
+    for(const[day,s] of Object.entries(pomoData.days||{})){
+      if(day==='_total'||day.length!==10)continue;
+      const mk=day.slice(0,7); months[mk]=(months[mk]||0)+s;
     }
-    const result = Object.entries(months);
-    result.sort((a, b) => b[0].localeCompare(a[0]));
-    return result;
-  }, [pomoData]);
+    const result=Object.entries(months); result.sort((a,b)=>b[0].localeCompare(a[0])); return result;
+  },[pomoData]);
 
-  const [statsTab, setStatsTab] = useState('days');
-  const maxDay   = dayEntries.reduce((m, e) => Math.max(m, e[1]), 1);
-  const maxMonth = monthEntries.reduce((m, e) => Math.max(m, e[1]), 1);
-  const totalAll = dayEntries.reduce((sum, e) => sum + e[1], 0);
+  const [statsTab,setStatsTab]=useState('days');
+  const maxDay   = dayEntries.reduce((m,e)=>Math.max(m,e[1]),1);
+  const maxMonth = monthEntries.reduce((m,e)=>Math.max(m,e[1]),1);
+  const totalAll = dayEntries.reduce((sum,e)=>sum+e[1],0);
 
-  return (
+  return(
     <div style={{marginBottom:0}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7}}>
         <span className="label">Pomodoro</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'#E8F5EC',color:isFocus?'var(--muted)':'#276b3e',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
-            {isFocus ? 'Foco' : 'Pausa'}
+            {isFocus?'Foco':'Pausa'}
           </div>
-          <button
-            className="btn btn-ghost"
-            onClick={()=>setShowStats(s=>!s)}
-            title="Histórico de foco"
-            style={{padding:'4px 8px',borderRadius:6,background:showStats?'var(--text)':'transparent',color:showStats?'white':'var(--muted)'}}
-          >
+          <button className="btn btn-ghost" onClick={()=>setShowStats(s=>!s)} title="Histórico de foco"
+            style={{padding:'4px 8px',borderRadius:6,background:showStats?'var(--text)':'transparent',color:showStats?'white':'var(--muted)'}}>
             <Icon name="timer" size={14}/>
           </button>
         </div>
       </div>
 
-      {/* Timer card */}
-      {!showStats && (
+      {!showStats&&(
         <div className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:14}}>
-          <div style={{position:'relative',width:76,height:76,flexShrink:0}}>
+          <div ref={circleRef}
+            style={{position:'relative',width:76,height:76,flexShrink:0,cursor:(!isActive&&isFocus)?'pointer':'default',touchAction:'none',userSelect:'none'}}
+            onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
             <svg width="76" height="76" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
-              <circle cx="38" cy="38" r={34} fill="none" stroke="var(--border)" strokeWidth="4"/>
-              <circle cx="38" cy="38" r={34} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4" strokeDasharray={2*Math.PI*34} strokeDashoffset={2*Math.PI*34*(1-pct)} strokeLinecap="round" style={{transition:'stroke-dashoffset .8s cubic-bezier(.4,0,.2,1),stroke .4s'}}/>
+              <circle cx="38" cy="38" r={R} fill="none" stroke="var(--border)" strokeWidth="4"/>
+              <circle cx="38" cy="38" r={R} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4"
+                strokeDasharray={2*Math.PI*R} strokeDashoffset={2*Math.PI*R*(1-pct)} strokeLinecap="round"
+                style={{transition:isDragging?'none':'stroke-dashoffset .5s cubic-bezier(.4,0,.2,1),stroke .4s'}}/>
             </svg>
-            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.25rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
+            {showKnob&&(
+              <svg width="76" height="76" style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}>
+                <circle cx={kx} cy={ky} r={isDragging?6:4} fill="var(--text)" stroke="var(--surface)" strokeWidth="2"
+                  style={{transition:isDragging?'none':'r .15s'}}/>
+              </svg>
+            )}
+            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+              {isDragging
+                ?<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,lineHeight:1}}>{focusMins}<span style={{fontSize:'.6rem',fontWeight:600,color:'var(--muted)',marginLeft:1}}>min</span></span>
+                :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.25rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
+              }
             </div>
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:5}}>
               <button className="btn btn-outline" onClick={toggle} style={{flex:1,justifyContent:'center',padding:'5px 10px',fontSize:'.78rem'}}>
                 <Icon name={isActive?'pause':'play'} size={12}/>
-                {isActive ? 'Pausar' : (isFocus ? 'Iniciar' : 'Retomar')}
+                {isActive?'Pausar':(isFocus?'Iniciar':'Retomar')}
               </button>
               <button className="btn btn-ghost" onClick={reset} title="Reiniciar" style={{padding:5}}>
                 <Icon name="rotate-ccw" size={13}/>
@@ -1692,12 +1696,12 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                   <span style={{fontSize:'.95rem',lineHeight:1}}>{currentStar.icon}</span>
                   <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:currentStar.level==='none'?'var(--muted)':currentStar.color}}>{currentStar.name}</span>
                 </div>
-                {nextStar && (
+                {nextStarTier&&(
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{height:3,background:'var(--bg)',borderRadius:2,overflow:'hidden',position:'relative'}}>
+                    <div style={{height:3,background:'var(--bg)',borderRadius:2,overflow:'hidden'}}>
                       <div style={{height:'100%',width:Math.min(100,progressToNext)+'%',background:currentStar.color,borderRadius:2,transition:'width 0.5s ease'}}/>
                     </div>
-                    <div style={{fontSize:'.58rem',color:'var(--muted)',marginTop:1,textAlign:'right'}}>{Math.round(progressToNext)}% → {nextStar.name}</div>
+                    <div style={{fontSize:'.58rem',color:'var(--muted)',marginTop:1,textAlign:'right'}}>{Math.round(progressToNext)}% → {nextStarTier.name}</div>
                   </div>
                 )}
               </div>
@@ -1706,7 +1710,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         </div>
       )}
 
-      {/* Stats panel - replaces timer card inline */}
+
       {showStats && ReactDOM.createPortal(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
           <div style={{background:'var(--surface)',borderRadius:18,border:'1px solid var(--border)',width:'100%',maxWidth:440,maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(28,25,23,.15)',overflow:'hidden'}}>
@@ -1803,6 +1807,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     </div>
   );
 };
+    </div>
+  );
+};
+
 
 // - DASHBOARD -
 // Drag-to-reorder hook — used by IdeasLab, Clients, Mentors
@@ -1884,20 +1892,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
             </div>
           </div>
         ))}
-        {!isMobile&&(
-          <div className="card stat-value stagger-4" style={{padding:isSmall?'10px 14px':'12px 16px',display:'flex',flexDirection:'column',gap:6}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:isSmall?'1.5rem':'1.8rem',fontWeight:400,fontFamily:'Cormorant Garamond,serif',lineHeight:1,letterSpacing:'-0.02em'}}>{streakDays}<span style={{fontSize:'.7rem',fontWeight:500,color:'var(--muted)',marginLeft:4}}>dias</span></span>
-              <Icon name="star" size={14} style={{color:'#ECC94B'}}/>
-            </div>
-            <div className="heatmap-row" style={{gap:2}}>
-              {weekHeat.map((c,i)=>(
-                <div key={i} className={'heat-cell streak-dot-'+c.level} title={c.day+': '+c.mins+'min'} style={{flex:1,height:isSmall?6:8,borderRadius:2}}/>
-              ))}
-            </div>
-            <span style={{fontSize:'.68rem',color:'var(--muted)',fontWeight:500}}>{'Sequ\u00eancia Foco'}</span>
-          </div>
-        )}
+
       </div>
       {/* Main grid - fills remaining height */}
       <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:isSmall?10:14,flex:1,minHeight:0,overflow:isMobile?'visible':'hidden'}}>
@@ -3534,207 +3529,189 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
 });
 
 // - IDEAS -
-const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>{
-  // ── STATE ──
+const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
+  const ref=useRef(null);
+  const saveTimer=useRef(null);
+  const lastId=useRef(null);
+  const dragImgRef=useRef(null);
+  const imgInputRef=useRef(null);
+  const [fmt,setFmt]=useState({});
+
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(lastId.current!==noteId){
+      ref.current.innerHTML=initialHTML||'';
+      lastId.current=noteId;
+    }
+  });
+
+  const emit=useCallback(()=>{
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(ref.current.innerHTML);},800);
+  },[onSave]);
+
+  const flushSave=useCallback(()=>{
+    clearTimeout(saveTimer.current);
+    if(ref.current)onSave(ref.current.innerHTML);
+  },[onSave]);
+
+  const exec=(cmd,val)=>{ref.current?.focus();document.execCommand(cmd,false,val||null);emit();};
+
+  const insertImage=useCallback((src)=>{
+    ref.current?.focus();
+    document.execCommand('insertHTML',false,`<img src="${src}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;" draggable="true"/>`);
+    emit();
+  },[emit]);
+
+  const handleKeyDown=e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}};
+
+  const handleDrop=e=>{
+    if(dragImgRef.current){
+      e.preventDefault();
+      const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
+      if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
+      const clone=dragImgRef.current.cloneNode(true);
+      dragImgRef.current.remove();
+      document.execCommand('insertHTML',false,clone.outerHTML);
+      dragImgRef.current=null;emit();return;
+    }
+    const files=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));
+    if(!files.length)return;
+    e.preventDefault();
+    const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
+    if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
+    files.forEach(f=>{const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);});
+  };
+  const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
+  const handlePaste=e=>{
+    const items=e.clipboardData?.items||[];
+    const img=[...items].find(i=>i.type.startsWith('image/'));
+    if(img){e.preventDefault();const f=img.getAsFile();const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);}
+  };
+  const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{}};
+
+  const toolbarBtns=[
+    {cmd:'bold',icon:'bold',title:'Negrito'},
+    {cmd:'italic',icon:'italic',title:'Itálico'},
+    {cmd:'underline',icon:'underline',title:'Sublinhado'},
+    {cmd:'strikeThrough',icon:'strikethrough',title:'Tachado'},
+    null,
+    {cmd:'insertUnorderedList',icon:'list',title:'Lista'},
+    {cmd:'insertOrderedList',icon:'list-ordered',title:'Lista numerada'},
+    null,
+    {cmd:'formatBlock',val:'h1',icon:'heading-1',title:'Título grande'},
+    {cmd:'formatBlock',val:'h2',icon:'heading-2',title:'Título médio'},
+    {cmd:'formatBlock',val:'blockquote',icon:'quote',title:'Citação'},
+    {cmd:'formatBlock',val:'p',icon:'type',title:'Parágrafo'},
+    null,
+    {cmd:'removeFormat',icon:'eraser',title:'Limpar formato'},
+  ];
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
+      <div style={{display:'flex',gap:1,padding:'4px 0 8px',borderBottom:'1px solid var(--border)',marginBottom:12,flexWrap:'wrap',flexShrink:0,alignItems:'center'}}>
+        {toolbarBtns.map((b,i)=>b===null?(
+          <div key={i} style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
+        ):(
+          <button key={i} title={b.title} className={`rich-toolbar-btn${fmt[b.cmd]&&!b.val?' active':''}`}
+            onMouseDown={e=>{e.preventDefault();exec(b.cmd,b.val||null);}}>
+            <Icon name={b.icon} size={13}/>
+          </button>
+        ))}
+        <div style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
+        <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
+          <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{
+            const f=e.target.files[0];if(!f)return;
+            const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(f);
+            e.target.value='';
+          }}/>
+          <Icon name="image" size={13}/>
+        </label>
+      </div>
+      <div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning
+        data-placeholder="Comece a escrever..."
+        onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
+        onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
+        onPaste={handlePaste} onBlur={flushSave}
+        style={{flex:1,fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
+    </div>
+  );
+});
+
+const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const [selectedId,setSelectedId]=useState(null);
   const [showTrash,setShowTrash]=useState(false);
-  const [showCreateMenu,setShowCreateMenu]=useState(false);
-  // Close dropdown on Escape or click outside
-  useEffect(()=>{
-    if(!showCreateMenu)return;
-    const close=e=>{if(e.key==='Escape')setShowCreateMenu(false);};
-    const clickOut=()=>setShowCreateMenu(false);
-    document.addEventListener('keydown',close);
-    // Delay to avoid catching the click that opened the menu
-    const t=setTimeout(()=>document.addEventListener('click',clickOut),0);
-    return()=>{document.removeEventListener('keydown',close);clearTimeout(t);document.removeEventListener('click',clickOut);};
-  },[showCreateMenu]);
-  const {start:dStart,over:dOver,drop:dDrop,end:dEnd,dragId:dDragId,overId:dOverId}=useDragReorder(setNotes);
-
-  // note fields
   const [localTitle,setLocalTitle]=useState('');
-  const [localContent,setLocalContent]=useState('');
   const flushTitleRef=useRef(null);
-  const flushContentRef=useRef(null);
-  const contentAreaRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
   const dragIdxRef=useRef(null);
-  const reorderNotes=(from,to)=>{
-    if(from===to)return;
-    setNotes(prev=>{
-      const live=prev.filter(n=>!n.deleted);
-      const dead=prev.filter(n=>n.deleted);
-      const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);
-      return[...next,...dead];
-    });
-  };
 
-  // entry fields
-  const [activeEntryId,setActiveEntryId]=useState(null);
-  const [entryTitle,setEntryTitle]=useState('');
-  const [entryContent,setEntryContent]=useState('');
-  const flushEntryTitleRef=useRef(null);
-  const flushEntryContentRef=useRef(null);
-  const entryAreaRef=useRef(null);
-
-  // ── DERIVED ──
   const allItems=useMemo(()=>notes.filter(n=>!n.deleted),[notes]);
   const trashed=useMemo(()=>notes.filter(n=>n.deleted),[notes]);
   const selectedItem=useMemo(()=>notes.find(n=>n.id===selectedId)||null,[notes,selectedId]);
-  const isGroup=selectedItem?.type==='project';
-  const activeEntry=useMemo(()=>isGroup?(selectedItem?.entries||[]).find(e=>e.id===activeEntryId)||null:null,[selectedItem,activeEntryId,isGroup]);
 
-  // ── SYNC NOTE ──
-  useEffect(()=>{
-    clearTimeout(flushTitleRef.current);clearTimeout(flushContentRef.current);
-    if(selectedItem&&!isGroup){setLocalTitle(selectedItem.title);setLocalContent(selectedItem.content||'');}
-  },[selectedId]);
+  useEffect(()=>{clearTimeout(flushTitleRef.current);setLocalTitle(selectedItem?.title||'');},[selectedId]);
 
-  useEffect(()=>{
-    if(contentAreaRef.current){contentAreaRef.current.style.height='auto';contentAreaRef.current.style.height=contentAreaRef.current.scrollHeight+'px';}
-  },[localContent,selectedId]);
-
-  // ── SYNC ENTRY ──
-  useEffect(()=>{
-    clearTimeout(flushEntryTitleRef.current);clearTimeout(flushEntryContentRef.current);
-    if(activeEntry){setEntryTitle(activeEntry.title);setEntryContent(activeEntry.content||'');}
-    else{setEntryTitle('');setEntryContent('');}
-  },[activeEntryId]);
-
-  useEffect(()=>{
-    if(entryAreaRef.current){entryAreaRef.current.style.height='auto';entryAreaRef.current.style.height=entryAreaRef.current.scrollHeight+'px';}
-  },[entryContent,activeEntryId]);
-
-  // ── NOTE HANDLERS ──
   const flushNote=(field,value)=>setNotes(p=>p.map(n=>n.id===selectedId?{...n,[field]:value}:n));
-  const handleTitleChange=e=>{const v=e.target.value;setLocalTitle(v);clearTimeout(flushTitleRef.current);flushTitleRef.current=setTimeout(()=>flushNote('title',v),1200);};
-  const handleContentChange=e=>{
-    const v=e.target.value;setLocalContent(v);
-    if(e.target){e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}
-    clearTimeout(flushContentRef.current);flushContentRef.current=setTimeout(()=>flushNote('content',v),1200);
+  const handleTitleChange=e=>{const v=e.target.value;setLocalTitle(v);clearTimeout(flushTitleRef.current);flushTitleRef.current=setTimeout(()=>flushNote('title',v),800);};
+  const handleTitleBlur=()=>{clearTimeout(flushTitleRef.current);flushNote('title',localTitle);};
+  const handleContentSave=useCallback((html)=>{setNotes(p=>p.map(n=>n.id===selectedId?{...n,content:html}:n));},[selectedId,setNotes]);
+
+  const reorderNotes=(from,to)=>{
+    if(from===to)return;
+    setNotes(prev=>{const live=prev.filter(n=>!n.deleted);const dead=prev.filter(n=>n.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});
   };
-  const handleNoteBlur=(field,value)=>{clearTimeout(field==='title'?flushTitleRef.current:flushContentRef.current);flushNote(field,value);};
 
   const newNote=()=>{
-    const n={id:Date.now(),type:'note',title:'Nova Nota',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
-    newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);setShowCreateMenu(false);
+    const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
+    newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);
   };
-  const trashItem=id=>{
-    if(Date.now()-newNoteCooldownRef.current<600)return;
-    setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true}:n));
-    if(selectedId===id)setSelectedId(null);
-  };
+  const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true}:n));if(selectedId===id)setSelectedId(null);};
   const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false}:n));
   const hardDeleteItem=id=>{if(window.confirm('Excluir permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));if(selectedId===id)setSelectedId(null);}};
 
-  // ── GROUP HANDLERS ──
-  const updProj=(id,fn)=>setNotes(p=>p.map(n=>n.id===id&&n.type==='project'?fn(n):n));
-  const flushEntry=(field,value)=>{
-    if(!selectedId||!activeEntryId)return;
-    updProj(selectedId,proj=>({...proj,entries:(proj.entries||[]).map(e=>e.id===activeEntryId?{...e,[field]:value}:e)}));
-  };
-  const handleEntryTitleChange=e=>{const v=e.target.value;setEntryTitle(v);clearTimeout(flushEntryTitleRef.current);flushEntryTitleRef.current=setTimeout(()=>flushEntry('title',v),1200);};
-  const handleEntryContentChange=e=>{
-    const v=e.target.value;setEntryContent(v);
-    if(e.target){e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px';}
-    clearTimeout(flushEntryContentRef.current);flushEntryContentRef.current=setTimeout(()=>flushEntry('content',v),1200);
-  };
-  const handleEntryBlur=(field,value)=>{clearTimeout(field==='title'?flushEntryTitleRef.current:flushEntryContentRef.current);flushEntry(field,value);};
-
-  const newGroup=()=>{
-    const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};
-    setNotes(prev=>[p,...prev]);setSelectedId(p.id);setActiveEntryId(null);setShowCreateMenu(false);
-  };
-  const renameGroup=(id,title)=>updProj(id,p=>({...p,title}));
-  const addEntry=()=>{
-    if(!selectedId)return;
-    const e={id:Date.now(),title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR')};
-    updProj(selectedId,p=>({...p,entries:[...(p.entries||[]),e]}));
-    setActiveEntryId(e.id);
-  };
-  const deleteEntry=id=>{
-    if(!selectedId)return;
-    updProj(selectedId,p=>({...p,entries:(p.entries||[]).filter(e=>e.id!==id)}));
-    if(activeEntryId===id){const entries=selectedItem?.entries||[];const next=entries.find(e=>e.id!==id);setActiveEntryId(next?.id||null);}
-  };
-
-  // ── MOBILE VIEW ──
-  const [mobileView,setMobileView]=useState('list'); // 'list'|'detail'|'entries'|'entry-editor'
-
-  // ── DESKTOP ──
   if(!isMobile)return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
-      {/* Header */}
       <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14,flexShrink:0}}>
-        <h1 className="serif" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Ideias</h1>
+        <h1 className="serif" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Anotações</h1>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'5px 12px',fontSize:'.78rem'}}>
             <Icon name="trash-2" size={12}/>{showTrash?' Sair':' Lixeira'}{!showTrash&&trashed.length>0&&` (${trashed.length})`}
           </button>
-          {!showTrash&&(
-            <div style={{position:'relative'}}>
-              <button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={()=>setShowCreateMenu(m=>!m)}>
-                <Icon name="plus" size={12}/> Criar
-              </button>
-              {showCreateMenu&&(
-                <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:140,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:50}}>
-                  <button onClick={newNote} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <Icon name="file-text" size={13}/> Nota
-                  </button>
-                  <button onClick={newGroup} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <Icon name="folder" size={13}/> Grupo
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          {!showTrash&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newNote}><Icon name="plus" size={12}/> Nova nota</button>}
         </div>
       </div>
-
-      {/* Body */}
       <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
-        {/* Unified list */}
         <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:3,overflowY:'auto'}}>
-          {(showTrash?trashed:allItems).length===0&&(
-            <div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>{showTrash?'Lixeira vazia.':'Nenhum item ainda.'}</div>
-          )}
+          {(showTrash?trashed:allItems).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>{showTrash?'Lixeira vazia.':'Nenhuma anotação ainda.'}</div>}
           {(showTrash?trashed:allItems).map((n,idx)=>(
-            <div key={n.id}
-              className="drag-item"
-              draggable={!showTrash}
+            <div key={n.id} className="drag-item" draggable={!showTrash}
               onDragStart={e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.4';}}
               onDragEnd={e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
               onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
               onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
               onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderNotes(dragIdxRef.current,idx);dragIdxRef.current=null;}}}
-              onClick={()=>{setSelectedId(n.id);if(n.type==='project')setActiveEntryId((n.entries||[])[0]?.id||null);}}
+              onClick={()=>setSelectedId(n.id)}
               style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${selectedId===n.id?'var(--text)':'transparent'}`,background:selectedId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
               onMouseEnter={e=>{if(selectedId!==n.id)e.currentTarget.style.background='var(--surface)';}}
               onMouseLeave={e=>{if(selectedId!==n.id)e.currentTarget.style.background='transparent';}}>
               <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
                 {!showTrash&&<span className="drag-handle" style={{color:'var(--muted)',flexShrink:0,lineHeight:0}}><Icon name="grip-vertical" size={11}/></span>}
-                <Icon name={n.type==='project'?'folder':'file-text'} size={11} style={{color:'var(--muted)',flexShrink:0}}/>
+                <Icon name="file-text" size={11} style={{color:'var(--muted)',flexShrink:0}}/>
                 <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
               </div>
-              <div style={{fontSize:'.7rem',color:'var(--muted)',paddingLeft:17}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:n.date}</div>
+              <div style={{fontSize:'.7rem',color:'var(--muted)',paddingLeft:17}}>{n.date}</div>
             </div>
           ))}
         </div>
-
-        {/* Right: trash panel */}
         {showTrash&&(
           <div style={{flex:1,overflowY:'auto'}}>
             {trashed.length===0&&<div style={{textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.88rem'}}><Icon name="trash-2" size={26} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Lixeira vazia.</div>}
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {trashed.map(n=>(
                 <div key={n.id} className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-                  <Icon name={n.type==='project'?'folder':'file-text'} size={14} style={{color:'var(--muted)',flexShrink:0}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-                    <div style={{fontSize:'.72rem',color:'var(--muted)'}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:'Nota'} · {n.date}</div>
-                  </div>
+                  <Icon name="file-text" size={14} style={{color:'var(--muted)',flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div><div style={{fontSize:'.72rem',color:'var(--muted)'}}>{n.date}</div></div>
                   <button onClick={()=>restoreItem(n.id)} className="btn btn-outline" style={{padding:'4px 12px',fontSize:'.75rem'}}><Icon name="undo-2" size={11}/> Restaurar</button>
                   <button onClick={()=>hardDeleteItem(n.id)} className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
                 </div>
@@ -3742,205 +3719,85 @@ const IdeasLab=React.memo(({notes,setNotes,noteGroups,setNoteGroups,isMobile})=>
             </div>
           </div>
         )}
-
-        {/* Right: group workspace */}
-        {!showTrash&&selectedItem&&!selectedItem.deleted&&isGroup&&(
-          <div style={{flex:1,display:'flex',gap:12,minWidth:0}}>
-            <div className="card" style={{width:200,flexShrink:0,padding:'16px 12px',display:'flex',flexDirection:'column',gap:8}}>
-              <input value={selectedItem.title} onChange={e=>renameGroup(selectedItem.id,e.target.value)}
-                style={{fontWeight:700,fontSize:'.88rem',background:'transparent',border:'none',outline:'none',color:'var(--text)',borderBottom:'1px solid var(--border)',paddingBottom:6,marginBottom:4,width:'100%'}}/>
-              <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
-                {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.78rem',color:'var(--muted)',padding:'8px 0'}}>Nenhuma entrada.</div>}
-                {(selectedItem.entries||[]).map((e,i)=>(
-                  <div key={e.id} onClick={()=>setActiveEntryId(e.id)}
-                    style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}
-                    onMouseEnter={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='var(--surface)';}}
-                    onMouseLeave={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='transparent';}}>
-                    <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
-                    <span style={{fontSize:'.8rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid var(--border)'}}>
-                <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',fontSize:'.78rem',padding:'6px 0'}} onClick={addEntry}><Icon name="plus" size={12}/> Adicionar</button>
-                <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}}
-                  onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
-                  onClick={()=>trashItem(selectedItem.id)}><Icon name="trash-2" size={11}/> Excluir grupo</button>
-              </div>
-            </div>
-            <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
-              {activeEntry?(
-                <>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
-                    <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={()=>handleEntryBlur('title',entryTitle)}
-                      style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-                    <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
-                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{activeEntry.date}</span>
-                      <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
-                        onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
-                    </div>
-                  </div>
-                  <textarea ref={entryAreaRef} value={entryContent} onChange={handleEntryContentChange} onBlur={()=>handleEntryBlur('content',entryContent)} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}} placeholder="Escreva suas anotações aqui..."
-                    style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',overflow:'hidden',minHeight:120,width:'100%'}}/>
-                </>
-              ):(
-                <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
-                  <Icon name="book-open" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
-                  <p style={{fontSize:'.85rem'}}>Selecione ou adicione uma entrada</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Right: note editor */}
-        {!showTrash&&selectedItem&&!selectedItem.deleted&&!isGroup&&(
-          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12}}>
-              <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
+        {!showTrash&&selectedItem&&!selectedItem.deleted&&(
+          <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12,flexShrink:0}}>
+              <input value={localTitle} onChange={handleTitleChange} onBlur={handleTitleBlur}
                 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-              <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
-                onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+              <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
+                <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{selectedItem.date}</span>
+                <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
+                  onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+              </div>
             </div>
-            <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleNoteBlur('content',localContent)} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}} placeholder="Comece a escrever..."
-              style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',overflow:'hidden',minHeight:120,width:'100%'}}/>
+            <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
           </div>
         )}
-
-        {/* Right: empty state */}
         {!showTrash&&!selectedItem&&(
           <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)'}}>
-            <Icon name="lightbulb" size={32} style={{opacity:.3}}/>
-            <p style={{fontSize:'.85rem'}}>Selecione ou crie um item</p>
+            <Icon name="notebook-pen" size={32} style={{opacity:.3}}/>
+            <p style={{fontSize:'.85rem'}}>Selecione ou crie uma anotação</p>
           </div>
         )}
       </div>
     </div>
   );
 
-  // ── MOBILE ──
+  // MOBILE
+  const [mobileView,setMobileView]=useState('list');
   return(
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,height:'calc(100vh - 120px)',display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexShrink:0}}>
         {mobileView!=='list'
           ?<button className="btn btn-ghost" style={{padding:'8px 12px',fontSize:'.88rem'}} onClick={()=>setMobileView('list')}><Icon name="arrow-left" size={16}/> Voltar</button>
-          :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Ideias</h1>
-        }
+          :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Anotações</h1>}
         {mobileView==='list'&&!showTrash&&(
           <div style={{display:'flex',gap:6}}>
-            <button onClick={()=>setShowTrash(true)} className="btn btn-outline" style={{padding:'6px 10px',fontSize:'.8rem'}}>
-              <Icon name="trash-2" size={12}/>{trashed.length>0&&` (${trashed.length})`}
-            </button>
-            <div style={{position:'relative'}}>
-              <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>setShowCreateMenu(m=>!m)}>
-                <Icon name="plus" size={13}/> Criar
-              </button>
-              {showCreateMenu&&(
-                <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:130,boxShadow:'0 8px 24px rgba(0,0,0,.15)',zIndex:50}}>
-                  <button onClick={()=>{newNote();setMobileView('detail');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}>
-                    <Icon name="file-text" size={13}/> Nota
-                  </button>
-                  <button onClick={()=>{newGroup();setMobileView('entries');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}>
-                    <Icon name="folder" size={13}/> Grupo
-                  </button>
-                </div>
-              )}
-            </div>
+            <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'6px 10px',fontSize:'.8rem'}}><Icon name="trash-2" size={12}/>{trashed.length>0&&` (${trashed.length})`}</button>
+            <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{newNote();setMobileView('detail');}}><Icon name="plus" size={13}/> Nova</button>
           </div>
         )}
-        {mobileView==='list'&&showTrash&&(
-          <button onClick={()=>setShowTrash(false)} className="btn btn-danger" style={{padding:'6px 14px',fontSize:'.8rem'}}>Sair</button>
-        )}
-        {mobileView==='entries'&&(
-          <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{addEntry();setMobileView('entry-editor');}}>
-            <Icon name="plus" size={13}/> Entrada
-          </button>
-        )}
+        {mobileView==='list'&&showTrash&&<button onClick={()=>setShowTrash(false)} className="btn btn-danger" style={{padding:'6px 14px',fontSize:'.8rem'}}>Sair</button>}
       </div>
-
       {mobileView==='list'&&!showTrash&&(
-        <div style={{display:'flex',flexDirection:'column',gap:4}}>
-          {allItems.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhum item ainda.</div>}
+        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+          {allItems.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
           {allItems.map(n=>(
-            <div key={n.id} onClick={()=>{setSelectedId(n.id);if(n.type==='project'){setActiveEntryId((n.entries||[])[0]?.id||null);setMobileView('entries');}else setMobileView('detail');}}
+            <div key={n.id} onClick={()=>{setSelectedId(n.id);setMobileView('detail');}}
               style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
-                <Icon name={n.type==='project'?'folder':'file-text'} size={13} style={{color:'var(--muted)',flexShrink:0}}/>
-                <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-              </div>
-              <div style={{fontSize:'.75rem',color:'var(--muted)',paddingLeft:20}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:n.date}</div>
+              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}><Icon name="file-text" size={13} style={{color:'var(--muted)',flexShrink:0}}/><div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div></div>
+              <div style={{fontSize:'.72rem',color:'var(--muted)',paddingLeft:20}}>{n.date}</div>
             </div>
           ))}
         </div>
       )}
-
-      {mobileView==='detail'&&selectedItem&&!selectedItem.deleted&&!isGroup&&(
-        <div className="card" style={{padding:20,display:'flex',flexDirection:'column'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,borderBottom:'1px solid var(--border)',paddingBottom:10}}>
-            <input value={localTitle} onChange={handleTitleChange} onBlur={()=>handleNoteBlur('title',localTitle)}
-              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}><Icon name="trash-2" size={16}/></button>
-          </div>
-          <textarea ref={contentAreaRef} value={localContent} onChange={handleContentChange} onBlur={()=>handleNoteBlur('content',localContent)} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}} placeholder="Comece a escrever..."
-            style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.93rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',minHeight:240,overflow:'hidden',width:'100%'}}/>
-        </div>
-      )}
-
-      {mobileView==='entries'&&selectedItem&&isGroup&&(
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <input value={selectedItem.title} onChange={e=>renameGroup(selectedItem.id,e.target.value)}
-            style={{fontSize:'1.3rem',fontWeight:700,background:'transparent',border:'none',outline:'none',color:'var(--text)',borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:4,width:'100%'}}/>
-          {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Nenhuma entrada ainda.</div>}
-          {(selectedItem.entries||[]).map((e,i)=>(
-            <div key={e.id} onClick={()=>{setActiveEntryId(e.id);setMobileView('entry-editor');}}
-              style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:`1px solid ${activeEntryId===e.id?'var(--text)':'var(--border)'}`,display:'flex',alignItems:'center',gap:10}}>
-              <span style={{fontSize:'.72rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</div>
-                <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2}}>{e.date}</div>
-              </div>
-              <Icon name="chevron-right" size={14} style={{color:'var(--muted)',flexShrink:0}}/>
-            </div>
-          ))}
-          <button className="btn btn-ghost" style={{alignSelf:'flex-start',marginTop:8,fontSize:'.78rem',color:'var(--muted)'}}
-            onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
-            onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}}>
-            <Icon name="trash-2" size={12}/> Excluir grupo
-          </button>
-        </div>
-      )}
-
-      {mobileView==='entry-editor'&&activeEntry&&(
-        <div className="card" style={{padding:20,display:'flex',flexDirection:'column'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,borderBottom:'1px solid var(--border)',paddingBottom:10}}>
-            <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={()=>handleEntryBlur('title',entryTitle)}
-              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
-            <button onClick={()=>{deleteEntry(activeEntry.id);setMobileView('entries');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}><Icon name="trash-2" size={16}/></button>
-          </div>
-          <textarea ref={entryAreaRef} value={entryContent} onChange={handleEntryContentChange} onBlur={()=>handleEntryBlur('content',entryContent)} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}} placeholder="Escreva suas anotações aqui..."
-            style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.93rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)',minHeight:240,overflow:'hidden',width:'100%'}}/>
-        </div>
-      )}
-
       {mobileView==='list'&&showTrash&&(
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          {trashed.length===0&&<div style={{textAlign:'center',padding:32,color:'var(--muted)',fontSize:'.85rem'}}><Icon name="trash-2" size={24} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Lixeira vazia.</div>}
+        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+          {trashed.length===0&&<div style={{textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.85rem'}}>Lixeira vazia.</div>}
           {trashed.map(n=>(
-            <div key={n.id} className="card" style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10}}>
-              <Icon name={n.type==='project'?'folder':'file-text'} size={13} style={{color:'var(--muted)',flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:'.83rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-                <div style={{fontSize:'.7rem',color:'var(--muted)'}}>{n.type==='project'?`${(n.entries||[]).length} entradas`:'Nota'}</div>
-              </div>
+            <div key={n.id} style={{padding:'12px 14px',borderRadius:10,background:'var(--surface)',border:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10}}>
+              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div><div style={{fontSize:'.72rem',color:'var(--muted)'}}>{n.date}</div></div>
               <button onClick={()=>restoreItem(n.id)} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.73rem'}}><Icon name="undo-2" size={10}/></button>
               <button onClick={()=>hardDeleteItem(n.id)} className="btn btn-danger" style={{padding:'4px 8px',fontSize:'.73rem'}}><Icon name="trash-2" size={10}/></button>
             </div>
           ))}
         </div>
       )}
+      {mobileView==='detail'&&selectedItem&&(
+        <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexShrink:0}}>
+            <input value={localTitle} onChange={handleTitleChange} onBlur={handleTitleBlur}
+              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0,borderBottom:'1px solid var(--border)',paddingBottom:6}}/>
+            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}}
+              onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+          </div>
+          <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
+        </div>
+      )}
     </div>
   );
 });
+
 // - SOCIAL -
 const SOCIAL_PLATFORMS=['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
 
@@ -4280,7 +4137,16 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
       return parsed._snapAt?parsed:null;
     }catch{return null;}
   };
+  const getDailyBackupMeta=()=>{
+    try{
+      const raw=localStorage.getItem('boardhub_daily_backup');
+      if(!raw)return null;
+      const parsed=JSON.parse(raw);
+      return parsed._snapAt?parsed:null;
+    }catch{return null;}
+  };
   const [backupMeta,setBackupMeta]=useState(()=>getBackupMeta());
+  const [dailyBackupMeta,setDailyBackupMeta]=useState(()=>getDailyBackupMeta());
 
   const handleRestoreBackup=()=>{
     const backup=getBackupMeta();
@@ -4292,6 +4158,19 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
     showStatus('ok','✓ Backup de '+dt+' restaurado!');
     setBackupMeta(null);
     localStorage.removeItem('boardhub_backup_pre_sync');
+  };
+
+  const handleRestoreDailyBackup=()=>{
+    const backup=getDailyBackupMeta();
+    if(!backup)return;
+    const dt=new Date(backup._snapAt).toLocaleString('pt-BR');
+    if(!window.confirm('Restaurar o backup diário de '+dt+'?'))return;
+    const{_snapAt,...data}=backup;
+    onImport(data);
+    showStatus('ok','✓ Backup diário de '+dt+' restaurado!');
+    setDailyBackupMeta(null);
+    localStorage.removeItem('boardhub_daily_backup');
+    localStorage.removeItem('boardhub_daily_backup_date');
   };
 
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
@@ -4444,6 +4323,18 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
                   <div style={{fontSize:'.72rem',color:'#92700B',opacity:.8}}>Salvo em {new Date(backupMeta._snapAt).toLocaleString('pt-BR')}</div>
                 </div>
                 <button onClick={handleRestoreBackup} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',borderColor:'#FCD34D',color:'#92700B',flexShrink:0}}>
+                  <Icon name="undo-2" size={12}/> Restaurar
+                </button>
+              </div>
+            )}
+            {dailyBackupMeta&&(
+              <div style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'1px solid #A8D5B5',background:'#F0FBF3',display:'flex',alignItems:'center',gap:10}}>
+                <Icon name="calendar-check" size={14} style={{color:'#276b3e',flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'.78rem',fontWeight:600,color:'#276b3e'}}>Backup diário</div>
+                  <div style={{fontSize:'.72rem',color:'#276b3e',opacity:.8}}>Início do dia · {new Date(dailyBackupMeta._snapAt).toLocaleString('pt-BR')}</div>
+                </div>
+                <button onClick={handleRestoreDailyBackup} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',borderColor:'#A8D5B5',color:'#276b3e',flexShrink:0}}>
                   <Icon name="undo-2" size={12}/> Restaurar
                 </button>
               </div>
@@ -4823,6 +4714,19 @@ const App=()=>{
     if(splash){splash.style.opacity='0';setTimeout(()=>splash.remove(),350);}
   },[]);
 
+  // Daily backup: once per day on first open
+  useEffect(()=>{
+    try{
+      const today=new Date().toISOString().slice(0,10);
+      const lastDate=localStorage.getItem('boardhub_daily_backup_date');
+      if(lastDate===today)return;
+      const snap=lsLoad();
+      if(!snap)return;
+      localStorage.setItem('boardhub_daily_backup',JSON.stringify({...snap,_snapAt:new Date().toISOString()}));
+      localStorage.setItem('boardhub_daily_backup_date',today);
+    }catch{}
+  },[]);
+
   // Global keyboard shortcuts
   useEffect(()=>{
     const onKD=e=>{
@@ -5115,7 +5019,7 @@ const App=()=>{
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} isMobile={isMobile}/>}
-        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} noteGroups={noteGroups} setNoteGroups={setNoteGroups} isMobile={isMobile}/>}
+        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
