@@ -249,6 +249,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .nav-item .nav-badge{position:absolute;right:10px;min-width:18px;height:18px;border-radius:9px;background:rgba(28,25,23,.08);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;}
 .nav-item.active .nav-badge{background:rgba(255,255,255,.2);color:white;}
 @keyframes countUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes imgFadeIn{from{opacity:0;}to{opacity:1;}}
 .stat-value{animation:countUp .4s cubic-bezier(.4,0,.2,1) both;}
 .stagger-1{animation-delay:.05s;}.stagger-2{animation-delay:.1s;}.stagger-3{animation-delay:.15s;}.stagger-4{animation-delay:.2s;}
 @media(max-width:768px){
@@ -338,25 +339,32 @@ const _prefetchDone = (()=>{
   };
   collect(persisted);
   if(!keys.length)return Promise.resolve();
-  return openIdb().then(db=>new Promise(res=>{
+  return openIdb().then(db=>{
     try{
-      // Single transaction for all keys — much faster than one tx per image
+      // Single transaction — all keys at once
       const tx=db.transaction('images','readonly');
       const store=tx.objectStore('images');
-      let pending=keys.length;
-      const done=()=>{ if(--pending===0)res(); };
-      keys.forEach(key=>{
-        if(_objUrlCache[key]){done();return;}
-        const req=store.get(key);
-        req.onsuccess=e=>{
-          const blob=e.target.result;
-          if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
-          done();
-        };
-        req.onerror=()=>done();
+      // Register each fetch in _inflightFetch so useIdbUrl components can
+      // join these in-flight requests instead of opening duplicate IDB reads
+      const promises=keys.map(key=>{
+        if(_objUrlCache[key])return Promise.resolve(_objUrlCache[key]);
+        if(!_inflightFetch[key]){
+          _inflightFetch[key]=new Promise(res=>{
+            const req=store.get(key);
+            req.onsuccess=e=>{
+              const blob=e.target.result;
+              if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
+              delete _inflightFetch[key];
+              res(_objUrlCache[key]||'');
+            };
+            req.onerror=()=>{delete _inflightFetch[key];res('');};
+          });
+        }
+        return _inflightFetch[key];
       });
-    }catch{res();}
-  })).catch(()=>{});
+      return Promise.all(promises);
+    }catch{return Promise.resolve();}
+  }).catch(()=>{});
 })();
 
 // - IDENTITY (hub name + OS name, set on first run) -
@@ -596,8 +604,8 @@ const useIdbUrl=(src)=>{
 // Img component that auto-resolves idb:// references
 const Img=({src,priority,...props})=>{
   const url=useIdbUrl(src);
-  if(!url)return <div style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}}/>;
-  return <img src={url} loading={priority?'eager':'lazy'} decoding="async" {...props}/>;
+  if(!url)return <div style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
+  return <img src={url} loading={priority?'eager':'lazy'} decoding="async" style={{...props.style,animation:'imgFadeIn .25s ease'}} {...props}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs
@@ -3664,36 +3672,74 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
 
 const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const [selectedId,setSelectedId]=useState(null);
+  const [activeEntryId,setActiveEntryId]=useState(null);
   const [showTrash,setShowTrash]=useState(false);
+  const [showCreateMenu,setShowCreateMenu]=useState(false);
   const [localTitle,setLocalTitle]=useState('');
+  const [entryTitle,setEntryTitle]=useState('');
   const flushTitleRef=useRef(null);
+  const flushEntryTitleRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
   const dragIdxRef=useRef(null);
+
+  useEffect(()=>{if(!showCreateMenu)return;const close=e=>{if(e.key==='Escape')setShowCreateMenu(false);};const out=()=>setShowCreateMenu(false);document.addEventListener('keydown',close);const t=setTimeout(()=>document.addEventListener('click',out),0);return()=>{document.removeEventListener('keydown',close);clearTimeout(t);document.removeEventListener('click',out);};},[showCreateMenu]);
 
   const allItems=useMemo(()=>notes.filter(n=>!n.deleted),[notes]);
   const trashed=useMemo(()=>notes.filter(n=>n.deleted),[notes]);
   const selectedItem=useMemo(()=>notes.find(n=>n.id===selectedId)||null,[notes,selectedId]);
+  const isGroup=selectedItem?.type==='project';
+  const activeEntry=useMemo(()=>isGroup?(selectedItem?.entries||[]).find(e=>e.id===activeEntryId)||null:null,[selectedItem,activeEntryId,isGroup]);
 
+  // Sync title when selection changes
   useEffect(()=>{clearTimeout(flushTitleRef.current);setLocalTitle(selectedItem?.title||'');},[selectedId]);
+  useEffect(()=>{clearTimeout(flushEntryTitleRef.current);setEntryTitle(activeEntry?.title||'');},[activeEntryId]);
 
+  // ── NOTE handlers ──
   const flushNote=(field,value)=>setNotes(p=>p.map(n=>n.id===selectedId?{...n,[field]:value}:n));
   const handleTitleChange=e=>{const v=e.target.value;setLocalTitle(v);clearTimeout(flushTitleRef.current);flushTitleRef.current=setTimeout(()=>flushNote('title',v),800);};
   const handleTitleBlur=()=>{clearTimeout(flushTitleRef.current);flushNote('title',localTitle);};
   const handleContentSave=useCallback((html)=>{setNotes(p=>p.map(n=>n.id===selectedId?{...n,content:html}:n));},[selectedId,setNotes]);
 
-  const reorderNotes=(from,to)=>{
-    if(from===to)return;
-    setNotes(prev=>{const live=prev.filter(n=>!n.deleted);const dead=prev.filter(n=>n.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});
-  };
+  // ── GROUP handlers ──
+  const updProj=(id,fn)=>setNotes(p=>p.map(n=>n.id===id&&n.type==='project'?fn(n):n));
+  const renameGroup=(id,title)=>updProj(id,p=>({...p,title}));
+  const handleEntryTitleChange=e=>{const v=e.target.value;setEntryTitle(v);clearTimeout(flushEntryTitleRef.current);flushEntryTitleRef.current=setTimeout(()=>flushEntryTitle(v),800);};
+  const flushEntryTitle=(v)=>{if(!selectedId||!activeEntryId)return;updProj(selectedId,proj=>({...proj,entries:(proj.entries||[]).map(e=>e.id===activeEntryId?{...e,title:v}:e)}));};
+  const handleEntryTitleBlur=()=>{clearTimeout(flushEntryTitleRef.current);flushEntryTitle(entryTitle);};
+  const handleEntrySave=useCallback((html)=>{if(!selectedId||!activeEntryId)return;setNotes(p=>p.map(n=>n.id===selectedId&&n.type==='project'?{...n,entries:(n.entries||[]).map(e=>e.id===activeEntryId?{...e,content:html}:e)}:n));},[selectedId,activeEntryId,setNotes]);
+  const addEntry=()=>{if(!selectedId)return;const e={id:Date.now(),title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR')};updProj(selectedId,p=>({...p,entries:[...(p.entries||[]),e]}));setActiveEntryId(e.id);};
+  const deleteEntry=id=>{if(!selectedId)return;updProj(selectedId,p=>({...p,entries:(p.entries||[]).filter(e=>e.id!==id)}));if(activeEntryId===id){const rem=(selectedItem?.entries||[]).filter(e=>e.id!==id);setActiveEntryId(rem[0]?.id||null);}};
 
-  const newNote=()=>{
-    const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};
-    newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);
-  };
+  // ── CRUD ──
+  const reorderNotes=(from,to)=>{if(from===to)return;setNotes(prev=>{const live=prev.filter(n=>!n.deleted);const dead=prev.filter(n=>n.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});};
+  const newNote=()=>{const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);setShowCreateMenu(false);};
+  const newGroup=()=>{const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};setNotes(prev=>[p,...prev]);setSelectedId(p.id);setActiveEntryId(null);setShowCreateMenu(false);};
   const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true}:n));if(selectedId===id)setSelectedId(null);};
   const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false}:n));
   const hardDeleteItem=id=>{if(window.confirm('Excluir permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));if(selectedId===id)setSelectedId(null);}};
 
+  // ── SIDEBAR item ──
+  const SidebarItem=({n,idx,selected,onClick})=>(
+    <div className="drag-item" draggable={!showTrash}
+      onDragStart={e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.4';}}
+      onDragEnd={e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
+      onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
+      onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
+      onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderNotes(dragIdxRef.current,idx);dragIdxRef.current=null;}}}
+      onClick={onClick}
+      style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${selected?'var(--text)':'transparent'}`,background:selected?'var(--surface)':'transparent',transition:'all .15s'}}
+      onMouseEnter={e=>{if(!selected)e.currentTarget.style.background='var(--surface)';}}
+      onMouseLeave={e=>{if(!selected)e.currentTarget.style.background='transparent';}}>
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+        {!showTrash&&<span className="drag-handle" style={{color:'var(--muted)',flexShrink:0,lineHeight:0}}><Icon name="grip-vertical" size={11}/></span>}
+        <Icon name={n.type==='project'?'folder':'file-text'} size={11} style={{color:'var(--muted)',flexShrink:0}}/>
+        <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+      </div>
+      <div style={{fontSize:'.7rem',color:'var(--muted)',paddingLeft:17}}>{n.type==='project'?`${(n.entries||[]).length} entrada${(n.entries||[]).length!==1?'s':''}`:n.date}</div>
+    </div>
+  );
+
+  // ── DESKTOP ──
   if(!isMobile)return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
       <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:14,flexShrink:0}}>
@@ -3702,39 +3748,40 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'5px 12px',fontSize:'.78rem'}}>
             <Icon name="trash-2" size={12}/>{showTrash?' Sair':' Lixeira'}{!showTrash&&trashed.length>0&&` (${trashed.length})`}
           </button>
-          {!showTrash&&<button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={newNote}><Icon name="plus" size={12}/> Nova nota</button>}
+          {!showTrash&&(
+            <div style={{position:'relative'}}>
+              <button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={()=>setShowCreateMenu(m=>!m)}>
+                <Icon name="plus" size={12}/> Criar
+              </button>
+              {showCreateMenu&&(
+                <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:140,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:50}}>
+                  <button onClick={newNote} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="file-text" size={13}/> Nota</button>
+                  <button onClick={newGroup} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="folder" size={13}/> Grupo</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
       <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
+        {/* Sidebar */}
         <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:3,overflowY:'auto'}}>
           {(showTrash?trashed:allItems).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>{showTrash?'Lixeira vazia.':'Nenhuma anotação ainda.'}</div>}
           {(showTrash?trashed:allItems).map((n,idx)=>(
-            <div key={n.id} className="drag-item" draggable={!showTrash}
-              onDragStart={e=>{e.dataTransfer.effectAllowed='move';dragIdxRef.current=idx;e.currentTarget.style.opacity='0.4';}}
-              onDragEnd={e=>{e.currentTarget.style.opacity='1';dragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
-              onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}}
-              onDragLeave={e=>{e.currentTarget.classList.remove('drag-over');}}
-              onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');if(dragIdxRef.current!=null&&dragIdxRef.current!==idx){reorderNotes(dragIdxRef.current,idx);dragIdxRef.current=null;}}}
-              onClick={()=>setSelectedId(n.id)}
-              style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',border:`1px solid ${selectedId===n.id?'var(--text)':'transparent'}`,background:selectedId===n.id?'var(--surface)':'transparent',transition:'all .15s'}}
-              onMouseEnter={e=>{if(selectedId!==n.id)e.currentTarget.style.background='var(--surface)';}}
-              onMouseLeave={e=>{if(selectedId!==n.id)e.currentTarget.style.background='transparent';}}>
-              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                {!showTrash&&<span className="drag-handle" style={{color:'var(--muted)',flexShrink:0,lineHeight:0}}><Icon name="grip-vertical" size={11}/></span>}
-                <Icon name="file-text" size={11} style={{color:'var(--muted)',flexShrink:0}}/>
-                <div style={{fontWeight:600,fontSize:'.82rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-              </div>
-              <div style={{fontSize:'.7rem',color:'var(--muted)',paddingLeft:17}}>{n.date}</div>
-            </div>
+            <SidebarItem key={n.id} n={n} idx={idx} selected={selectedId===n.id}
+              onClick={()=>{setSelectedId(n.id);if(n.type==='project')setActiveEntryId((n.entries||[])[0]?.id||null);}}/>
           ))}
         </div>
+
+        {/* Trash panel */}
         {showTrash&&(
           <div style={{flex:1,overflowY:'auto'}}>
             {trashed.length===0&&<div style={{textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.88rem'}}><Icon name="trash-2" size={26} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>Lixeira vazia.</div>}
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {trashed.map(n=>(
                 <div key={n.id} className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-                  <Icon name="file-text" size={14} style={{color:'var(--muted)',flexShrink:0}}/>
+                  <Icon name={n.type==='project'?'folder':'file-text'} size={14} style={{color:'var(--muted)',flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:'.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div><div style={{fontSize:'.72rem',color:'var(--muted)'}}>{n.date}</div></div>
                   <button onClick={()=>restoreItem(n.id)} className="btn btn-outline" style={{padding:'4px 12px',fontSize:'.75rem'}}><Icon name="undo-2" size={11}/> Restaurar</button>
                   <button onClick={()=>hardDeleteItem(n.id)} className="btn btn-danger" style={{padding:'4px 10px',fontSize:'.75rem'}}><Icon name="trash-2" size={11}/></button>
@@ -3743,20 +3790,69 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
             </div>
           </div>
         )}
-        {!showTrash&&selectedItem&&!selectedItem.deleted&&(
+
+        {/* Group workspace */}
+        {!showTrash&&selectedItem&&!selectedItem.deleted&&isGroup&&(
+          <div style={{flex:1,display:'flex',gap:12,minWidth:0}}>
+            <div className="card" style={{width:190,flexShrink:0,padding:'16px 12px',display:'flex',flexDirection:'column',gap:8}}>
+              <input value={selectedItem.title} onChange={e=>renameGroup(selectedItem.id,e.target.value)}
+                style={{fontWeight:700,fontSize:'.88rem',background:'transparent',border:'none',outline:'none',color:'var(--text)',borderBottom:'1px solid var(--border)',paddingBottom:6,marginBottom:4,width:'100%'}}/>
+              <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
+                {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.78rem',color:'var(--muted)',padding:'8px 0'}}>Nenhuma entrada.</div>}
+                {(selectedItem.entries||[]).map((e,i)=>(
+                  <div key={e.id} onClick={()=>setActiveEntryId(e.id)}
+                    style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}
+                    onMouseEnter={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='var(--surface)';}}
+                    onMouseLeave={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='transparent';}}>
+                    <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
+                    <span style={{fontSize:'.8rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid var(--border)'}}>
+                <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',fontSize:'.78rem',padding:'6px 0'}} onClick={addEntry}><Icon name="plus" size={12}/> Adicionar</button>
+                <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'} onClick={()=>trashItem(selectedItem.id)}><Icon name="trash-2" size={11}/> Excluir grupo</button>
+              </div>
+            </div>
+            <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+              {activeEntry?(
+                <>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12,flexShrink:0}}>
+                    <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={handleEntryTitleBlur}
+                      style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
+                    <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
+                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{activeEntry.date}</span>
+                      <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
+                    </div>
+                  </div>
+                  <RichEditor key={activeEntry.id} noteId={activeEntry.id} initialHTML={activeEntry.content||''} onSave={handleEntrySave}/>
+                </>
+              ):(
+                <div style={{margin:'auto',textAlign:'center',color:'var(--muted)'}}>
+                  <Icon name="book-open" size={28} style={{display:'block',margin:'0 auto 10px',opacity:.3}}/>
+                  <p style={{fontSize:'.85rem'}}>Selecione ou adicione uma entrada</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Note editor */}
+        {!showTrash&&selectedItem&&!selectedItem.deleted&&!isGroup&&(
           <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,borderBottom:'1px solid var(--border)',paddingBottom:12,flexShrink:0}}>
               <input value={localTitle} onChange={handleTitleChange} onBlur={handleTitleBlur}
                 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
               <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
                 <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{selectedItem.date}</span>
-                <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}}
-                  onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+                <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
               </div>
             </div>
             <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
           </div>
         )}
+
+        {/* Empty state */}
         {!showTrash&&!selectedItem&&(
           <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)'}}>
             <Icon name="notebook-pen" size={32} style={{opacity:.3}}/>
@@ -3767,36 +3863,51 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
     </div>
   );
 
-  // MOBILE
+  // ── MOBILE ──
   const [mobileView,setMobileView]=useState('list');
   return(
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,height:'calc(100vh - 120px)',display:'flex',flexDirection:'column'}}>
+    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,display:'flex',flexDirection:'column'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexShrink:0}}>
         {mobileView!=='list'
           ?<button className="btn btn-ghost" style={{padding:'8px 12px',fontSize:'.88rem'}} onClick={()=>setMobileView('list')}><Icon name="arrow-left" size={16}/> Voltar</button>
-          :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Anotações</h1>}
+          :<h1 className="serif" style={{fontSize:'1.6rem',fontWeight:300}}>Anotações</h1>
+        }
         {mobileView==='list'&&!showTrash&&(
           <div style={{display:'flex',gap:6}}>
             <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'6px 10px',fontSize:'.8rem'}}><Icon name="trash-2" size={12}/>{trashed.length>0&&` (${trashed.length})`}</button>
-            <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{newNote();setMobileView('detail');}}><Icon name="plus" size={13}/> Nova</button>
+            <div style={{position:'relative'}}>
+              <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>setShowCreateMenu(m=>!m)}><Icon name="plus" size={13}/> Criar</button>
+              {showCreateMenu&&(
+                <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:130,boxShadow:'0 8px 24px rgba(0,0,0,.15)',zIndex:50}}>
+                  <button onClick={()=>{newNote();setMobileView('detail');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="file-text" size={13}/> Nota</button>
+                  <button onClick={()=>{newGroup();setMobileView('entries');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="folder" size={13}/> Grupo</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
         {mobileView==='list'&&showTrash&&<button onClick={()=>setShowTrash(false)} className="btn btn-danger" style={{padding:'6px 14px',fontSize:'.8rem'}}>Sair</button>}
+        {mobileView==='entries'&&<button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>{addEntry();setMobileView('entry-detail');}}><Icon name="plus" size={13}/> Entrada</button>}
       </div>
+
       {mobileView==='list'&&!showTrash&&(
-        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
           {allItems.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
           {allItems.map(n=>(
-            <div key={n.id} onClick={()=>{setSelectedId(n.id);setMobileView('detail');}}
+            <div key={n.id} onClick={()=>{setSelectedId(n.id);if(n.type==='project'){setActiveEntryId((n.entries||[])[0]?.id||null);setMobileView('entries');}else setMobileView('detail');}}
               style={{padding:'14px 16px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}><Icon name="file-text" size={13} style={{color:'var(--muted)',flexShrink:0}}/><div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div></div>
-              <div style={{fontSize:'.72rem',color:'var(--muted)',paddingLeft:20}}>{n.date}</div>
+              <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
+                <Icon name={n.type==='project'?'folder':'file-text'} size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+              </div>
+              <div style={{fontSize:'.72rem',color:'var(--muted)',paddingLeft:20}}>{n.type==='project'?`${(n.entries||[]).length} entrada${(n.entries||[]).length!==1?'s':''}`:n.date}</div>
             </div>
           ))}
         </div>
       )}
+
       {mobileView==='list'&&showTrash&&(
-        <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
           {trashed.length===0&&<div style={{textAlign:'center',padding:48,color:'var(--muted)',fontSize:'.85rem'}}>Lixeira vazia.</div>}
           {trashed.map(n=>(
             <div key={n.id} style={{padding:'12px 14px',borderRadius:10,background:'var(--surface)',border:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10}}>
@@ -3807,15 +3918,40 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           ))}
         </div>
       )}
+
       {mobileView==='detail'&&selectedItem&&(
-        <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
+        <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexShrink:0}}>
             <input value={localTitle} onChange={handleTitleChange} onBlur={handleTitleBlur}
               style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0,borderBottom:'1px solid var(--border)',paddingBottom:6}}/>
-            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}}
-              onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
           </div>
           <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
+        </div>
+      )}
+
+      {mobileView==='entries'&&selectedItem&&isGroup&&(
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          <div style={{fontWeight:700,fontSize:'.9rem',marginBottom:4,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>{selectedItem.title}</div>
+          {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'12px 0'}}>Nenhuma entrada ainda.</div>}
+          {(selectedItem.entries||[]).map(e=>(
+            <div key={e.id} onClick={()=>{setActiveEntryId(e.id);setMobileView('entry-detail');}}
+              style={{padding:'12px 14px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
+              <div style={{fontWeight:600,fontSize:'.88rem'}}>{e.title}</div>
+              <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2}}>{e.date}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mobileView==='entry-detail'&&activeEntry&&(
+        <div style={{flex:1,display:'flex',flexDirection:'column',minHeight:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexShrink:0}}>
+            <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={handleEntryTitleBlur}
+              style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0,borderBottom:'1px solid var(--border)',paddingBottom:6}}/>
+            <button onClick={()=>{deleteEntry(activeEntry.id);setMobileView('entries');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+          </div>
+          <RichEditor key={activeEntry.id} noteId={activeEntry.id} initialHTML={activeEntry.content||''} onSave={handleEntrySave}/>
         </div>
       )}
     </div>
@@ -5053,7 +5189,10 @@ const App=()=>{
   );
 };
 // Mount after prefetch so all idb:// images are in cache before first render
-_prefetchDone.then(()=>ReactDOM.createRoot(document.getElementById('root')).render(<App/>));
+// Mount immediately — images load progressively via useIdbUrl.
+// _prefetchDone runs in parallel and registers fetches in _inflightFetch
+// so components join in-flight IDB reads instead of duplicating them.
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
