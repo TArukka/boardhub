@@ -1807,9 +1807,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     </div>
   );
 };
-    </div>
-  );
-};
 
 
 // - DASHBOARD -
@@ -1881,7 +1878,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         <p style={{color:'var(--muted)',fontSize:isSmall?'.76rem':'.82rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
       {/* Stats row */}
-      <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10,flexShrink:0}:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:isSmall?8:10,marginBottom:isSmall?8:12,flexShrink:0}}>
+      <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10,flexShrink:0}:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isSmall?8:10,marginBottom:isSmall?8:12,flexShrink:0}}>
         {stats.map((s,si)=>(
           <div key={s.label} className={'card card-click stat-value stagger-'+(si+1)} onClick={()=>setView(s.view)} style={isMobile?{padding:'10px 12px',display:'flex',flexDirection:'column',gap:4,minWidth:0,overflow:'hidden'}:{padding:isSmall?'10px 14px':'12px 16px',display:'flex',alignItems:'center',gap:12}}>
             {!isMobile&&<div style={{width:30,height:30,borderRadius:8,background:(s.color||'#999')+'15',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:s.color}}><Icon name={s.icon} size={14}/></div>}
