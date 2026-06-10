@@ -9,6 +9,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
+  BoardHub v22 — Revisão Claude pt.2 (jun/2026)
+  • NEW: campo Valor (R$) por projeto + toggle Recebido/A receber + total
+    "A receber" na barra de filtros de Projetos
+  • NEW: contador de Painéis/Shots por projeto (stepper +/− no detalhe,
+    barra de progresso no card e contador no Dashboard)
+  • UX: botões de ação dos cards sempre visíveis em telas touch
+  • UX: Dashboard desktop rola em telas baixas (antes cortava conteúdo)
+  • UX: fontes mínimas .52/.56rem → .6/.62rem
+  • FIX: projeto aberto atualiza ao receber sync remoto (antes ficava stale)
+  • Duplicar template agora zera shotsDone e paid
+  ——————
+  BoardHub v21 — Revisão Claude (jun/2026)
+  • FIX: noteGroups agora é aplicado pelo listener do Firestore (antes só era enviado,
+    nunca recebido — grupos de notas não sincronizavam entre dispositivos)
+  • FIX: clearSave agora reseta noteGroups; appState inclui identity (export/push manual
+    não perdem mais o nome do hub); import/restore de backup reaplica identity
+  • NEW: chips de contagem regressiva de deadline (hoje/amanhã/em Xd/atrasado Xd)
+    no Dashboard, na grade de projetos e nas linhas mobile
+  • NEW: duplicar projeto como template (copia tarefas + referências, zera datas/status)
+  • NEW: "Limpar feitas" na Lista de Atividades do Dashboard
+  • NEW: painel de atalhos de teclado (tecla ?)
+  ——————
   BoardHub v20 — Redesigned — Optimized Build
   • P0: XSS fix in splash error handler, mobile data URL crash, clearSave confirmation
   • P1: useCallback on App handlers (React.memo now effective), shared AudioContext,
@@ -45,6 +67,8 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
 .card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
 .card:hover .card-delete-btn{opacity:1;}
+/* Touch devices have no hover — keep card actions always visible (slightly dimmed) */
+@media (hover:none),(pointer:coarse){.card .card-delete-btn{opacity:.85;}}
 .card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
 .card-click:active{transform:scale(.985);box-shadow:0 1px 8px rgba(28,25,23,.06)!important;}
 /* Buttons — improved hover lift + press feedback */
@@ -1905,7 +1929,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
 
   const isSmall = !isMobile && typeof window !== 'undefined' && window.innerHeight < 800;
   const content=(
-    <div className="fade-up" style={{maxWidth:960,margin:'0 auto',width:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - 48px)',display:'flex',flexDirection:'column',overflow:isMobile?'auto':'hidden',gap:0}}>
+    <div className="fade-up" style={{maxWidth:960,margin:'0 auto',width:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - 48px)',display:'flex',flexDirection:'column',overflow:'auto',gap:0}}>
       {/* Header */}
       <div style={{marginBottom:isMobile?10:isSmall?8:12,flexShrink:0}}>
         <h1 className="serif" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1}}>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
@@ -1955,8 +1979,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
                     <div style={{fontSize:'.66rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>
-                      <span>{p.client}</span>
+                      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.client}</span>
                       {total>0&&<span style={{fontSize:'.6rem',opacity:.7}}>{done+'/'+total}</span>}
+                      {Number(p.shotsTotal)>0&&<span style={{fontSize:'.6rem',opacity:.8,display:'flex',alignItems:'center',gap:2,flexShrink:0}}><Icon name="clapperboard" size={9}/>{(p.shotsDone||0)+'/'+p.shotsTotal}</span>}
+                      {(()=>{const di=deadlineInfo(p.deadline);return di?<span title={'Deadline: '+di.date} style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',padding:'1px 6px',borderRadius:4,background:di.bg,color:di.color,flexShrink:0,border:di.urgent?'1px solid '+di.color+'33':'1px solid transparent'}}>{di.label}</span>:null;})()}
                     </div>
                   </div>
                   {total>0&&(
@@ -1988,7 +2014,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                       </div>
                       {openTasks.map(t=>(
                         <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}>
-                          <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.52rem'}}>{t.status}</span>
+                          <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.6rem'}}>{t.status}</span>
                           <span style={{flex:1,fontSize:'.73rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>{t.text}</span>
                         </div>
                       ))}
@@ -2007,9 +2033,14 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
           <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
               <span className="label">Lista de Atividades</span>
-              <button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:'.68rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:3}} onClick={()=>setShowAllTasks(true)}>
-                <Icon name="list" size={11}/> Ver todas
-              </button>
+              <div style={{display:'flex',gap:2}}>
+                {tasks.some(t=>t.done)&&<button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:'.68rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:3}} onClick={()=>setTasks(p=>p.filter(t=>!t.done))} title="Remover atividades concluídas">
+                  <Icon name="eraser" size={11}/> Limpar feitas
+                </button>}
+                <button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:'.68rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:3}} onClick={()=>setShowAllTasks(true)}>
+                  <Icon name="list" size={11}/> Ver todas
+                </button>
+              </div>
             </div>
             <div className="card" style={{padding:'10px 14px',flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
               <div style={{display:'flex',gap:7,marginBottom:tasks.length>0?8:0,flexShrink:0}}>
@@ -2099,7 +2130,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
 
 // - NEW PROJECT MODAL -
 const NewProjectModal=({onSave,onClose,isMobile})=>{
-  const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
+  const [form,setForm]=useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',budget:'',paid:false,shotsDone:0,shotsTotal:0,mentors:[],researchImages:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const coverRef=useRef();
   const handleCover=async e=>{const file=e.target.files[0];if(!file)return;set('cover',await uploadImage(file));};
@@ -2114,9 +2145,10 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
           <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
         </div>
         <Field label="Título *"><input className="input-box" value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Ex: Comercial Nike Summer"/></Field>
-        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr 1fr',gap:12}}>
           <Field label="Cliente"><input className="input-box" value={form.client} onChange={e=>set('client',e.target.value)} placeholder="Ex: Wieden+Kennedy"/></Field>
           <Field label="Tipo"><select className="input-box" value={form.type} onChange={e=>set('type',e.target.value)} style={{cursor:'pointer'}}><option value="work">Trabalho</option><option value="personal">Pessoal</option></select></Field>
+          <Field label="Valor (R$)"><input className="input-box" type="number" min="0" step="50" value={form.budget} onChange={e=>set('budget',e.target.value)} placeholder="Ex: 2500"/></Field>
         </div>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr 1fr',gap:12}}>
           <Field label="Status"><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)} style={{cursor:'pointer'}}><option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option></select></Field>
@@ -2142,6 +2174,15 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
+  // Duplicate project as a template: copies structure (tasks, referências, mentores)
+  // but resets status, dates and timeline — útil para jobs recorrentes com o mesmo pipeline
+  const duplicateProject=p0=>{
+    const base=Date.now();
+    const np={...p0,id:base,title:p0.title+' (cópia)',status:'Em Andamento',deleted:false,
+      startDate:'',deadline:'',timelineEvents:[],paid:false,shotsDone:0,
+      projectTasks:(p0.projectTasks||[]).map((t,i)=>({...t,id:base+i+1,status:'Pendente',startDate:'',dueDate:''}))};
+    setProjects(prev=>[np,...prev]);
+  };
 
   // All pending tasks grouped by project
   const activeProjsWithTasks=projects.filter(p=>!p.deleted&&(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
@@ -2174,12 +2215,19 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                   <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
                 ))}
               </div>
-              <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                {(()=>{
+                  const open=projects.filter(p=>!p.deleted&&!p.paid&&Number(p.budget)>0&&p.status!=='Cancelado');
+                  const sum=open.reduce((s,p)=>s+Number(p.budget),0);
+                  return sum>0?<span title={open.length+' projeto(s) com pagamento pendente'} style={{fontSize:'.74rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap'}}><Icon name="circle-dollar-sign" size={12}/>A receber: <strong style={{color:'var(--text)'}}>{fmtBRL(sum)}</strong></span>:null;
+                })()}
+                <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:'.82rem',color:'var(--muted)'}}>
                 {!isMobile&&'Apenas ativos'}
                 <div onClick={()=>setOnlyActive(!onlyActive)} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:onlyActive?'var(--text)':'var(--border-2)',padding:2,transition:'background .2s'}}>
                   <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:onlyActive?'translateX(16px)':'translateX(0)'}}/>
                 </div>
               </label>
+              </div>
             </div>
           )}
           {isMobile&&!trash?(
@@ -2195,7 +2243,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                   </div>
                   <div className="compact-row-info">
                     <div className="compact-row-title">{p.title}</div>
-                    <div className="compact-row-meta">{p.client} · <span className={`tag ${statusTag(p.status)}`} style={{display:'inline',padding:'1px 6px',fontSize:'.65rem'}}>{p.status}</span></div>
+                    <div className="compact-row-meta">{p.client} · <span className={`tag ${statusTag(p.status)}`} style={{display:'inline',padding:'1px 6px',fontSize:'.65rem'}}>{p.status}</span>{(()=>{const di=deadlineInfo(p.deadline);return di&&p.status==='Em Andamento'?<span style={{marginLeft:5,fontSize:'.6rem',fontWeight:700,padding:'1px 6px',borderRadius:4,background:di.bg,color:di.color}}>{di.label}</span>:null;})()}</div>
                   </div>
                   <Icon name="chevron-right" size={16} style={{color:'var(--muted)',flexShrink:0}}/>
                 </div>
@@ -2209,10 +2257,16 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
               <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?0.85:1,position:'relative'}}
                 onClick={()=>!trash&&onSelect(p)}>
                 {!trash&&(
+                  <>
                   <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
                     className="card-delete-btn">
                     <Icon name="trash-2" size={12}/>
                   </button>
+                  <button onClick={e=>{e.stopPropagation();duplicateProject(p);}} title="Duplicar como template (copia tarefas e referências, zera datas e status)"
+                    className="card-delete-btn" style={{left:40}}>
+                    <Icon name="copy" size={12}/>
+                  </button>
+                  </>
                 )}
                 <div style={{height:140,position:'relative',backgroundColor:'#E8E3DC'}}>
                   <BgImg src={p.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',backgroundSize:'cover',backgroundPosition:'center'}}/>
@@ -2223,12 +2277,27 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                 <div style={{padding:'16px 18px',flex:1,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
                   <div>
                     <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
-                    <div style={{fontSize:'.75rem',color:'var(--muted)'}}>{p.client}</div>
+                    <div style={{fontSize:'.75rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      <span>{p.client}</span>
+                      {fmtBRL(p.budget)&&<span style={{fontWeight:600,color:p.paid?'#276b3e':'var(--text)',display:'flex',alignItems:'center',gap:3}}>{fmtBRL(p.budget)}{p.paid&&<Icon name="check" size={10}/>}</span>}
+                    </div>
+                    {Number(p.shotsTotal)>0&&(()=>{const pct=Math.min(100,Math.round((Number(p.shotsDone)||0)/Number(p.shotsTotal)*100));return(
+                      <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{flex:1,height:4,background:'var(--bg)',borderRadius:2,overflow:'hidden',border:'1px solid var(--border)'}}>
+                          <div style={{height:'100%',width:pct+'%',background:pct===100?'#48BB78':'var(--border-2)',borderRadius:2}}/>
+                        </div>
+                        <span style={{fontSize:'.64rem',color:'var(--muted)',flexShrink:0}}>{(p.shotsDone||0)}/{p.shotsTotal} painéis</span>
+                      </div>
+                    );})()}
                   </div>
                   {!trash?(
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
                       <span className={`tag ${statusTag(p.status)}`}>{p.status}</span>
-                      <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{p.deadline}</span>
+                      {(()=>{const di=deadlineInfo(p.deadline);if(!di)return null;const showCount=p.status==='Em Andamento';return(
+                        <span style={{fontSize:'.7rem',color:showCount&&di.urgent?di.color:'var(--muted)',fontWeight:showCount&&di.urgent?600:400,display:'flex',alignItems:'center',gap:4}}>
+                          <Icon name="calendar" size={10}/>{di.date}{showCount&&<span style={{fontSize:'.62rem',fontWeight:700,padding:'1px 6px',borderRadius:4,background:di.bg,color:di.color}}>{di.label}</span>}
+                        </span>
+                      );})()}
                     </div>
                   ):(
                     <div style={{marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',gap:6}}>
@@ -2335,6 +2404,19 @@ const GANTT_COLORS={
 const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
 const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
 const todayISO=()=>new Date().toISOString().slice(0,10);
+// Currency formatting (pt-BR)
+const fmtBRL=v=>{const n=Number(v);if(!n||isNaN(n))return null;return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:2});};
+// Deadline countdown info: returns {label,date,color,bg,urgent} or null
+const deadlineInfo=deadline=>{
+  if(!deadline)return null;
+  const diff=daysBetween(todayISO(),deadline);
+  const date=new Date(deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');
+  if(diff<0)return{label:'atrasado '+Math.abs(diff)+'d',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
+  if(diff===0)return{label:'hoje!',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
+  if(diff===1)return{label:'amanhã',date,color:'#92700b',bg:'#FEF9E7',urgent:true};
+  if(diff<=7)return{label:'em '+diff+'d',date,color:'#92700b',bg:'#FEF9E7',urgent:false};
+  return{label:'em '+diff+'d',date,color:'var(--muted)',bg:'var(--bg)',urgent:false};
+};
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
 
 const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,onSyncAdd,onSyncDelete})=>{
@@ -3014,6 +3096,66 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
                   </label>
                 </div>
+                {(()=>{const di=deadlineInfo(local.deadline);return di&&local.status==='Em Andamento'?(
+                  <div style={{fontSize:'.72rem',fontWeight:700,textAlign:'center',padding:'5px 8px',borderRadius:8,background:di.bg,color:di.color}}>
+                    {di.urgent?'⚠ ':''}Entrega {di.label==='hoje!'?'hoje!':di.label}
+                  </div>
+                ):null;})()}
+              </div>
+            </div>
+
+            {/* Financeiro */}
+            <div className="card" style={{padding:24}}>
+              <span className="label" style={{display:'block',marginBottom:16}}>Financeiro</span>
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                <div>
+                  <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Valor (R$)</div>
+                  <input type="number" min="0" step="50" className="input-box" value={local.budget||''} onChange={e=>upd('budget',e.target.value)} placeholder="0" style={{width:'100%'}}/>
+                </div>
+                {Number(local.budget)>0&&(
+                  <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',fontSize:'.82rem',color:local.paid?'#276b3e':'var(--muted)',fontWeight:local.paid?600:400}}>
+                    <span style={{display:'flex',alignItems:'center',gap:6}}><Icon name={local.paid?'check-circle':'circle-dollar-sign'} size={13}/>{local.paid?'Recebido':'A receber'}</span>
+                    <div onClick={e=>{e.preventDefault();upd('paid',!local.paid);}} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:local.paid?'#48BB78':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
+                      <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:local.paid?'translateX(16px)':'translateX(0)'}}/>
+                    </div>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Painéis / Shots */}
+            <div className="card" style={{padding:24}}>
+              <span className="label" style={{display:'block',marginBottom:16}}>Painéis / Shots</span>
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                <div>
+                  <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Total previsto</div>
+                  <input type="number" min="0" className="input-box" value={local.shotsTotal||''} onChange={e=>upd('shotsTotal',Math.max(0,Number(e.target.value)||0))} placeholder="Ex: 48" style={{width:'100%'}}/>
+                </div>
+                {Number(local.shotsTotal)>0&&(()=>{
+                  const done=Number(local.shotsDone)||0;
+                  const total=Number(local.shotsTotal);
+                  const pct=Math.min(100,Math.round(done/total*100));
+                  return(
+                    <>
+                      <div>
+                        <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Concluídos</div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <button className="btn btn-outline" style={{padding:'6px 12px',fontSize:'.9rem',lineHeight:1}} onClick={()=>upd('shotsDone',Math.max(0,done-1))} title="−1 painel">−</button>
+                          <span style={{flex:1,textAlign:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,letterSpacing:'-0.02em'}}>{done}<span style={{fontSize:'.95rem',color:'var(--muted)'}}> / {total}</span></span>
+                          <button className="btn btn-dark" style={{padding:'6px 12px',fontSize:'.9rem',lineHeight:1}} onClick={()=>upd('shotsDone',Math.min(total,done+1))} title="+1 painel">+</button>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',border:'1px solid var(--border)'}}>
+                          <div style={{height:'100%',width:pct+'%',background:pct===100?'#48BB78':'var(--text)',borderRadius:3,transition:'width .3s'}}/>
+                        </div>
+                        <div style={{fontSize:'.68rem',color:pct===100?'#276b3e':'var(--muted)',marginTop:5,textAlign:'center',fontWeight:pct===100?600:400}}>
+                          {pct===100?'✓ Storyboard completo!':pct+'% · faltam '+(total-done)}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -4860,6 +5002,29 @@ const QuickCapture=({type,onClose,onAddTask,onAddNote})=>{
   );
 };
 
+const ShortcutsModal=({onClose})=>{
+  const rows=[
+    ['Ctrl / ⌘ + K','Busca global (paleta de comandos)'],
+    ['N','Captura rápida: nova nota'],
+    ['T','Captura rápida: nova atividade'],
+    ['?','Mostrar este painel de atalhos'],
+    ['Esc','Fechar modais e popups'],
+  ];
+  return(
+    <Modal title="Atalhos de teclado" onClose={onClose} width={400}>
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {rows.map(([k,d])=>(
+          <div key={k} style={{display:'flex',alignItems:'center',gap:12}}>
+            <kbd style={{fontFamily:'Figtree,sans-serif',fontSize:'.72rem',fontWeight:600,background:'var(--bg)',border:'1px solid var(--border-2)',borderBottomWidth:2,borderRadius:6,padding:'3px 8px',minWidth:78,textAlign:'center',flexShrink:0}}>{k}</kbd>
+            <span style={{fontSize:'.82rem',color:'var(--text)'}}>{d}</span>
+          </div>
+        ))}
+        <p style={{fontSize:'.7rem',color:'var(--muted)',marginTop:4,marginBottom:0}}>Os atalhos de uma letra só funcionam fora de campos de texto.</p>
+      </div>
+    </Modal>
+  );
+};
+
 const App=()=>{
   const autoMobile=useIsMobile();
   const [forceMobile,setForceMobileRaw]=useState(null);
@@ -4894,6 +5059,7 @@ const App=()=>{
       if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable)return;
       if(e.key==='n'&&!e.metaKey&&!e.ctrlKey){setQuickCaptureType('note');setShowQuickCapture(true);}
       if(e.key==='t'&&!e.metaKey&&!e.ctrlKey){setQuickCaptureType('task');setShowQuickCapture(true);}
+      if(e.key==='?'){e.preventDefault();setShowShortcuts(v=>!v);}
     };
     window.addEventListener('keydown',onKD);
     return()=>window.removeEventListener('keydown',onKD);
@@ -4917,6 +5083,7 @@ const App=()=>{
   const [saveFlash,setSaveFlash]=useState(false);
   const [showCmdPalette,setShowCmdPalette]=useState(false);
   const [showQuickCapture,setShowQuickCapture]=useState(false);
+  const [showShortcuts,setShowShortcuts]=useState(false);
   const [quickCaptureType,setQuickCaptureType]=useState('task');
   const [fbUser,setFbUser]=useState(null);
   const [syncStatus,setSyncStatus]=useState('idle'); // 'idle'|'syncing'|'synced'|'error'
@@ -4983,14 +5150,20 @@ const App=()=>{
       }catch(e){}
       _isApplyingRemote.current=true;
       _remoteApplyId.current=_remoteApplyId.current+1; // signal to auto-save effect
-      if(data.projects&&isArr(data.projects))setProjects(data.projects);
+      if(data.projects&&isArr(data.projects)){
+        setProjects(data.projects);
+        // Keep the open project view in sync — without this, edits from another
+        // device only appear after leaving and re-entering the project
+        setSelectedProject(prev=>prev?(data.projects.find(p=>p.id===prev.id)||prev):prev);
+      }
       if(data.clients&&isArr(data.clients))setClients(data.clients);
       if(data.mentors&&isArr(data.mentors))setMentors(data.mentors);
       if(data.notes&&isArr(data.notes))setNotes(data.notes);
       if(data.tasks&&isArr(data.tasks))setTasks(data.tasks);
       if(data.socialPosts&&isArr(data.socialPosts))setSocialPosts(data.socialPosts);
       if(data.galleryPosts&&isArr(data.galleryPosts))setGalleryPosts(data.galleryPosts);
-          if(data.galleryFolders&&isArr(data.galleryFolders))setGalleryFolders(data.galleryFolders);
+      if(data.galleryFolders&&isArr(data.galleryFolders))setGalleryFolders(data.galleryFolders);
+      if(data.noteGroups&&isArr(data.noteGroups))setNoteGroups(data.noteGroups);
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       setSyncStatus('synced');
@@ -5118,11 +5291,12 @@ const App=()=>{
     if(!window.confirm('⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'))return;
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);
+    setNoteGroups(DEFAULT_NOTE_GROUPS);
     setPomoData({days:{}});
     navigate('dashboard');
   };
 
-  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups};
+  const appState={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
 
   // When importing data: store any base64 images in IDB, replace with idb:// refs
   const ingestImages=async obj=>{
@@ -5155,6 +5329,7 @@ const App=()=>{
     if(ingested.galleryFolders)setGalleryFolders(ingested.galleryFolders);
     if(ingested.noteGroups)setNoteGroups(ingested.noteGroups);
     if(ingested.pomoData)setPomoData(ingested.pomoData);
+    if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);}
   };
 
   // Update page title when identity changes
@@ -5169,6 +5344,7 @@ const App=()=>{
       {!identity&&<SetupModal onDone={handleSetupDone}/>}
       {showCmdPalette&&<CommandPalette projects={projects} notes={notes} mentors={mentors} clients={clients} galleryPosts={galleryPosts} onNavigate={v=>{navigate(v);setShowCmdPalette(false);}} onSelectProject={p=>{handleSelectProject(p);setShowCmdPalette(false);}} onClose={()=>setShowCmdPalette(false)}/>}
       {showQuickCapture&&<QuickCapture type={quickCaptureType} onClose={()=>setShowQuickCapture(false)} onAddTask={t=>setTasks(prev=>[...prev,t])} onAddNote={n=>setNotes(prev=>[n,...prev])}/>}
+      {showShortcuts&&<ShortcutsModal onClose={()=>setShowShortcuts(false)}/>}
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={handleCloseNewProject} isMobile={isMobile}/>}
       {isMobile
         ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)}/>
