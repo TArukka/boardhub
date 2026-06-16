@@ -2874,12 +2874,16 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,isMobile})=>{
+const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,galleryFolders,isMobile})=>{
   const [local,setLocal]=useState(()=>{
     const tasks=applyAutoLate(project.projectTasks);
     return{...project,projectTasks:tasks};
   });
   const [tab,setTab]=useState('Visão Geral');
+  const [galleryPopup,setGalleryPopup]=useState(null);
+  const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
+  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder):[],[galleryPosts,local.galleryFolder]);
+  useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
   const coverRef=useRef();
 
@@ -3180,7 +3184,36 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               <textarea style={{background:'transparent',outline:'none',resize:'vertical',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',minHeight:120,height:'auto',border:'none',width:'100%'}}
                 value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
-
+            {/* Galeria atribuída */}
+            <div className="card" style={{padding:'clamp(16px,2.5vh,32px)'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,gap:10,flexWrap:'wrap'}}>
+                <span className="label">Galeria</span>
+                <select value={local.galleryFolder||''} onChange={e=>upd('galleryFolder',e.target.value)} className="input-box" style={{width:'auto',maxWidth:'62%',padding:'5px 10px',fontSize:'.78rem',cursor:'pointer'}}>
+                  <option value="">Nenhuma pasta</option>
+                  {assignableFolders.map(f=><option key={f.id} value={f.id}>{f.label}{f.archived?' (arquivada)':''}</option>)}
+                </select>
+              </div>
+              {!local.galleryFolder
+                ?<div style={{textAlign:'center',padding:'24px 12px',color:'var(--muted)',fontSize:'.82rem',lineHeight:1.5}}><Icon name="image" size={22} style={{display:'block',margin:'0 auto 8px',opacity:.3}}/>Atribua uma pasta da galeria para ver os estudos aqui.</div>
+                :folderPosts.length===0
+                  ?<div style={{textAlign:'center',padding:'24px 12px',color:'var(--muted)',fontSize:'.82rem'}}>Nenhum post nesta pasta ainda.</div>
+                  :<div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:12}}>
+                    {folderPosts.map(post=>{const src=post.bannerImage||(post.images&&post.images[0]);return(
+                      <div key={post.id} className="card card-click" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}>
+                        <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                          {src
+                            ?(isVideoSrc(src)
+                              ?<Vid src={src} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                              :<Img src={src} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>)
+                            :<Icon name="image" size={20} style={{opacity:.2}}/>}
+                        </div>
+                        <div style={{padding:'7px 9px'}}>
+                          <div style={{fontWeight:600,fontSize:'.74rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{post.title}</div>
+                        </div>
+                      </div>
+                    );})}
+                  </div>}
+            </div>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             <div className="card" style={{padding:24}}>
@@ -3578,6 +3611,33 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           )}
         </div>
       )}
+      {galleryPopup&&ReactDOM.createPortal(
+        <div onClick={()=>setGalleryPopup(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(10,8,6,.6)',backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)',display:'flex',alignItems:'center',justifyContent:'center',padding:isMobile?12:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--surface)',borderRadius:16,maxWidth:680,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,padding:isMobile?'18px 18px 0':'24px 28px 0'}}>
+              <div style={{minWidth:0}}>
+                <h3 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,margin:0,lineHeight:1.2,color:'var(--text)'}}>{galleryPopup.title}</h3>
+                <div style={{fontSize:'.74rem',color:'var(--muted)',marginTop:3}}>{(()=>{try{return new Date(galleryPopup.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});}catch{return galleryPopup.date;}})()}</div>
+              </div>
+              <button onClick={()=>setGalleryPopup(null)} className="btn btn-ghost" style={{padding:'6px 8px',flexShrink:0}}><Icon name="x" size={18}/></button>
+            </div>
+            <div style={{padding:isMobile?'14px 18px 20px':'18px 28px 26px'}}>
+              {galleryPopup.content&&<p style={{fontSize:'.9rem',lineHeight:1.7,color:'var(--text)',margin:'0 0 16px',whiteSpace:'pre-wrap'}}>{galleryPopup.content}</p>}
+              {(galleryPopup.images||[]).length>0&&(
+                <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                  {(galleryPopup.images||[]).map((img,i)=>(
+                    isVideoSrc(img)
+                      ?<Vid key={i} src={img} controls playsInline style={{width:'100%',borderRadius:10,display:'block',background:'#000'}}/>
+                      :<Img key={i} full src={img} style={{width:'100%',borderRadius:10,display:'block'}}/>
+                  ))}
+                </div>
+              )}
+              {!galleryPopup.content&&(galleryPopup.images||[]).length===0&&<div style={{color:'var(--muted)',fontSize:'.85rem',fontStyle:'italic'}}>Sem conteúdo neste post.</div>}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 });
@@ -3590,11 +3650,13 @@ const DEFAULT_GALLERY_FOLDERS=[
   {id:'gestures',label:'Gesture',deleted:false},
 ];
 const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
-  const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted),[folders]);
+  const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted&&!f.archived),[folders]);
+  const archivedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.archived&&!f.deleted),[folders]);
   const trashedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.deleted),[folders]);
   const FOLDERS=liveFolders;
   const [activeFolder,setActiveFolder]=useState(()=>(liveFolders[0]||{id:'work'}).id);
   const [folderTrash,setFolderTrash]=useState(false);
+  const [folderArchive,setFolderArchive]=useState(false);
   const [editingFolderId,setEditingFolderId]=useState(null);
   const [editingLabel,setEditingLabel]=useState('');
   const folderDragRef=useRef(null);
@@ -3605,8 +3667,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
   const renameFolder=(id,label)=>{if(label.trim())setFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f));};
   const trashFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,deleted:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
   const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false}:f));
+  const archiveFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,archived:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
+  const unarchiveFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,archived:false}:f));
   const hardDeleteFolder=id=>{if(window.confirm('Excluir pasta permanentemente?'))setFolders(p=>p.filter(f=>f.id!==id));};
-  const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted);const dead=prev.filter(f=>f.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});};
+  const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted&&!f.archived);const rest=prev.filter(f=>f.deleted||f.archived);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...rest];});};
 
   const [trash,setTrash]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -3753,6 +3817,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
                     style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:'none',margin:0,padding:'10px 6px 10px 2px',whiteSpace:'nowrap',userSelect:'none'}}
                   >{f.label}</button>
               }
+              <button onClick={()=>archiveFolder(f.id)} title="Arquivar pasta"
+                style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,opacity:0,transition:'opacity .12s',lineHeight:0}}
+                onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}
+              ><Icon name="archive" size={11}/></button>
               <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
                 style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,opacity:0,transition:'opacity .12s',lineHeight:0}}
                 onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}
@@ -3762,9 +3830,14 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
           <button onClick={addFolder} className="tab-btn"
             style={{color:'var(--muted)',borderBottom:'2px solid transparent',marginBottom:-1,padding:'10px 10px',whiteSpace:'nowrap',opacity:.6}}
             title="Nova pasta"><Icon name="plus" size={13}/></button>
+          {archivedFolders.length>0&&(
+            <button onClick={()=>setFolderArchive(t=>!t)} className="tab-btn"
+              style={{color:folderArchive?'var(--text)':'var(--muted)',borderBottom:folderArchive?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,marginLeft:'auto',padding:'10px 10px',whiteSpace:'nowrap',fontSize:'.75rem'}}
+            ><Icon name="archive" size={12}/> {archivedFolders.length}</button>
+          )}
           {trashedFolders.length>0&&(
             <button onClick={()=>setFolderTrash(t=>!t)} className="tab-btn"
-              style={{color:folderTrash?'var(--text)':'var(--muted)',borderBottom:folderTrash?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,marginLeft:'auto',padding:'10px 10px',whiteSpace:'nowrap',fontSize:'.75rem'}}
+              style={{color:folderTrash?'var(--text)':'var(--muted)',borderBottom:folderTrash?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,marginLeft:archivedFolders.length>0?0:'auto',padding:'10px 10px',whiteSpace:'nowrap',fontSize:'.75rem'}}
             ><Icon name="trash-2" size={12}/> {trashedFolders.length}</button>
           )}
         </div>
@@ -3778,6 +3851,19 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
               <span style={{color:'var(--text)'}}>{f.label}</span>
               <button onClick={()=>restoreFolder(f.id)} title="Restaurar" style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',lineHeight:0,padding:'0 2px'}}><Icon name="refresh-cw" size={11}/></button>
               <button onClick={()=>hardDeleteFolder(f.id)} title="Excluir" style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Archived folders panel */}
+      {folderArchive&&!trash&&(
+        <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+          <span style={{fontSize:'.75rem',color:'var(--muted)',fontWeight:600,marginRight:4}}>Pastas arquivadas</span>
+          {archivedFolders.map(f=>(
+            <div key={f.id} style={{display:'flex',alignItems:'center',gap:4,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:'.78rem'}}>
+              <span style={{color:'var(--text)'}}>{f.label}</span>
+              <button onClick={()=>unarchiveFolder(f.id)} title="Desarquivar" style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',lineHeight:0,padding:'0 2px'}}><Icon name="archive-restore" size={12}/></button>
+              <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira" style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
             </div>
           ))}
         </div>
@@ -5473,7 +5559,7 @@ const App=()=>{
       <main key={view} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
-        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
