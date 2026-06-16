@@ -596,21 +596,91 @@ const _objUrlCache={};
 // In-flight deduplication: if two components request the same key simultaneously,
 // they share one IDB transaction instead of each opening their own.
 const _inflightFetch={};
-const useIdbUrl=(src)=>{
+
+// --- THUMBNAIL LAYER ---------------------------------------------------------
+// Grid/cover surfaces display a downscaled variant instead of the full image:
+//   • cloud images (https) use a smaller variant by URL — no fetch of the 1400px original
+//   • local idb:// images (offline fallback) get a canvas-generated 480px thumbnail,
+//     persisted under "thumb_<key>" so it's generated only once. Local-only render
+//     cache — never synced/exported (state only ever references the original idb://<key>).
+// Full-resolution is still used wherever <Img full/> or <BgImg full/> is requested.
+const _thumbCache={};      // idb key -> object URL for the generated thumbnail
+const _thumbInflight={};   // idb key -> Promise (dedupes generation)
+const THUMB_MAX=480;       // longest side, px — ample for any grid cell under object-fit:cover
+// Smaller variant of a cloud URL for grid display, with the original kept as onError fallback.
+const _httpThumb=url=>{
+  // Imgur direct link: i.imgur.com/<id>.<ext> -> <id>l.<ext> (640px thumbnail)
+  const im=/^(https?:\/\/i\.imgur\.com\/)([A-Za-z0-9]{5,})(\.[A-Za-z0-9]+)(\?.*)?$/.exec(url);
+  if(im)return `${im[1]}${im[2]}l${im[3]}${im[4]||''}`;
+  // Unsplash: clamp the requested width (and quality) down for grid display
+  if(/^https?:\/\/images\.unsplash\.com\//.test(url)&&/[?&]w=\d+/.test(url))
+    return url.replace(/([?&]w=)\d+/,'$1640').replace(/([?&]q=)\d+/,'$170');
+  return url;
+};
+const _makeThumbBlob=blob=>new Promise(res=>{
+  try{
+    const img=new Image();const u=URL.createObjectURL(blob);
+    img.onload=()=>{
+      URL.revokeObjectURL(u);
+      let{width:w,height:h}=img;
+      if(Math.max(w,h)<=THUMB_MAX){res(blob);return;} // already small enough
+      const r=THUMB_MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      c.toBlob(b=>res(b||blob),'image/webp',0.72);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(u);res(blob);};
+    img.src=u;
+  }catch{res(blob);}
+});
+// Resolve (generating + persisting once) a thumbnail object URL for an idb key.
+const getThumbUrl=key=>{
+  if(_thumbCache[key])return Promise.resolve(_thumbCache[key]);
+  if(_thumbInflight[key])return _thumbInflight[key];
+  _thumbInflight[key]=(async()=>{
+    try{
+      let tb=await idbGet('thumb_'+key);
+      if(!tb){
+        const full=await idbGet(key);
+        if(!full){delete _thumbInflight[key];return '';}
+        tb=await _makeThumbBlob(full);
+        try{await idbPut('thumb_'+key,tb);}catch{/* render cache only — ignore quota */}
+      }
+      if(!_thumbCache[key])_thumbCache[key]=URL.createObjectURL(tb);
+      delete _thumbInflight[key];
+      return _thumbCache[key];
+    }catch{delete _thumbInflight[key];return '';}
+  })();
+  return _thumbInflight[key];
+};
+
+// Unified resolver for idb://, https://, or data: sources. With thumb=true it prefers
+// the downscaled variant for grid/cover display. Checks caches synchronously so
+// prefetched images render with zero flash.
+const useDisplayUrl=(src,thumb)=>{
   const getInitial=()=>{
-    if(!src)return '';
+    if(!src||typeof src!=='string')return src||'';
+    if(thumb&&/^https?:\/\//.test(src))return _httpThumb(src);
     if(!src.startsWith('idb://'))return src;
-    return _objUrlCache[src.slice(6)]||'';
+    const key=src.slice(6);
+    if(thumb&&_thumbCache[key])return _thumbCache[key];
+    return _objUrlCache[key]||''; // full-res as immediate fallback while a thumb generates
   };
   const [url,setUrl]=React.useState(getInitial);
   React.useEffect(()=>{
-    if(!src){setUrl('');return;}
+    if(!src||typeof src!=='string'){setUrl(src||'');return;}
+    if(thumb&&/^https?:\/\//.test(src)){setUrl(_httpThumb(src));return;}
     if(!src.startsWith('idb://')){setUrl(src);return;}
     const key=src.slice(6);
-    // Already cached — no async needed
-    if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
     let cancelled=false;
-    // Reuse any in-flight fetch for the same key to avoid duplicate IDB transactions
+    if(thumb){
+      if(_thumbCache[key]){setUrl(_thumbCache[key]);return;}
+      if(_objUrlCache[key])setUrl(_objUrlCache[key]); // show full immediately, swap to thumb when ready
+      getThumbUrl(key).then(u=>{if(!cancelled&&u)setUrl(u);});
+      return()=>{cancelled=true;};
+    }
+    // Full-res path (lightbox/hero) — original idb resolution with in-flight dedup
+    if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
     if(!_inflightFetch[key]){
       _inflightFetch[key]=idbGet(key).then(blob=>{
         if(!blob){delete _inflightFetch[key];return '';}
@@ -619,22 +689,29 @@ const useIdbUrl=(src)=>{
         return _objUrlCache[key];
       }).catch(()=>{delete _inflightFetch[key];return '';});
     }
-    _inflightFetch[key].then(u=>{ if(!cancelled)setUrl(u); });
-    return ()=>{ cancelled=true; };
-  },[src]);
+    _inflightFetch[key].then(u=>{if(!cancelled)setUrl(u);});
+    return()=>{cancelled=true;};
+  },[src,thumb]);
   return url;
 };
+// Back-compat full-res resolver (used by Vid and any direct callers).
+const useIdbUrl=src=>useDisplayUrl(src,false);
 
-// Img component that auto-resolves idb:// references
-const Img=({src,priority,...props})=>{
-  const url=useIdbUrl(src);
+// Img: auto-resolves idb:// refs. Uses the thumbnail variant by default for grid/cover
+// surfaces; pass `full` for lightbox/hero views that need the original resolution.
+const Img=({src,priority,full,thumb=!full,...props})=>{
+  const url=useDisplayUrl(src,thumb);
   if(!url)return <div style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
-  return <img src={url} loading={priority?'eager':'lazy'} decoding="async" style={{...props.style,animation:'imgFadeIn .25s ease'}} {...props}/>;
+  // If a cloud thumbnail variant 404s, fall back to the original URL once.
+  const onErr=thumb&&typeof src==='string'&&/^https?:\/\//.test(src)&&src!==url
+    ?e=>{if(e.currentTarget.src!==src)e.currentTarget.src=src;}:props.onError;
+  return <img {...props} src={url} loading={priority?'eager':'lazy'} decoding="async" onError={onErr}
+    style={{...props.style,animation:'imgFadeIn .25s ease'}}/>;
 };
 
-// BgImg: a <div> whose background-image auto-resolves idb:// refs
-const BgImg=({src,className,style,children,...props})=>{
-  const url=useIdbUrl(src);
+// BgImg: a <div> whose background-image auto-resolves idb:// refs (thumbnail by default).
+const BgImg=({src,className,style,children,full,thumb=!full,...props})=>{
+  const url=useDisplayUrl(src,thumb);
   return <div className={className} style={{background:url?'none':'var(--border)',backgroundSize:'cover',...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
@@ -2140,7 +2217,7 @@ const NewProjectModal=({onSave,onClose,isMobile})=>{
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
         <div onClick={()=>coverRef.current.click()} style={{height:isMobile?100:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--border)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:'var(--muted)',gap:8,fontSize:'.82rem'}}
           onMouseEnter={e=>e.currentTarget.style.borderColor='var(--text)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-          {form.cover?<Img src={form.cover} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
+          {form.cover?<Img src={form.cover} full style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:<><Icon name="image" size={22}/><span>Clique para adicionar capa</span></>}
           {form.cover&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',gap:6,fontSize:'.82rem'}}><Icon name="camera" size={16}/>Trocar</div>}
           <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleCover}/>
         </div>
@@ -2928,7 +3005,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
 
       {/* Cover */}
       <div className="cover-wrap" style={{height:isMobile?160:'clamp(220px,28vh,340px)',borderRadius:isMobile?12:16,overflow:'hidden',marginBottom:isMobile?16:'clamp(16px,2.4vh,32px)',flexShrink:0}}>
-        <BgImg src={local.cover} style={{position:'absolute',inset:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
+        <BgImg src={local.cover} full style={{position:'absolute',inset:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'#E8E3DC'}}/>
         <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.2) 60%,transparent 100%)'}}/>
         <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,color:'white'}}><Icon name="camera" size={isMobile?22:28}/><span style={{fontSize:'.82rem',fontWeight:500}}>Trocar capa</span></div>
@@ -3532,7 +3609,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
 
   if(lightbox)return(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
-      <Img src={lightbox} onClick={e=>e.stopPropagation()} alt="" style={{maxWidth:'90vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8}}/>
+      <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt="" style={{maxWidth:'90vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8}}/>
       <button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)'}}><Icon name="x" size={20}/></button>
     </div>
   );
