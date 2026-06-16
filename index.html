@@ -3559,6 +3559,12 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
             ))}
           </div>
         </div>
+        {/* Date editor */}
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20}}>
+          <span className="label" style={{flexShrink:0}}>Data</span>
+          <input type="date" value={(selected.date||'').slice(0,10)} onChange={e=>upd('date',e.target.value)}
+            style={{border:'1px solid var(--border)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',outline:'none',color:'var(--text)',backgroundColor:'var(--bg)',cursor:'pointer'}}/>
+        </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
@@ -3684,7 +3690,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
                 </div>
                 <div style={{padding:'12px 14px'}}>
                   <div style={{fontWeight:600,fontSize:'.82rem',marginBottom:2}}>{post.title}</div>
-                  <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:trash?8:0}}>{post.date}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--muted)',marginBottom:trash?8:0}}>{(()=>{try{return new Date(post.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}).replace('.','');}catch{return post.date;}})()}</div>
                   {trash&&(
                     <div style={{display:'flex',gap:5}}>
                       <button onClick={e=>{e.stopPropagation();restore(post.id);}} className="btn btn-outline" style={{flex:1,justifyContent:'center',padding:'4px 0',fontSize:'.72rem'}}><Icon name="undo-2" size={10}/> Restaurar</button>
