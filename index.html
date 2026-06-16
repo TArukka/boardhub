@@ -1982,6 +1982,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
   const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
   const [showAllTasks,setShowAllTasks]=useState(false);
+  const [expandedProjectId,setExpandedProjectId]=useState(null);
   const streakDays=useMemo(()=>{
     const days=pomoData?.days||{};let streak=0;const d=new Date();
     for(let i=0;i<30;i++){const key=d.toISOString().slice(0,10);if(days[key]&&days[key].total>0)streak++;else if(i>0)break;d.setDate(d.getDate()-1);}
@@ -2050,25 +2051,61 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               {active.map(p=>{
                 const pt=p.projectTasks||[];const total=pt.length;const done=pt.filter(t=>t.status==='Concluído').length;
                 const pct=total>0?Math.round((done/total)*100):0;const r=10;const c=2*Math.PI*r;const offset=c-(pct/100)*c;
+                const evs=p.timelineEvents||[];const expanded=expandedProjectId===p.id;
                 return(
-                <div key={p.id} className="card card-click card-project" onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
-                  <BgImg src={p.cover} style={{width:28,height:28,borderRadius:6,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
-                    <div style={{fontSize:'.66rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.client}</span>
-                      {total>0&&<span style={{fontSize:'.6rem',opacity:.7}}>{done+'/'+total}</span>}
-                      {Number(p.shotsTotal)>0&&<span style={{fontSize:'.6rem',opacity:.8,display:'flex',alignItems:'center',gap:2,flexShrink:0}}><Icon name="clapperboard" size={9}/>{(p.shotsDone||0)+'/'+p.shotsTotal}</span>}
-                      {(()=>{const di=deadlineInfo(p.deadline);return di?<span title={'Deadline: '+di.date} style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',padding:'1px 6px',borderRadius:4,background:di.bg,color:di.color,flexShrink:0,border:di.urgent?'1px solid '+di.color+'33':'1px solid transparent'}}>{di.label}</span>:null;})()}
+                <div key={p.id} className="card card-project">
+                  <div className="card-click" onClick={()=>setExpandedProjectId(id=>id===p.id?null:p.id)} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
+                    <BgImg src={p.cover} style={{width:28,height:28,borderRadius:6,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
+                      <div style={{fontSize:'.66rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:6}}>
+                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.client}</span>
+                        {total>0&&<span style={{fontSize:'.6rem',opacity:.7}}>{done+'/'+total}</span>}
+                        {Number(p.shotsTotal)>0&&<span style={{fontSize:'.6rem',opacity:.8,display:'flex',alignItems:'center',gap:2,flexShrink:0}}><Icon name="clapperboard" size={9}/>{(p.shotsDone||0)+'/'+p.shotsTotal}</span>}
+                        {(()=>{const di=deadlineInfo(p.deadline);return di?<span title={'Deadline: '+di.date} style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',padding:'1px 6px',borderRadius:4,background:di.bg,color:di.color,flexShrink:0,border:di.urgent?'1px solid '+di.color+'33':'1px solid transparent'}}>{di.label}</span>:null;})()}
+                      </div>
                     </div>
+                    {total>0&&(
+                      <svg width={26} height={26} className="progress-ring" style={{flexShrink:0}}>
+                        <circle className="progress-ring-bg" cx={13} cy={13} r={r} strokeWidth={2.5}/>
+                        <circle className="progress-ring-fill" cx={13} cy={13} r={r} strokeWidth={2.5}
+                          stroke={pct===100?'#48BB78':'var(--text)'}
+                          strokeDasharray={c} strokeDashoffset={offset}/>
+                      </svg>
+                    )}
+                    <Icon name="chevron-down" size={15} style={{color:'var(--muted)',flexShrink:0,transition:'transform .2s',transform:expanded?'rotate(180deg)':'none'}}/>
                   </div>
-                  {total>0&&(
-                    <svg width={26} height={26} className="progress-ring" style={{flexShrink:0}}>
-                      <circle className="progress-ring-bg" cx={13} cy={13} r={r} strokeWidth={2.5}/>
-                      <circle className="progress-ring-fill" cx={13} cy={13} r={r} strokeWidth={2.5}
-                        stroke={pct===100?'#48BB78':'var(--text)'}
-                        strokeDasharray={c} strokeDashoffset={offset}/>
-                    </svg>
+                  {expanded&&(
+                    <div style={{padding:isSmall?'2px 10px 10px':'2px 12px 12px',display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid var(--border)',maxHeight:240,overflowY:'auto'}}>
+                      <div style={{paddingTop:8}}>
+                        <span style={{fontSize:'.56rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',display:'block',marginBottom:5}}>Tarefas{total>0?' · '+done+'/'+total:''}</span>
+                        {pt.length===0
+                          ?<div style={{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}}>Sem tarefas</div>
+                          :<div style={{display:'flex',flexDirection:'column',gap:3}}>
+                            {pt.map(t=>{const col=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];const ok=t.status==='Concluído';const range=(t.startDate&&t.dueDate)?fmtShort(t.startDate)+' → '+fmtShort(t.dueDate):'';return(
+                              <div key={t.id} style={{display:'flex',alignItems:'center',gap:7}}>
+                                <span style={{width:6,height:6,borderRadius:'50%',background:col.dot,flexShrink:0}}/>
+                                <span style={{fontSize:'.74rem',color:ok?'var(--muted)':'var(--text)',textDecoration:ok?'line-through':'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{t.text}</span>
+                                {range&&<span style={{fontSize:'.62rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{range}</span>}
+                              </div>
+                            );})}
+                          </div>}
+                      </div>
+                      {evs.length>0&&(
+                        <div>
+                          <span style={{fontSize:'.56rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',display:'block',marginBottom:5}}>Marcos</span>
+                          <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                            {evs.map(ev=>(
+                              <div key={ev.id} style={{display:'flex',alignItems:'baseline',gap:8}}>
+                                <span style={{fontSize:'.66rem',fontWeight:600,color:'var(--muted)',flexShrink:0,minWidth:46,fontVariantNumeric:'tabular-nums'}}>{ev.date}</span>
+                                <span style={{fontSize:'.74rem',color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{ev.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <button className="btn btn-outline" style={{alignSelf:'flex-start',padding:'4px 10px',fontSize:'.7rem',marginTop:2}} onClick={e=>{e.stopPropagation();setSelectedProject(p);setView('project-detail');}}>Abrir projeto <Icon name="arrow-right" size={10}/></button>
+                    </div>
                   )}
                 </div>
                 );
@@ -3158,7 +3195,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                     </div>
-                    <input type="date" value={local.startDate} onChange={e=>upd('startDate',e.target.value)} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                    <input type="date" value={local.startDate} onChange={e=>upd('startDate',e.target.value)} onClick={e=>{try{e.currentTarget.showPicker();}catch{}}} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
                   </label>
                 </div>
                 <div>
@@ -3170,7 +3207,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                     </div>
-                    <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
+                    <input type="date" value={local.deadline} onChange={e=>upd('deadline',e.target.value)} onClick={e=>{try{e.currentTarget.showPicker();}catch{}}} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%'}}/>
                   </label>
                 </div>
                 {(()=>{const di=deadlineInfo(local.deadline);return di&&local.status==='Em Andamento'?(
