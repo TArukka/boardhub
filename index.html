@@ -2837,7 +2837,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const [tab,setTab]=useState('Visão Geral');
   const [galleryPopup,setGalleryPopup]=useState(null);
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
-  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder):[],[galleryPosts,local.galleryFolder]);
+  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
   const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
   useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
@@ -3153,7 +3153,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 ?<div style={{textAlign:'center',padding:'24px 12px',color:'var(--muted)',fontSize:'.82rem',lineHeight:1.5}}><Icon name="image" size={22} style={{display:'block',margin:'0 auto 8px',opacity:.3}}/>Atribua uma pasta da galeria para ver os estudos aqui.</div>
                 :folderPosts.length===0
                   ?<div style={{textAlign:'center',padding:'24px 12px',color:'var(--muted)',fontSize:'.82rem'}}>Nenhum post nesta pasta ainda.</div>
-                  :<div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?8:12}}>
+                  :<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isMobile?8:12}}>
                     {folderPosts.map(post=>{const src=post.bannerImage||(post.images&&post.images[0]);return(
                       <div key={post.id} className="card card-click" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}>
                         <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -3632,7 +3632,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
   const [uploading,setUploading]=useState(false);
   const addImgRef=useRef();
   const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
-  const grouped=useMemo(()=>active.reduce((acc,p)=>{const key=new Date(p.date).toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{}),[active]);
+  const grouped=useMemo(()=>{
+    const sorted=[...active].sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10)));
+    return sorted.reduce((acc,p)=>{const key=new Date((p.date||'').slice(0,10)+'T12:00:00').toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
+  },[active]);
   const upd=(field,value)=>{
     const updated={...selected,[field]:value};
     setSelected(updated);
