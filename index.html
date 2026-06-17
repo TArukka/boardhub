@@ -339,6 +339,7 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
+const DIRTY_KEY = 'boardhub_dirty'; // '1' = localStorage holds edits not yet confirmed pushed to cloud
 const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 const lsSave = s => {
   try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
@@ -581,15 +582,6 @@ const idbGet=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
   }catch(e){ _resetIdb(); rej(e); }
 }));
 
-const idbDel=(key)=>openIdb().then(db=>new Promise((res,rej)=>{
-  try{
-    const tx=db.transaction(IDB_STORE,'readwrite');
-    tx.objectStore(IDB_STORE).delete(key);
-    tx.oncomplete=()=>res();
-    tx.onerror=e=>{ _resetIdb(); rej(e.target.error); };
-  }catch(e){ _resetIdb(); rej(e); }
-}));
-
 // Hook: given an image src (may be idb://key, https://, or data:), returns a displayable URL.
 // Checks _objUrlCache synchronously so prefetched images render with zero flash.
 const _objUrlCache={};
@@ -728,16 +720,9 @@ const Vid=({src,...props})=>{
   return <video src={url} {...props}/>;
 };
 
-// Media component: renders Img or Vid based on source
-const Media=({src,videoProps,imgProps,...shared})=>{
-  if(isVideoSrc(src))return <Vid src={src} {...shared} {...(videoProps||{})}/>;
-  return <Img src={src} {...shared} {...(imgProps||{})}/>;
-};
-
 // - FIREBASE CONFIG & INIT -
 const FB_CFG_LS='boardhub_firebase_cfg';
 const loadFbCfg=()=>{try{return JSON.parse(localStorage.getItem(FB_CFG_LS))||{};}catch{return{};}};
-const saveFbCfg=cfg=>{try{localStorage.setItem(FB_CFG_LS,JSON.stringify(cfg));}catch{}};
 
 let _fbReady=false;
 let _fbAuth=null,_fbDb=null,_fbStorage=null;
@@ -1406,7 +1391,6 @@ const pomoFmtMonth = function(mk) {
 const POMO_TIMER_LS = 'boardhub_pomo_timer_v1';
 const pomoTimerSave = d => { try { localStorage.setItem(POMO_TIMER_LS, JSON.stringify(d)); } catch(e) {} };
 const pomoTimerLoad = () => { try { const s = localStorage.getItem(POMO_TIMER_LS); return s ? JSON.parse(s) : null; } catch(e) { return null; } };
-const pomoTimerClear = () => { try { localStorage.removeItem(POMO_TIMER_LS); } catch(e) {} };
 
 // Web Audio sounds — elevator music aesthetic
 // Shared AudioContext — avoids browser's ~6 concurrent context limit
@@ -1945,35 +1929,6 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
 
 
 // - DASHBOARD -
-// Drag-to-reorder hook — used by IdeasLab, Clients, Mentors
-const useDragReorder = (setList) => {
-  const srcId = useRef(null);
-  const [dragId,  setDragId]  = useState(null);
-  const [overId,  setOverId]  = useState(null);
-  const start = (e, id) => {
-    srcId.current = id; setDragId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(id));
-  };
-  const over = (e, id) => { e.preventDefault(); e.dataTransfer.dropEffect='move'; setOverId(id); };
-  const drop = (e, id) => {
-    e.preventDefault(); setOverId(null); setDragId(null);
-    if (!srcId.current || srcId.current === id) { srcId.current = null; return; }
-    setList(prev => {
-      const arr = [...prev];
-      const fi = arr.findIndex(x => x.id === srcId.current);
-      const ti = arr.findIndex(x => x.id === id);
-      if (fi < 0 || ti < 0) return prev;
-      const [item] = arr.splice(fi, 1);
-      arr.splice(ti, 0, item);
-      return arr;
-    });
-    srcId.current = null;
-  };
-  const end = () => { srcId.current = null; setDragId(null); setOverId(null); };
-  return { start, over, drop, end, dragId, overId };
-};
-
 const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile,setSelectedProject})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>notes.filter(n=>!n.deleted).slice(0,3),[notes]);
@@ -2883,6 +2838,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const [galleryPopup,setGalleryPopup]=useState(null);
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
   const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder):[],[galleryPosts,local.galleryFolder]);
+  const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
   useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
   const coverRef=useRef();
@@ -3084,7 +3040,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             </div>
             <div style={{padding:'12px 8px',flex:1}}>
               <GanttTimeline
-                tasks={applyAutoLate(local.projectTasks||[])}
+                tasks={autoLateTasks}
                 onUpdateTasks={tasks=>{
                   const synced=tasks.map(pt=>{
                     const mini=(local.miniProjects||[]).find(m=>m.id===pt.id);
@@ -3130,7 +3086,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <Icon name="calendar-days" size={10}/> Ver Timeline
                 </button>
               </div>
-              {applyAutoLate(local.projectTasks||[]).map(t=>(
+              {autoLateTasks.map(t=>(
                 <div key={t.id} className="vtimeline-item">
                   <span className={`ptask-pill ptask-${t.status}`} style={{fontSize:'.62rem',flexShrink:0}}>{t.status}</span>
                   <span className="vtimeline-text" style={{fontSize:'.88rem'}}>{t.text}</span>
@@ -3147,7 +3103,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       </>):(
         <>
         <GanttTimeline
-          tasks={applyAutoLate(local.projectTasks||[])}
+          tasks={autoLateTasks}
           onUpdateTasks={tasks=>{
             const newMinis=(local.miniProjects||[]).map(m=>{const pt=tasks.find(t=>t.id===m.id);if(!pt)return m;return{...m,title:pt.text,status:ptaskStatusToMini(pt.status)};});
             setLocal(prev=>{const updated={...prev,projectTasks:tasks,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
@@ -5330,6 +5286,12 @@ const App=()=>{
   // distinguish "render caused by remote apply" from "render caused by user edit"
   const _remoteApplyId=useRef(0);
   const _lastSeenApplyId=useRef(0);
+  // Persisted "dirty" flag captured at boot: if the previous session left local edits
+  // that were never confirmed pushed, the cloud may be stale — used below to avoid a
+  // stale cloud snapshot overwriting (and erasing) newer local data on load.
+  const _bootDirty=useRef((()=>{try{return localStorage.getItem(DIRTY_KEY)==='1';}catch{return false;}})());
+  const _didInitialReconcile=useRef(false);
+  const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
   useEffect(()=>{
     if(!fbUser)return;
     const ref=getStateRef(fbUser.uid);
@@ -5343,9 +5305,22 @@ const App=()=>{
       const data=snap.data();
       if(!data||typeof data._v!=='string')return;
       // Skip if the user has local changes that haven't been pushed yet —
-      // applying now would overwrite their unsaved work.
-      // Safety valve: never block for more than 12 s (handles permanent push failures).
+      // applying now would overwrite their unsaved work. The flag clears when the
+      // push succeeds (or is abandoned after retries).
       if(_hasPendingLocalEdit.current)return;
+      // Initial reconciliation: on the first cloud snapshot after load, if a previous
+      // session left unpushed local edits (dirty), the cloud may be stale. Keep the
+      // local data and push it up instead of letting a stale cloud snapshot erase it.
+      if(!_didInitialReconcile.current){
+        _didInitialReconcile.current=true;
+        if(_bootDirty.current){
+          _hasPendingLocalEdit.current=true;
+          try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
+          setSyncStatus('synced');
+          setSyncTick(t=>t+1); // trigger a push to sync local up to the cloud
+          return;
+        }
+      }
       const isArr=v=>Array.isArray(v);
       // Snapshot current local state before overwriting with remote data
       try{
@@ -5372,6 +5347,7 @@ const App=()=>{
       if(data.noteGroups&&isArr(data.noteGroups))setNoteGroups(data.noteGroups);
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
+      try{localStorage.setItem(DIRTY_KEY,'0');}catch{} // local now matches cloud
       setSyncStatus('synced');
       // Only needs to cover React's batched render (~one tick). We no longer rely
       // on this flag in the push guard — _remoteApplyId handles that correctly.
@@ -5399,6 +5375,7 @@ const App=()=>{
       // hydration, not a change the user made, so we must not block Firestore from
       // overwriting it with the authoritative cloud state.
       _hasPendingLocalEdit.current=true;
+      try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
@@ -5417,6 +5394,7 @@ const App=()=>{
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
           _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
+          try{localStorage.setItem(DIRTY_KEY,'0');}catch{} // cloud now has the latest local data
           clearTimeout(_retryTimer.current);
           setSyncStatus('synced');
         };
@@ -5441,7 +5419,20 @@ const App=()=>{
       },2000);
     },2500);
     return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
-  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity]);
+  },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity,syncTick]);
+
+  // Flush the current state to localStorage the moment the tab is hidden or closed.
+  // Without this, adding content and immediately leaving could lose it to the auto-save
+  // debounce window (the save hadn't fired yet).
+  const _latestState=useRef(null);
+  _latestState.current={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
+  useEffect(()=>{
+    const flush=()=>{try{if(_latestState.current)lsSave(_latestState.current);}catch(e){}};
+    const onVis=()=>{if(document.visibilityState==='hidden')flush();};
+    window.addEventListener('pagehide',flush);
+    document.addEventListener('visibilitychange',onVis);
+    return()=>{window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',onVis);};
+  },[]);
 
   const selectedProjectRef=useRef(selectedProject);
   selectedProjectRef.current=selectedProject;
@@ -5486,6 +5477,9 @@ const App=()=>{
     window.history.pushState(null,'',`#project-detail/${p.id}`);
   },[]);
   const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p)),[]);
+  // Stable handler (reads current project via ref) so ProjectDetail's React.memo isn't
+  // defeated by a fresh inline arrow on every App render (e.g. saveFlash/syncStatus toggles).
+  const handleSoftDeleteSelected=useCallback(()=>{const sp=selectedProjectRef.current;if(sp)softDeleteProject(sp.id);},[softDeleteProject]);
   const handleSelectProject=useCallback(p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);},[]);
   const handleAddProject=useCallback(()=>setShowNewProject(true),[]);
   const handleCloseNewProject=useCallback(()=>setShowNewProject(false),[]);
@@ -5559,7 +5553,7 @@ const App=()=>{
       <main key={view} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
-        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={()=>softDeleteProject(selectedProject.id)} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
