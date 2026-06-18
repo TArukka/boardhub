@@ -2837,7 +2837,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const [tab,setTab]=useState('Visão Geral');
   const [galleryPopup,setGalleryPopup]=useState(null);
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
-  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
+  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((a.date||'').slice(0,10)).localeCompare((b.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
   const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
   useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
@@ -3633,7 +3633,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
   const addImgRef=useRef();
   const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
   const grouped=useMemo(()=>{
-    const sorted=[...active].sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10)));
+    const sorted=[...active].sort((a,b)=>((a.date||'').slice(0,10)).localeCompare((b.date||'').slice(0,10)));
     return sorted.reduce((acc,p)=>{const key=new Date((p.date||'').slice(0,10)+'T12:00:00').toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
   },[active]);
   const upd=(field,value)=>{
@@ -3776,14 +3776,16 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
                     style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:'none',margin:0,padding:'10px 6px 10px 2px',whiteSpace:'nowrap',userSelect:'none'}}
                   >{f.label}</button>
               }
-              <button onClick={()=>archiveFolder(f.id)} title="Arquivar pasta"
-                style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,opacity:0,transition:'opacity .12s',lineHeight:0}}
-                onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}
-              ><Icon name="archive" size={11}/></button>
-              <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
-                style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,opacity:0,transition:'opacity .12s',lineHeight:0}}
-                onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}
-              ><Icon name="x" size={11}/></button>
+              {activeFolder===f.id&&(<>
+                <button onClick={()=>archiveFolder(f.id)} title="Arquivar pasta"
+                  style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,lineHeight:0,transition:'color .12s'}}
+                  onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+                ><Icon name="archive" size={11}/></button>
+                <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
+                  style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,lineHeight:0,transition:'color .12s'}}
+                  onMouseEnter={e=>e.currentTarget.style.color='#991B1B'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+                ><Icon name="x" size={11}/></button>
+              </>)}
             </div>
           ))}
           <button onClick={addFolder} className="tab-btn"
