@@ -67,6 +67,8 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
 .card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
 .card:hover .card-delete-btn{opacity:1;}
+.proj-grip{opacity:0;transition:opacity .2s;}
+.card:hover .proj-grip{opacity:1;}
 /* Touch devices have no hover — keep card actions always visible (slightly dimmed) */
 @media (hover:none),(pointer:coarse){.card .card-delete-btn{opacity:.85;}}
 .card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
@@ -2243,6 +2245,22 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
   const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
+  // Drag-to-reorder (desktop grid). Moves the dragged project just before the drop target in
+  // the full array; since the visible list preserves array order, the visible order follows.
+  const projDrag=useRef(null);
+  const reorderProjects=(fromId,toId)=>{
+    if(fromId===toId)return;
+    setProjects(prev=>{
+      const arr=[...prev];
+      const fi=arr.findIndex(p=>p.id===fromId);
+      if(fi<0)return prev;
+      const[item]=arr.splice(fi,1);
+      const ti=arr.findIndex(p=>p.id===toId);
+      if(ti<0)return prev;
+      arr.splice(ti,0,item);
+      return arr;
+    });
+  };
   // Duplicate project as a template: copies structure (tasks, referências, mentores)
   // but resets status, dates and timeline — útil para jobs recorrentes com o mesmo pipeline
   const duplicateProject=p0=>{
@@ -2324,9 +2342,20 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
               <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?0.85:1,position:'relative'}}
-                onClick={()=>!trash&&onSelect(p)}>
+                onClick={()=>!trash&&onSelect(p)}
+                onDragOver={e=>{if(trash||projDrag.current==null||projDrag.current===p.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over-left');}}
+                onDragLeave={e=>{e.currentTarget.classList.remove('drag-over-left');}}
+                onDrop={e=>{if(trash)return;e.preventDefault();e.currentTarget.classList.remove('drag-over-left');if(projDrag.current!=null&&projDrag.current!==p.id)reorderProjects(projDrag.current,p.id);projDrag.current=null;}}>
                 {!trash&&(
                   <>
+                  <div className="proj-grip" draggable
+                    onClick={e=>e.stopPropagation()}
+                    onDragStart={e=>{e.stopPropagation();projDrag.current=p.id;const card=e.currentTarget.closest('.card');if(card)e.dataTransfer.setDragImage(card,30,30);e.dataTransfer.effectAllowed='move';}}
+                    onDragEnd={()=>{projDrag.current=null;document.querySelectorAll('.drag-over-left').forEach(el=>el.classList.remove('drag-over-left'));}}
+                    title="Arrastar para reordenar"
+                    style={{position:'absolute',top:8,left:72,zIndex:3,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',borderRadius:6,padding:'4px 5px',cursor:'grab',color:'white',opacity:0,transition:'opacity .2s',lineHeight:0}}>
+                    <Icon name="grip-vertical" size={12}/>
+                  </div>
                   <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
                     className="card-delete-btn">
                     <Icon name="trash-2" size={12}/>
@@ -3605,7 +3634,7 @@ const DEFAULT_GALLERY_FOLDERS=[
   {id:'sketchbooks',label:'Sketchbook',deleted:false},
   {id:'gestures',label:'Gesture',deleted:false},
 ];
-const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
+const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=>{
   const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted&&!f.archived),[folders]);
   const archivedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.archived&&!f.deleted),[folders]);
   const trashedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.deleted),[folders]);
@@ -3618,6 +3647,9 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,isMobile})=>{
   const folderDragRef=useRef(null);
   const [selected,setSelected]=useState(null);
   const [lightbox,setLightbox]=useState(null);
+  // Re-clicking "Galeria" in the nav (navTick bumps) closes any open post and returns to the grid.
+  const _firstNav=useRef(true);
+  useEffect(()=>{if(_firstNav.current){_firstNav.current=false;return;}setSelected(null);setLightbox(null);},[navTick]);
 
   const addFolder=()=>{const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false};setFolders(p=>[...(p||[]),n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label);};
   const renameFolder=(id,label)=>{if(label.trim())setFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f));};
@@ -5241,6 +5273,7 @@ const App=()=>{
   };
 
   const [view,setView]=useState(()=>parseHash().view);
+  const [navTick,setNavTick]=useState(0); // incremented on every navigate; lets views reset on re-click
   const [selectedProject,setSelectedProject]=useState(()=>{
     const{projectId}=parseHash();
     if(!projectId)return null;
@@ -5447,6 +5480,7 @@ const App=()=>{
     const hash=v==='project-detail'&&sp?`#project-detail/${sp.id}`:`#${v}`;
     if(window.location.hash!==hash)window.history.pushState(null,'',hash);
     setView(v);
+    setNavTick(t=>t+1); // bumps even on same-view clicks so views can reset (e.g. close an open gallery post)
     if(v!=='project-detail')setSelectedProject(null);
   },[]);
 
@@ -5559,7 +5593,7 @@ const App=()=>{
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} isMobile={isMobile}/>}
-        {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} isMobile={isMobile}/>}
+        {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} navTick={navTick} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
