@@ -67,8 +67,6 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 .card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
 .card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
 .card:hover .card-delete-btn{opacity:1;}
-.proj-grip{opacity:0;transition:opacity .2s;}
-.card:hover .proj-grip{opacity:1;}
 /* Touch devices have no hover — keep card actions always visible (slightly dimmed) */
 @media (hover:none),(pointer:coarse){.card .card-delete-btn{opacity:.85;}}
 .card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
@@ -2248,6 +2246,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   // Drag-to-reorder (desktop grid). Moves the dragged project just before the drop target in
   // the full array; since the visible list preserves array order, the visible order follows.
   const projDrag=useRef(null);
+  const projDragEnd=useRef(0); // timestamp of last drag end — suppresses the open-click after a drag
   const reorderProjects=(fromId,toId)=>{
     if(fromId===toId)return;
     setProjects(prev=>{
@@ -2341,21 +2340,16 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
             /* Desktop: card grid (and trash on both) */
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
-              <div key={p.id} className="card" style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'pointer',opacity:trash?0.85:1,position:'relative'}}
-                onClick={()=>!trash&&onSelect(p)}
+              <div key={p.id} className="card" draggable={!trash}
+                style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'grab',opacity:trash?0.85:1,position:'relative'}}
+                onClick={()=>{if(!trash&&Date.now()-projDragEnd.current>160)onSelect(p);}}
+                onDragStart={e=>{if(trash){e.preventDefault();return;}projDrag.current=p.id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(p.id));}catch{}e.currentTarget.style.opacity='0.4';}}
+                onDragEnd={e=>{e.currentTarget.style.opacity=trash?'0.85':'1';projDrag.current=null;projDragEnd.current=Date.now();document.querySelectorAll('.drag-over-left').forEach(el=>el.classList.remove('drag-over-left'));}}
                 onDragOver={e=>{if(trash||projDrag.current==null||projDrag.current===p.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over-left');}}
                 onDragLeave={e=>{e.currentTarget.classList.remove('drag-over-left');}}
-                onDrop={e=>{if(trash)return;e.preventDefault();e.currentTarget.classList.remove('drag-over-left');if(projDrag.current!=null&&projDrag.current!==p.id)reorderProjects(projDrag.current,p.id);projDrag.current=null;}}>
+                onDrop={e=>{if(trash)return;e.preventDefault();e.currentTarget.classList.remove('drag-over-left');if(projDrag.current!=null&&projDrag.current!==p.id)reorderProjects(projDrag.current,p.id);projDrag.current=null;projDragEnd.current=Date.now();}}>
                 {!trash&&(
                   <>
-                  <div className="proj-grip" draggable
-                    onClick={e=>e.stopPropagation()}
-                    onDragStart={e=>{e.stopPropagation();projDrag.current=p.id;const card=e.currentTarget.closest('.card');if(card)e.dataTransfer.setDragImage(card,30,30);e.dataTransfer.effectAllowed='move';}}
-                    onDragEnd={()=>{projDrag.current=null;document.querySelectorAll('.drag-over-left').forEach(el=>el.classList.remove('drag-over-left'));}}
-                    title="Arrastar para reordenar"
-                    style={{position:'absolute',top:8,left:72,zIndex:3,background:'rgba(28,25,23,.55)',backdropFilter:'blur(4px)',borderRadius:6,padding:'4px 5px',cursor:'grab',color:'white',opacity:0,transition:'opacity .2s',lineHeight:0}}>
-                    <Icon name="grip-vertical" size={12}/>
-                  </div>
                   <button onClick={e=>{e.stopPropagation();softDelete(p.id);}} title="Mover para lixeira"
                     className="card-delete-btn">
                     <Icon name="trash-2" size={12}/>
@@ -3642,6 +3636,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const [activeFolder,setActiveFolder]=useState(()=>(liveFolders[0]||{id:'work'}).id);
   const [folderTrash,setFolderTrash]=useState(false);
   const [folderArchive,setFolderArchive]=useState(false);
+  // Auto-close each panel when its list empties (otherwise the toggle button vanishes
+  // with items gone, leaving the panel stuck open with no way to hide it).
+  useEffect(()=>{if(archivedFolders.length===0&&folderArchive)setFolderArchive(false);},[archivedFolders.length,folderArchive]);
+  useEffect(()=>{if(trashedFolders.length===0&&folderTrash)setFolderTrash(false);},[trashedFolders.length,folderTrash]);
   const [editingFolderId,setEditingFolderId]=useState(null);
   const [editingLabel,setEditingLabel]=useState('');
   const folderDragRef=useRef(null);
@@ -3836,7 +3834,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
       )}
       {/* Trashed folders panel */}
-      {folderTrash&&!trash&&(
+      {folderTrash&&trashedFolders.length>0&&!trash&&(
         <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
           <span style={{fontSize:'.75rem',color:'var(--muted)',fontWeight:600,marginRight:4}}>Pastas na lixeira</span>
           {trashedFolders.map(f=>(
@@ -3849,7 +3847,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
       )}
       {/* Archived folders panel */}
-      {folderArchive&&!trash&&(
+      {folderArchive&&archivedFolders.length>0&&!trash&&(
         <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 14px',marginBottom:16}}>
           <span style={{fontSize:'.7rem',color:'var(--muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:8}}>Pastas arquivadas</span>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
