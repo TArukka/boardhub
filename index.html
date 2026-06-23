@@ -2866,7 +2866,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const [tab,setTab]=useState('Visão Geral');
   const [galleryPopup,setGalleryPopup]=useState(null);
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
-  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((a.date||'').slice(0,10)).localeCompare((b.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
+  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
   const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
   useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
@@ -3665,7 +3665,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const addImgRef=useRef();
   const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
   const grouped=useMemo(()=>{
-    const sorted=[...active].sort((a,b)=>((a.date||'').slice(0,10)).localeCompare((b.date||'').slice(0,10)));
+    const sorted=[...active].sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10)));
     return sorted.reduce((acc,p)=>{const key=new Date((p.date||'').slice(0,10)+'T12:00:00').toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[key])acc[key]=[];acc[key].push(p);return acc;},{});
   },[active]);
   const upd=(field,value)=>{
@@ -3850,15 +3850,25 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
       )}
       {/* Archived folders panel */}
       {folderArchive&&!trash&&(
-        <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
-          <span style={{fontSize:'.75rem',color:'var(--muted)',fontWeight:600,marginRight:4}}>Pastas arquivadas</span>
-          {archivedFolders.map(f=>(
-            <div key={f.id} style={{display:'flex',alignItems:'center',gap:4,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:'.78rem'}}>
-              <span style={{color:'var(--text)'}}>{f.label}</span>
-              <button onClick={()=>unarchiveFolder(f.id)} title="Desarquivar" style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',lineHeight:0,padding:'0 2px'}}><Icon name="archive-restore" size={12}/></button>
-              <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira" style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
-            </div>
-          ))}
+        <div style={{background:'var(--bg)',borderRadius:10,padding:'12px 14px',marginBottom:16}}>
+          <span style={{fontSize:'.7rem',color:'var(--muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:8}}>Pastas arquivadas</span>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {archivedFolders.map(f=>(
+              <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px 6px 12px'}}>
+                <span style={{color:'var(--text)',fontSize:'.85rem',flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.label}</span>
+                <button onClick={()=>unarchiveFolder(f.id)}
+                  style={{display:'flex',alignItems:'center',gap:5,background:'none',border:'1px solid var(--border)',borderRadius:6,cursor:'pointer',color:'var(--muted)',padding:'5px 10px',fontSize:'.74rem',fontFamily:'Figtree,sans-serif',whiteSpace:'nowrap',transition:'all .12s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.color='var(--text)';e.currentTarget.style.borderColor='var(--text)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.color='var(--muted)';e.currentTarget.style.borderColor='var(--border)';}}
+                ><Icon name="archive-restore" size={13}/>Desarquivar</button>
+                <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
+                  style={{display:'flex',alignItems:'center',background:'none',border:'1px solid transparent',borderRadius:6,cursor:'pointer',color:'#991B1B',padding:'5px 9px',transition:'all .12s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.background='#FDEDED';e.currentTarget.style.borderColor='rgba(153,24,27,.2)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.borderColor='transparent';}}
+                ><Icon name="trash-2" size={14}/></button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {Object.keys(grouped).length===0&&<div style={{textAlign:'center',padding:isMobile?40:60,color:'var(--muted)',fontSize:'.9rem'}}><Icon name="image" size={28} style={{display:'block',margin:'0 auto 12px',opacity:.3}}/>{trash?'Lixeira vazia.':'Pasta vazia.'}</div>}
