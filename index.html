@@ -3798,26 +3798,26 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
               <Icon name="grip-vertical" size={11} className="drag-handle" style={{color:'var(--muted)',opacity:0,transition:'opacity .12s'}}
                 onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0'}/>
               {editingFolderId===f.id
-                ? <input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)}
-                    onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}}
-                    onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}}
-                    style={{background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}
-                  />
+                ? <>
+                    <input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)}
+                      onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}}
+                      onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}}
+                      style={{background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}
+                    />
+                    <button onMouseDown={e=>{e.preventDefault();renameFolder(f.id,editingLabel);archiveFolder(f.id);setEditingFolderId(null);}} title="Arquivar pasta"
+                      style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'4px 5px',borderRadius:5,lineHeight:0,transition:'color .12s'}}
+                      onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
+                    ><Icon name="archive" size={13}/></button>
+                    <button onMouseDown={e=>{e.preventDefault();trashFolder(f.id);setEditingFolderId(null);}} title="Mover para lixeira"
+                      style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',padding:'4px 5px',borderRadius:5,lineHeight:0,transition:'background .12s'}}
+                      onMouseEnter={e=>e.currentTarget.style.background='#FDEDED'} onMouseLeave={e=>e.currentTarget.style.background='none'}
+                    ><Icon name="trash-2" size={13}/></button>
+                  </>
                 : <button className="tab-btn" onClick={()=>setActiveFolder(f.id)}
                     onDoubleClick={()=>{setEditingFolderId(f.id);setEditingLabel(f.label);}}
                     style={{color:activeFolder===f.id?'var(--text)':'var(--muted)',borderBottom:'none',margin:0,padding:'10px 6px 10px 2px',whiteSpace:'nowrap',userSelect:'none'}}
                   >{f.label}</button>
               }
-              {activeFolder===f.id&&(<>
-                <button onClick={()=>archiveFolder(f.id)} title="Arquivar pasta"
-                  style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,lineHeight:0,transition:'color .12s'}}
-                  onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
-                ><Icon name="archive" size={11}/></button>
-                <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
-                  style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'2px 3px',borderRadius:4,lineHeight:0,transition:'color .12s'}}
-                  onMouseEnter={e=>e.currentTarget.style.color='#991B1B'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
-                ><Icon name="x" size={11}/></button>
-              </>)}
             </div>
           ))}
           <button onClick={addFolder} className="tab-btn"
