@@ -352,6 +352,122 @@ const lsSave = s => {
 };
 const persisted = lsLoad();
 
+// - BACKUP HISTORY -
+// Rotating snapshot history. Replaces the old two-slot system (pre_sync + daily),
+// which kept only the 2 most recent snapshots — both would already be poisoned by
+// the time a sync disaster was noticed. Design goals:
+//   • multiple snapshots with tiered retention (recent kept densely, older thinned)
+//   • dedup by content signature (no more "two identical backups 1 minute apart")
+//   • NEVER capture an empty/seed state — a backup of nothing is not a backup
+//   • quota-safe: drops oldest entries (and strips base64) before giving up
+const BH_HISTORY_KEY='boardhub_backup_history';
+const BH_KEEP_RECENT=6;   // most recent N snapshots always kept
+const BH_MAX_TOTAL=12;    // hard cap on history length
+const bhStateHasData=s=>{
+  if(!s)return false;
+  const ne=a=>Array.isArray(a)&&a.length>0;
+  return ne(s.projects)||ne(s.clients)||ne(s.mentors)||ne(s.notes)||ne(s.tasks)||ne(s.socialPosts)||ne(s.galleryPosts)||ne(s.noteGroups);
+};
+const bhSig=s=>{ // cheap content hash (djb2) for dedup — volatile-free copy
+  const {pomoData,...rest}=s||{};
+  const str=JSON.stringify(rest);
+  let h=5381;
+  for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))|0;}
+  return String(h);
+};
+const bhCounts=s=>({
+  projects:(s.projects||[]).filter(p=>!p.deleted).length,
+  clients:(s.clients||[]).filter(c=>!c.deleted).length,
+  notes:(s.notes||[]).filter(n=>!n.deleted).length,
+  tasks:(s.tasks||[]).length,
+});
+const bhHistoryLoad=()=>{try{const r=localStorage.getItem(BH_HISTORY_KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch{return [];}};
+const bhRetention=list=>{
+  // Two tiers, one merged list (newest-first):
+  //  • WEEKLY tier (reason 'daily'): one slot per weekday, captured on first open
+  //    of the day; the newest entry per weekday wins, max 7. Immune to the
+  //    rotating tier's thinning — guarantees 7 days of coverage no matter how
+  //    fast auto/pre-sync snapshots churn.
+  //  • ROTATING tier (everything else): BH_KEEP_RECENT most recent kept
+  //    unconditionally, older thinned to one per calendar day, cap BH_MAX_TOTAL.
+  const dailies=[];const others=[];
+  list.forEach(e=>(e.reason==='daily'?dailies:others).push(e));
+  const byWeekday=new Map(); // 0=dom..6=sáb → newest entry
+  dailies.forEach(e=>{
+    const wd=new Date(e.at).getDay();
+    const cur=byWeekday.get(wd);
+    if(!cur||e.at>cur.at)byWeekday.set(wd,e);
+  });
+  const keptDailies=[...byWeekday.values()];
+  const keptOthers=[];const seenDays=new Set();
+  others.forEach((e,i)=>{
+    if(i<BH_KEEP_RECENT){keptOthers.push(e);seenDays.add(e.at.slice(0,10));return;}
+    const day=e.at.slice(0,10);
+    if(!seenDays.has(day)){keptOthers.push(e);seenDays.add(day);}
+  });
+  return [...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
+};
+const bhCapture=(state,reason)=>{
+  try{
+    if(!bhStateHasData(state))return false; // never snapshot emptiness
+    const sig=bhSig(state);
+    let list=bhHistoryLoad();
+    if(reason==='daily'){
+      // Weekly-slot dedup: compare against the slot this capture would replace
+      // (same weekday). Comparing against list[0] would wrongly skip today's
+      // slot whenever nothing changed since the last auto snapshot.
+      const wd=new Date().getDay();
+      const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd);
+      if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===new Date().toISOString().slice(0,10))return false;
+    }else{
+      if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
+    }
+    const entry={at:new Date().toISOString(),reason,sig,counts:bhCounts(state),state};
+    list=bhRetention([entry,...list]);
+    const trySave=l=>{localStorage.setItem(BH_HISTORY_KEY,JSON.stringify(l));};
+    try{trySave(list);}
+    catch(e){
+      // Quota: drop oldest entries one by one, then try a base64-stripped entry
+      let l=[...list];
+      while(l.length>1){
+        l.pop();
+        try{trySave(l);return true;}catch{}
+      }
+      try{
+        const lean={...entry,state:(typeof stripBase64==='function'?stripBase64(state):state)};
+        trySave([lean]);
+      }catch{return false;}
+    }
+    return true;
+  }catch{return false;}
+};
+// One-time migration: fold the old two-slot backups into the history, oldest first,
+// so nothing that exists today is lost by the upgrade.
+(()=>{
+  try{
+    const oldKeys=['boardhub_daily_backup','boardhub_backup_pre_sync'];
+    const olds=[];
+    oldKeys.forEach(k=>{
+      const r=localStorage.getItem(k);
+      if(!r)return;
+      try{const p=JSON.parse(r);if(p&&p._snapAt)olds.push({key:k,at:p._snapAt,data:p});}catch{}
+    });
+    olds.sort((a,b)=>a.at<b.at?-1:1);
+    olds.forEach(o=>{
+      const{_snapAt,...data}=o.data;
+      if(!bhStateHasData(data))return;
+      const sig=bhSig(data);
+      let list=bhHistoryLoad();
+      if(list.some(e=>e.sig===sig))return;
+      list=bhRetention([{at:o.at,reason:o.key==='boardhub_daily_backup'?'daily':'pre-sync',sig,counts:bhCounts(data),state:data},...list]
+        .sort((a,b)=>a.at<b.at?1:-1));
+      try{localStorage.setItem(BH_HISTORY_KEY,JSON.stringify(list));}catch{}
+    });
+    oldKeys.forEach(k=>localStorage.removeItem(k));
+    localStorage.removeItem('boardhub_daily_backup_date');
+  }catch{}
+})();
+
 // Prefetch all idb:// image refs from persisted state into the object URL cache
 // so BgImg/Img components get their URL synchronously on first render (no flash).
 const _prefetchDone = (()=>{
@@ -4637,49 +4753,20 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   const [reuploadProgress,setReuploadProgress]=useState(null);
   const importRef=useRef();
 
-  // Pre-sync backup
-  const getBackupMeta=()=>{
-    try{
-      const raw=localStorage.getItem('boardhub_backup_pre_sync');
-      if(!raw)return null;
-      const parsed=JSON.parse(raw);
-      return parsed._snapAt?parsed:null;
-    }catch{return null;}
-  };
-  const getDailyBackupMeta=()=>{
-    try{
-      const raw=localStorage.getItem('boardhub_daily_backup');
-      if(!raw)return null;
-      const parsed=JSON.parse(raw);
-      return parsed._snapAt?parsed:null;
-    }catch{return null;}
-  };
-  const [backupMeta,setBackupMeta]=useState(()=>getBackupMeta());
-  const [dailyBackupMeta,setDailyBackupMeta]=useState(()=>getDailyBackupMeta());
+  // Backup history
+  const [backupHistory,setBackupHistory]=useState(()=>bhHistoryLoad());
+  const refreshHistory=()=>setBackupHistory(bhHistoryLoad());
 
-  const handleRestoreBackup=()=>{
-    const backup=getBackupMeta();
-    if(!backup)return;
-    const dt=new Date(backup._snapAt).toLocaleString('pt-BR');
-    if(!window.confirm('Restaurar o snapshot salvo em '+dt+'? Isso vai substituir seus dados atuais com a versão antes do último sync.'))return;
-    const{_snapAt,...data}=backup;
-    onImport(data);
+  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar'};
+  const handleRestoreFromHistory=(entry)=>{
+    const dt=new Date(entry.at).toLocaleString('pt-BR');
+    const c=entry.counts||{};
+    if(!window.confirm(`Restaurar o backup de ${dt}?\n(${c.projects??'?'} projetos · ${c.notes??'?'} notas · ${c.clients??'?'} clientes)\n\nSeus dados atuais serão salvos no histórico antes — dá pra desfazer.`))return;
+    // Make the restore itself undoable: snapshot current state first
+    try{const cur=lsLoad();if(cur)bhCapture(cur,'pre-restore');}catch{}
+    onImport(entry.state);
     showStatus('ok','✓ Backup de '+dt+' restaurado!');
-    setBackupMeta(null);
-    localStorage.removeItem('boardhub_backup_pre_sync');
-  };
-
-  const handleRestoreDailyBackup=()=>{
-    const backup=getDailyBackupMeta();
-    if(!backup)return;
-    const dt=new Date(backup._snapAt).toLocaleString('pt-BR');
-    if(!window.confirm('Restaurar o backup diário de '+dt+'?'))return;
-    const{_snapAt,...data}=backup;
-    onImport(data);
-    showStatus('ok','✓ Backup diário de '+dt+' restaurado!');
-    setDailyBackupMeta(null);
-    localStorage.removeItem('boardhub_daily_backup');
-    localStorage.removeItem('boardhub_daily_backup_date');
+    refreshHistory();
   };
 
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
@@ -4824,30 +4911,6 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
                 <Icon name="log-out" size={13}/> Sair
               </button>
             </div>
-            {backupMeta&&(
-              <div style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'1px solid #FCD34D',background:'#FEF9E7',display:'flex',alignItems:'center',gap:10}}>
-                <Icon name="clock" size={14} style={{color:'#92700B',flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:'.78rem',fontWeight:600,color:'#92700B'}}>Backup disponível</div>
-                  <div style={{fontSize:'.72rem',color:'#92700B',opacity:.8}}>Salvo em {new Date(backupMeta._snapAt).toLocaleString('pt-BR')}</div>
-                </div>
-                <button onClick={handleRestoreBackup} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',borderColor:'#FCD34D',color:'#92700B',flexShrink:0}}>
-                  <Icon name="undo-2" size={12}/> Restaurar
-                </button>
-              </div>
-            )}
-            {dailyBackupMeta&&(
-              <div style={{width:'100%',padding:'10px 14px',borderRadius:8,border:'1px solid #A8D5B5',background:'#F0FBF3',display:'flex',alignItems:'center',gap:10}}>
-                <Icon name="calendar-check" size={14} style={{color:'#276b3e',flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:'.78rem',fontWeight:600,color:'#276b3e'}}>Backup diário</div>
-                  <div style={{fontSize:'.72rem',color:'#276b3e',opacity:.8}}>Início do dia · {new Date(dailyBackupMeta._snapAt).toLocaleString('pt-BR')}</div>
-                </div>
-                <button onClick={handleRestoreDailyBackup} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.75rem',borderColor:'#A8D5B5',color:'#276b3e',flexShrink:0}}>
-                  <Icon name="undo-2" size={12}/> Restaurar
-                </button>
-              </div>
-            )}
           </>
         ) : (
           <>
@@ -4879,6 +4942,42 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
           </>
         )}
       </div>
+
+      {/* Backup history — always visible, works offline/logged-out */}
+      {backupHistory.length>0&&(
+        <div className="card" style={{padding:isMobile?16:18,marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+            <span className="label">Histórico de Backups</span>
+            <span style={{fontSize:'.68rem',color:'var(--muted)'}}>{backupHistory.length} {backupHistory.length===1?'ponto':'pontos'}</span>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:280,overflowY:'auto'}}>
+            {backupHistory.map((entry,i)=>{
+              const c=entry.counts||{};
+              return (
+                <div key={entry.at+i} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid var(--border)',background:i===0?'#F0FBF3':'var(--bg)',display:'flex',alignItems:'center',gap:10}}>
+                  <Icon name={entry.reason==='daily'?'calendar-check':entry.reason==='pre-sync'?'cloud':entry.reason==='pre-restore'?'undo-2':'clock'} size={14} style={{color:'var(--muted)',flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:'.76rem',fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      {new Date(entry.at).toLocaleString('pt-BR')}
+                      <span style={{fontSize:'.62rem',fontWeight:500,color:entry.reason==='daily'?'#276b3e':'var(--muted)',border:'1px solid '+(entry.reason==='daily'?'#A8D5B5':'var(--border)'),borderRadius:4,padding:'1px 5px',background:entry.reason==='daily'?'#F0FBF3':'transparent'}}>
+                        {entry.reason==='daily'
+                          ?'Diário · '+new Date(entry.at).toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','')
+                          :(BH_REASON_LABEL[entry.reason]||entry.reason)}
+                      </span>
+                    </div>
+                    <div style={{fontSize:'.7rem',color:'var(--muted)'}}>
+                      {c.projects??0} projetos · {c.notes??0} notas · {c.clients??0} clientes · {c.tasks??0} tarefas
+                    </div>
+                  </div>
+                  <button onClick={()=>handleRestoreFromHistory(entry)} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.72rem',flexShrink:0}}>
+                    <Icon name="undo-2" size={12}/> Restaurar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="card" style={{padding:isMobile?16:18,marginBottom:10}}>
@@ -5246,16 +5345,14 @@ const App=()=>{
     if(splash){splash.style.opacity='0';setTimeout(()=>splash.remove(),350);}
   },[]);
 
-  // Daily backup: once per day on first open
+  // Daily backup: once per day on first open (into rotating history)
   useEffect(()=>{
     try{
       const today=new Date().toISOString().slice(0,10);
-      const lastDate=localStorage.getItem('boardhub_daily_backup_date');
-      if(lastDate===today)return;
+      const list=bhHistoryLoad();
+      if(list.some(e=>e.reason==='daily'&&e.at.slice(0,10)===today))return;
       const snap=lsLoad();
-      if(!snap)return;
-      localStorage.setItem('boardhub_daily_backup',JSON.stringify({...snap,_snapAt:new Date().toISOString()}));
-      localStorage.setItem('boardhub_daily_backup_date',today);
+      if(snap)bhCapture(snap,'daily');
     }catch{}
   },[]);
 
@@ -5336,6 +5433,18 @@ const App=()=>{
   // that were never confirmed pushed, the cloud may be stale — used below to avoid a
   // stale cloud snapshot overwriting (and erasing) newer local data on load.
   const _bootDirty=useRef((()=>{try{return localStorage.getItem(DIRTY_KEY)==='1';}catch{return false;}})());
+  // Whether localStorage actually held real user data at boot (vs. this being a
+  // fresh browser/profile that fell back to SEED). A dirty flag alone is not
+  // trustworthy evidence of unsynced work — if there was never any real local
+  // data to begin with, "dirty" is a false positive and must never cause the
+  // (empty) local state to be pushed over a real cloud save.
+  const _localHadRealDataAtBoot=useRef((()=>{
+    if(!persisted)return false;
+    const nonEmpty=arr=>Array.isArray(arr)&&arr.length>0;
+    return nonEmpty(persisted.projects)||nonEmpty(persisted.clients)||nonEmpty(persisted.mentors)||
+           nonEmpty(persisted.notes)||nonEmpty(persisted.tasks)||nonEmpty(persisted.socialPosts)||
+           nonEmpty(persisted.galleryPosts)||nonEmpty(persisted.noteGroups);
+  })());
   const _didInitialReconcile=useRef(false);
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
   useEffect(()=>{
@@ -5359,21 +5468,22 @@ const App=()=>{
       // local data and push it up instead of letting a stale cloud snapshot erase it.
       if(!_didInitialReconcile.current){
         _didInitialReconcile.current=true;
-        if(_bootDirty.current){
+        if(_bootDirty.current&&_localHadRealDataAtBoot.current){
           _hasPendingLocalEdit.current=true;
           try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
           setSyncStatus('synced');
           setSyncTick(t=>t+1); // trigger a push to sync local up to the cloud
           return;
         }
+        // Either not dirty, or dirty flag is a false positive (no real local
+        // data was ever loaded this session) — safe to fall through and apply
+        // the cloud's real data below instead of silently discarding it.
       }
       const isArr=v=>Array.isArray(v);
-      // Snapshot current local state before overwriting with remote data
+      // Snapshot current local state into backup history before overwriting with remote
       try{
-        const snap=lsLoad();
-        if(snap&&Object.keys(snap).length>0){
-          localStorage.setItem('boardhub_backup_pre_sync',JSON.stringify({...snap,_snapAt:new Date().toISOString()}));
-        }
+        const cur=lsLoad();
+        if(cur)bhCapture(cur,'pre-sync');
       }catch(e){}
       _isApplyingRemote.current=true;
       _remoteApplyId.current=_remoteApplyId.current+1; // signal to auto-save effect
@@ -5427,6 +5537,12 @@ const App=()=>{
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
       lsSave(state);
+      // Session snapshot: while actively editing, keep a history point every ~30 min
+      try{
+        const list=bhHistoryLoad();
+        const last=list[0];
+        if(!last||Date.now()-new Date(last.at).getTime()>30*60*1000)bhCapture(state,'auto');
+      }catch{}
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
       saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
