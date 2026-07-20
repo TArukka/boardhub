@@ -9,6 +9,63 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
+  BoardHub v23 — Auditoria & Retrabalho Claude (jul/2026)
+  SYNC / DATA SAFETY
+  • FIX P0: initial reconcile now runs BEFORE the pending-edit gate — a stray
+    pre-login edit on a fresh device no longer lets a near-seed push overwrite
+    the cloud (the class of the original data-loss incident). Stray pre-login
+    edits are archived to backup history ('Edição pré-login').
+  • FIX P0: push failures NEVER surrender _hasPendingLocalEdit anymore; retries
+    back off 8s→30s→2min, DIRTY stays set, and a stale snapshot can no longer
+    silently overwrite unpushed local edits. New explicit escape hatch in Sync:
+    "Descartar locais e puxar da nuvem" (archives local first).
+  • NEW: real last-write-wins on boot conflicts — local last-edit timestamp
+    (boardhub_last_edit_at) vs remote _updated; loser is archived to history.
+    Ties within 2min favor local (active work).
+  • FIX P0: TDZ crash — idb:// prefetch ran at module eval before openIdb was
+    initialized; any persisted local image crashed the app on load. Block moved.
+  • NEW: global trash (v3.2) — soft-deleted items now sync across devices and
+    are restorable anywhere; 30-day auto-purge (deletedAt stamp) bounds size.
+    Previously trash was device-local and silently emptied by remote echoes.
+  • FIX: per-document size guard (3× 950KB) replaces the whole-state 900KB check
+    that blocked sync in scenarios the 3-doc split was built to survive; the
+    offending doc is named in the UI (syncDetail).
+  • FIX: fresh account no longer stuck on "Sincronizando..." (empty server
+    snapshot now resolves to synced).
+  • FIX: "Forçar sync" routed through App so pending/dirty flags clear on success.
+  • Removed dead _isApplyingRemote mechanism (written, never read).
+  CORRECTNESS
+  • FIX: all "today" computations use localDateISO() (local tz) — pomodoro after
+    21:00 BRT logged to tomorrow, deadline chips off-by-one at night, daily
+    backup in the wrong weekday slot. Replaced: _seedDate, pomoTodayKey,
+    pomoLoad migrations, todayISO, addDays, daily-backup slot, bhCapture dedup,
+    gallery post date, export filename, Gantt week/month headers, streak.
+  • FIX: Dashboard streak read days[key].total but values are numbers — streak
+    was permanently 0; dead weekHeat (computed, never rendered) removed.
+  • FIX: JSON import validates shapes (Array.isArray) and reports unrecognized
+    files instead of corrupting state; new ErrorBoundary replaces the white
+    screen with a recoverable error card.
+  SECURITY / PRIVACY
+  • NEW: allowlist sanitizer on rich-text HTML (import/cloud could carry
+    <script>/on* handlers into innerHTML with a live Firebase session);
+    insertImage escapes the src attribute.
+  • NEW: Imgur fallback asks consent once per session (uploads are public by
+    URL); declining stores the image locally instead.
+  MAINTENANCE
+  • NEW: IndexedDB GC on boot (delayed 8s) — deletes blobs unreferenced by the
+    live state AND every backup-history snapshot; 24h age floor so a
+    just-uploaded image can never be collected.
+  • FIX: Modal — Escape closes only the top of the stack; minimal focus trap +
+    focus restore; aria-modal/labels.
+  • FIX: duplicated .rich-editor CSS block merged; .overlay recentered over the
+    content area (was padded 80/160/160 asymmetrically).
+  • navTick now also bumps on select/add project (route consistency);
+    bhRetention docs corrected (7 weekly + 12 rotating ≈ 19 cap, by design).
+  KNOWN TRADE-OFFS (accepted, documented)
+  • Babel standalone transpiles ~360KB of JSX at every load (single-file
+    constraint); execCommand remains (deprecated, no light replacement);
+    session object-URLs are not revoked (GC covers the underlying blobs).
+  ——————
   BoardHub v22 — Revisão Claude pt.2 (jun/2026)
   • NEW: campo Valor (R$) por projeto + toggle Recebido/A receber + total
     "A receber" na barra de filtros de Projetos
@@ -96,7 +153,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 /* Overlay now has a visible backdrop */
-.overlay{position:fixed;inset:0;height:100vh;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding-top:0px;padding-bottom:160px;padding-left:80px;padding-right:160px;}
+.overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:24px;padding-left:244px;/* 220px sidebar + 24px — centers dialogs over the content area; mobile media query zeroes this */}
 .modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.18);max-height:95vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s,transform .15s;padding:24px;text-align:center;color:var(--muted);}
 .upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}.upload-zone:active{transform:scale(.98);}
@@ -281,19 +338,9 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
   .cmd-overlay{padding-top:0;align-items:flex-start;}
   .quick-capture{bottom:72px;min-width:0;width:calc(100% - 32px);left:16px;transform:none;}
 }
+/* v23: this block was duplicated verbatim below; merged into one (kept h3 +
+   drag cursors from the 2nd copy, min-height from the 1st) */
 .rich-editor{outline:none;word-break:break-word;overflow-y:auto;min-height:80px;}
-.rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
-.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;}
-.rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
-.rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
-.rich-editor ul,.rich-editor ol{padding-left:1.5em;margin:.3em 0;}
-.rich-editor li{line-height:1.8;}
-.rich-editor code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.88em;font-family:monospace;}
-.rich-editor blockquote{border-left:3px solid var(--border);margin:.4em 0;padding:.2em 0 .2em 1em;color:var(--muted);}
-.rich-toolbar-btn{display:flex;align-items:center;justify-content:center;width:28px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:var(--muted);transition:background .12s,color .12s;flex-shrink:0;}
-.rich-toolbar-btn:hover{background:var(--bg);color:var(--text);}
-.rich-toolbar-btn.active{background:var(--bg);color:var(--text);}
-.rich-editor{outline:none;word-break:break-word;overflow-y:auto;}
 .rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
 .rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:grab;}
 .rich-editor img:active{cursor:grabbing;}
@@ -337,9 +384,20 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
+// - DATE HELPERS (local timezone) -
+// The app runs in UTC-3 (Brazil). toISOString() gives the UTC date, which after
+// 21:00 local is already *tomorrow* — pomodoro logged to the wrong day, deadline
+// chips off-by-one at night, daily backup landing in the wrong weekday slot.
+// Every "today" in the app must go through localDateISO().
+const localDateISO=(d=new Date())=>{
+  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+dd;
+};
+
 // - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
 const DIRTY_KEY = 'boardhub_dirty'; // '1' = localStorage holds edits not yet confirmed pushed to cloud
+const LAST_EDIT_KEY = 'boardhub_last_edit_at'; // ISO timestamp of the last USER edit — feeds last-write-wins
 const lsLoad = () => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
 const lsSave = s => {
   try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
@@ -350,7 +408,26 @@ const lsSave = s => {
     } catch { /* silent - idb:// refs and https:// URLs never cause quota issues */ }
   }
 };
-const persisted = lsLoad();
+// - GLOBAL TRASH AUTO-PURGE -
+// Soft-deleted items sync across devices (v3.2). To bound document size, items
+// deleted more than 30 days ago are purged at boot. Pre-existing trash without
+// a deletedAt stamp is grandfathered: stamped now, giving it a fresh 30 days.
+const TRASH_TTL_MS=30*24*3600*1000;
+const _purgeTrash=s=>{
+  if(!s)return s;
+  const now=Date.now();
+  const prune=arr=>Array.isArray(arr)?arr.map(x=>{
+    if(x&&x.deleted&&!x.deletedAt)return{...x,deletedAt:new Date().toISOString()};
+    return x;
+  }).filter(x=>{
+    if(!x||!x.deleted||!x.deletedAt)return true;
+    return now-new Date(x.deletedAt).getTime()<TRASH_TTL_MS;
+  }):arr;
+  ['projects','clients','mentors','notes','socialPosts','galleryPosts','galleryFolders']
+    .forEach(k=>{if(s[k])s[k]=prune(s[k]);});
+  return s;
+};
+const persisted = _purgeTrash(lsLoad());
 
 // - BACKUP HISTORY -
 // Rotating snapshot history. Replaces the old two-slot system (pre_sync + daily),
@@ -361,8 +438,10 @@ const persisted = lsLoad();
 //   • NEVER capture an empty/seed state — a backup of nothing is not a backup
 //   • quota-safe: drops oldest entries (and strips base64) before giving up
 const BH_HISTORY_KEY='boardhub_backup_history';
-const BH_KEEP_RECENT=6;   // most recent N snapshots always kept
-const BH_MAX_TOTAL=12;    // hard cap on history length
+const BH_KEEP_RECENT=6;   // most recent N rotating snapshots always kept
+const BH_MAX_TOTAL=12;    // cap on the ROTATING tier only — the weekly tier adds
+                          // up to 7 more (one per weekday), so the effective
+                          // history ceiling is ~19 entries, by design
 const bhStateHasData=s=>{
   if(!s)return false;
   const ne=a=>Array.isArray(a)&&a.length>0;
@@ -418,7 +497,7 @@ const bhCapture=(state,reason)=>{
       // slot whenever nothing changed since the last auto snapshot.
       const wd=new Date().getDay();
       const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd);
-      if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===new Date().toISOString().slice(0,10))return false;
+      if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===localDateISO())return false;
     }else{
       if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
     }
@@ -468,45 +547,6 @@ const bhCapture=(state,reason)=>{
   }catch{}
 })();
 
-// Prefetch all idb:// image refs from persisted state into the object URL cache
-// so BgImg/Img components get their URL synchronously on first render (no flash).
-const _prefetchDone = (()=>{
-  if(!persisted)return Promise.resolve();
-  const keys=[];
-  const collect=obj=>{
-    if(Array.isArray(obj)){obj.forEach(collect);}
-    else if(obj&&typeof obj==='object'){Object.values(obj).forEach(collect);}
-    else if(typeof obj==='string'&&obj.startsWith('idb://'))keys.push(obj.slice(6));
-  };
-  collect(persisted);
-  if(!keys.length)return Promise.resolve();
-  return openIdb().then(db=>{
-    try{
-      // Single transaction — all keys at once
-      const tx=db.transaction('images','readonly');
-      const store=tx.objectStore('images');
-      // Register each fetch in _inflightFetch so useIdbUrl components can
-      // join these in-flight requests instead of opening duplicate IDB reads
-      const promises=keys.map(key=>{
-        if(_objUrlCache[key])return Promise.resolve(_objUrlCache[key]);
-        if(!_inflightFetch[key]){
-          _inflightFetch[key]=new Promise(res=>{
-            const req=store.get(key);
-            req.onsuccess=e=>{
-              const blob=e.target.result;
-              if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
-              delete _inflightFetch[key];
-              res(_objUrlCache[key]||'');
-            };
-            req.onerror=()=>{delete _inflightFetch[key];res('');};
-          });
-        }
-        return _inflightFetch[key];
-      });
-      return Promise.all(promises);
-    }catch{return Promise.resolve();}
-  }).catch(()=>{});
-})();
 
 // - IDENTITY (hub name + OS name, set on first run) -
 const ID_KEY = 'boardhub_identity';
@@ -515,7 +555,7 @@ const saveIdentity = id => { try { localStorage.setItem(ID_KEY, JSON.stringify(i
 
 // - SEED DATA -
 // Dynamic dates relative to today so new users see relevant timelines
-const _seedDate=(daysOffset)=>{const d=new Date();d.setDate(d.getDate()+daysOffset);return d.toISOString().slice(0,10);};
+const _seedDate=(daysOffset)=>{const d=new Date();d.setDate(d.getDate()+daysOffset);return localDateISO(d);};
 const _seedFmt=(daysOffset)=>{const d=new Date();d.setDate(d.getDate()+daysOffset);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');};
 const SEED = {
   projects:[
@@ -704,6 +744,46 @@ const _objUrlCache={};
 // In-flight deduplication: if two components request the same key simultaneously,
 // they share one IDB transaction instead of each opening their own.
 const _inflightFetch={};
+
+// Prefetch all idb:// image refs from persisted state into the object URL cache
+// so BgImg/Img components get their URL synchronously on first render (no flash).
+const _prefetchDone = (()=>{
+  if(!persisted)return Promise.resolve();
+  const keys=[];
+  const collect=obj=>{
+    if(Array.isArray(obj)){obj.forEach(collect);}
+    else if(obj&&typeof obj==='object'){Object.values(obj).forEach(collect);}
+    else if(typeof obj==='string'&&obj.startsWith('idb://'))keys.push(obj.slice(6));
+  };
+  collect(persisted);
+  if(!keys.length)return Promise.resolve();
+  return openIdb().then(db=>{
+    try{
+      // Single transaction — all keys at once
+      const tx=db.transaction('images','readonly');
+      const store=tx.objectStore('images');
+      // Register each fetch in _inflightFetch so useIdbUrl components can
+      // join these in-flight requests instead of opening duplicate IDB reads
+      const promises=keys.map(key=>{
+        if(_objUrlCache[key])return Promise.resolve(_objUrlCache[key]);
+        if(!_inflightFetch[key]){
+          _inflightFetch[key]=new Promise(res=>{
+            const req=store.get(key);
+            req.onsuccess=e=>{
+              const blob=e.target.result;
+              if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
+              delete _inflightFetch[key];
+              res(_objUrlCache[key]||'');
+            };
+            req.onerror=()=>{delete _inflightFetch[key];res('');};
+          });
+        }
+        return _inflightFetch[key];
+      });
+      return Promise.all(promises);
+    }catch{return Promise.resolve();}
+  }).catch(()=>{});
+})();
 
 // --- THUMBNAIL LAYER ---------------------------------------------------------
 // Grid/cover surfaces display a downscaled variant instead of the full image:
@@ -915,10 +995,11 @@ const getGalleryRef=uid=>{
   return _fbDb.collection('users').doc(uid).collection('boardhub').doc('gallery');
 };
 
-// Strip soft-deleted items from arrays before push (saves space, irrelevant to other devices)
-const stripDeleted=arr=>(Array.isArray(arr)?arr.filter(x=>!x.deleted):arr);
-
-// Push stripped state to Firestore — split across 3 documents to stay under 1MB each:
+// v3.2: soft-deleted items now SYNC (global trash). Previously they were
+// stripped before push while the apply side replaced whole arrays — the trash
+// was device-local and silently emptied by the next remote echo. Doc size is
+// bounded by the 30-day auto-purge (_purgeTrash) instead of by stripping.
+// Push splits state across 3 documents to stay under Firestore's 1MB/doc limit:
 //   state  → projects, clients, mentors, tasks, socialPosts, pomoData, identity, noteGroups, galleryFolders
 //   notes  → notes array (can be 500KB+ with rich text)
 //   gallery → galleryPosts array (300KB+ with metadata)
@@ -931,11 +1012,9 @@ const pushState=async(state,uid)=>{
   const ts=firebase.firestore.FieldValue.serverTimestamp();
   const {notes,galleryPosts,...main}=clean;
   await Promise.all([
-    stateRef.set({...main,projects:stripDeleted(main.projects),clients:stripDeleted(main.clients),
-      mentors:stripDeleted(main.mentors),socialPosts:stripDeleted(main.socialPosts),
-      _v:'3.1',_updated:ts}),
-    notesRef.set({notes:stripDeleted(notes||[]),_updated:ts}),
-    galleryRef.set({galleryPosts:stripDeleted(galleryPosts||[]),_updated:ts}),
+    stateRef.set({...main,_v:'3.2',_updated:ts}),
+    notesRef.set({notes:notes||[],_updated:ts}),
+    galleryRef.set({galleryPosts:galleryPosts||[],_updated:ts}),
   ]);
 };
 
@@ -999,13 +1078,28 @@ const _compressImage=async(file)=>{
   });
 };
 
+// Imgur uploads are PUBLIC (anyone with the URL can view). For client work
+// that matters — ask once per session before the first Imgur fallback and
+// remember the answer. Declining stores the image locally (IDB) instead.
+let _imgurAllowed=null; // null = not asked yet, true/false = session decision
+const _askImgurConsent=()=>{
+  if(_imgurAllowed===null){
+    _imgurAllowed=window.confirm(
+      'Sem nuvem do Google disponível para esta imagem.\n\n'+
+      'Enviar para o Imgur? A imagem ficará acessível publicamente por URL '+
+      '(qualquer pessoa com o link pode ver).\n\n'+
+      'Cancelar mantém a imagem apenas neste dispositivo (não sincroniza).');
+  }
+  return _imgurAllowed;
+};
+
 const _uploadSingle=async(file)=>{
   if(!_isVideoFile(file))file=await _compressImage(file);
   if(_fbReady&&_fbAuth?.currentUser){
     try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
     catch(e){console.warn('[BoardHub] Firebase Storage failed:',e.message);}
   }
-  if(!_isVideoFile(file)){
+  if(!_isVideoFile(file)&&_askImgurConsent()){
     try{return await _uploadImgur(file);}catch(e){console.warn('[BoardHub] Imgur failed:',e.message);}
   }
   console.warn('[BoardHub] Falling back to local IDB. File will NOT sync across devices.');
@@ -1095,6 +1189,42 @@ const rehydrateIdbRefs=(obj,map)=>{
   return obj;
 };
 
+// - IDB GARBAGE COLLECTOR -
+// Blobs were never deleted: re-uploaded images, removed references and their
+// thumb_ variants accumulated forever. GC deletes blobs not referenced by the
+// live state OR by any snapshot in the backup history (a restore must still
+// find its images!). Safety rails: keys embed their creation timestamp —
+// only blobs older than 24h are eligible, so an image uploaded moments ago
+// (state not yet flushed to localStorage) can never be collected.
+const _idbKeyAgeMs=k=>{
+  const m=/^(?:thumb_)?(?:media_|img_)(\d+)_/.exec(k);
+  return m?Date.now()-Number(m[1]):0; // unknown format → treat as fresh (keep)
+};
+const gcIdb=async()=>{
+  try{
+    const referenced=new Set();
+    const live=lsLoad();
+    if(live)collectIdbKeys(live,referenced);
+    bhHistoryLoad().forEach(e=>{if(e&&e.state)collectIdbKeys(e.state,referenced);});
+    const db=await openIdb();
+    const keys=await new Promise((res,rej)=>{
+      const r=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).getAllKeys();
+      r.onsuccess=e=>res(e.target.result||[]);r.onerror=e=>rej(e.target.error);
+    });
+    const doomed=keys.filter(k=>{
+      if(typeof k!=='string')return false;
+      if(_idbKeyAgeMs(k)<24*3600*1000)return false;
+      const base=k.startsWith('thumb_')?k.slice(6):k;
+      return !referenced.has(base);
+    });
+    if(!doomed.length)return;
+    const tx=db.transaction(IDB_STORE,'readwrite');
+    doomed.forEach(k=>tx.objectStore(IDB_STORE).delete(k));
+    await new Promise(res=>{tx.oncomplete=res;tx.onerror=res;tx.onabort=res;});
+    console.info('[BoardHub] IDB GC: removed',doomed.length,'orphaned blob(s).');
+  }catch(e){console.warn('[BoardHub] IDB GC skipped:',e);}
+};
+
 
 
 // - TRASH BANNER -
@@ -1107,18 +1237,41 @@ const TrashBanner=({label,onExit})=>(
 );
 
 // - MODAL -
+// v23: stacked modals used to all close on one Escape (each added its own
+// document-level listener). A shared stack makes Escape close only the top
+// one. Also adds a minimal focus trap + focus restore for keyboard use.
+const _modalStack=[];
 const Modal=({title,onClose,children,width=480})=>{
+  const boxRef=useRef(null);
+  const tokenRef=useRef(null);
   useEffect(()=>{
-    const h=e=>{if(e.key==='Escape')onClose();};
+    const token={};tokenRef.current=token;_modalStack.push(token);
+    const prevFocus=document.activeElement;
+    boxRef.current?.focus();
+    const h=e=>{
+      if(e.key==='Escape'&&_modalStack[_modalStack.length-1]===token)onClose();
+    };
     document.addEventListener('keydown',h);
-    return()=>document.removeEventListener('keydown',h);
+    return()=>{
+      document.removeEventListener('keydown',h);
+      const i=_modalStack.indexOf(token);if(i>-1)_modalStack.splice(i,1);
+      if(prevFocus&&prevFocus.focus)try{prevFocus.focus();}catch{}
+    };
   },[onClose]);
+  const trapTab=e=>{
+    if(e.key!=='Tab'||!boxRef.current)return;
+    const f=boxRef.current.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+    if(!f.length)return;
+    const first=f[0],last=f[f.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  };
   return ReactDOM.createPortal(
   <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-    <div className="modal" style={{maxWidth:width}}>
+    <div className="modal" style={{maxWidth:width}} ref={boxRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title==='string'?title:undefined} onKeyDown={trapTab}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
         <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{title}</h2>
-        <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
+        <button className="btn btn-ghost" onClick={onClose} style={{padding:6}} aria-label="Fechar"><Icon name="x" size={18}/></button>
       </div>
       {children}
     </div>
@@ -1475,7 +1628,7 @@ const pomoLoad = function() {
       var parsed = JSON.parse(s);
       // Migrate old format that used dailySeconds/historicalSeconds
       if (typeof parsed.dailySeconds !== 'undefined') {
-        var today2 = new Date().toISOString().slice(0, 10);
+        var today2 = localDateISO();
         var days2 = {};
         if (parsed.dailySeconds > 0) days2[today2] = parsed.dailySeconds;
         return { days: days2 };
@@ -1486,7 +1639,7 @@ const pomoLoad = function() {
     var old = localStorage.getItem('boardhub_pomodoro_stats');
     if (old) {
       var p2 = JSON.parse(old);
-      var t2 = new Date().toISOString().slice(0, 10);
+      var t2 = localDateISO();
       var d2 = {};
       if (p2.dailySeconds > 0) d2[t2] = p2.dailySeconds;
       return { days: d2 };
@@ -1500,7 +1653,7 @@ const pomoSave = function(d) {
 };
 
 const pomoTodayKey = function() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateISO();
 };
 
 const pomoFmtSecs = function(secs) {
@@ -2080,16 +2233,11 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
   const [showAllTasks,setShowAllTasks]=useState(false);
   const [expandedProjectId,setExpandedProjectId]=useState(null);
   const streakDays=useMemo(()=>{
+    // pomoData.days values are plain seconds (numbers), not {total} objects —
+    // the old .total read made the streak permanently 0.
     const days=pomoData?.days||{};let streak=0;const d=new Date();
-    for(let i=0;i<30;i++){const key=d.toISOString().slice(0,10);if(days[key]&&days[key].total>0)streak++;else if(i>0)break;d.setDate(d.getDate()-1);}
+    for(let i=0;i<30;i++){const key=localDateISO(d);if((days[key]||0)>0)streak++;else if(i>0)break;d.setDate(d.getDate()-1);}
     return streak;
-  },[pomoData]);
-  const weekHeat=useMemo(()=>{
-    const days=pomoData?.days||{};const cells=[];const d=new Date();
-    for(let i=6;i>=0;i--){const dd=new Date(d);dd.setDate(dd.getDate()-i);const key=dd.toISOString().slice(0,10);
-    const mins=(days[key]?.total||0)/60;const level=mins===0?0:mins<30?1:mins<60?2:mins<120?3:4;
-    cells.push({date:key,level,mins:Math.round(mins),day:dd.toLocaleDateString('pt-BR',{weekday:'short'}).slice(0,3)});}
-    return cells;
   },[pomoData]);
   const stats=[
     {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects',color:'#48BB78'},
@@ -2381,8 +2529,8 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   const [onlyActive,setOnlyActive]=useState(false);
   const [trash,setTrash]=useState(false);
   const visible=projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
-  const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
-  const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
   // Drag-to-reorder (desktop grid). Moves the dragged project just before the drop target in
   // the full array; since the visible list preserves array order, the visible order follows.
@@ -2635,8 +2783,8 @@ const GANTT_COLORS={
 };
 
 const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
-const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);};
-const todayISO=()=>new Date().toISOString().slice(0,10);
+const addDays=(dateStr,days)=>{const d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+days);return localDateISO(d);};
+const todayISO=()=>localDateISO();
 // Currency formatting (pt-BR)
 const fmtBRL=v=>{const n=Number(v);if(!n||isNaN(n))return null;return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:2});};
 // Deadline countdown info: returns {label,date,color,bg,urgent} or null
@@ -2671,7 +2819,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
     const day=d.getDay(); // 0=Sun
     const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
     const sun=new Date(mon);sun.setDate(mon.getDate()+6);
-    return{start:mon.toISOString().slice(0,10),end:sun.toISOString().slice(0,10)};
+    return{start:localDateISO(mon),end:localDateISO(sun)};
   };
 
   // - Compute chart bounds -
@@ -2705,10 +2853,10 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
   let cur=new Date(chartStart+'T12:00:00');
   const endDt=new Date(chartEnd+'T12:00:00');
   while(cur<=endDt){
-    const mStart=cur.toISOString().slice(0,10);
+    const mStart=localDateISO(cur);
     const label=cur.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.',' ');
     const next=new Date(cur.getFullYear(),cur.getMonth()+1,1);
-    const mEnd=next>endDt?chartEnd:next.toISOString().slice(0,10);
+    const mEnd=next>endDt?chartEnd:localDateISO(next);
     months.push({label,days:daysBetween(mStart,mEnd)});
     cur=next;
   }
@@ -3792,8 +3940,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
 
   const addFolder=()=>{const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false};setFolders(p=>[...(p||[]),n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label);};
   const renameFolder=(id,label)=>{if(label.trim())setFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f));};
-  const trashFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,deleted:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
-  const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false}:f));
+  const trashFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,deleted:true,deletedAt:new Date().toISOString()}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
+  const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false,deletedAt:null}:f));
   const archiveFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,archived:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
   const unarchiveFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,archived:false}:f));
   const hardDeleteFolder=id=>{if(window.confirm('Excluir pasta permanentemente?'))setFolders(p=>p.filter(f=>f.id!==id));};
@@ -3825,8 +3973,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
     e.target.value='';
   };
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
-  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
-  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
 
   // Keyboard escape for lightbox
@@ -3916,7 +4064,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
           </button>
-          {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:new Date().toISOString().slice(0,10),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
+          {!trash&&<button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:localDateISO(),content:"",images:[],deleted:false};setPosts([n,...posts]);setSelected(n);}}><Icon name="plus" size={14}/> Criar</button>}
         </div>
       </div>
       {trash&&<TrashBanner label="Galeria" onExit={()=>setTrash(false)}/>}
@@ -4050,6 +4198,28 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
 });
 
 // - IDEAS -
+// Allowlist sanitizer for persisted rich-text HTML. Note content round-trips
+// through localStorage, Firestore and manual JSON import — an imported backup
+// (or a compromised cloud doc) carrying <script>/<img onerror=...> would run
+// with the user's live Firebase session. Strip active content before it ever
+// touches innerHTML.
+const sanitizeHTML=html=>{
+  if(!html||typeof html!=='string')return html||'';
+  try{
+    const t=document.createElement('template');
+    t.innerHTML=html;
+    t.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form').forEach(el=>el.remove());
+    t.content.querySelectorAll('*').forEach(el=>{
+      [...el.attributes].forEach(a=>{
+        const n=a.name.toLowerCase();
+        if(n.startsWith('on'))el.removeAttribute(a.name);
+        else if((n==='href'||n==='src'||n==='xlink:href')&&/^\s*javascript:/i.test(a.value))el.removeAttribute(a.name);
+      });
+    });
+    return t.innerHTML;
+  }catch{return html;}
+};
+
 const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const ref=useRef(null);
   const saveTimer=useRef(null);
@@ -4061,7 +4231,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   useEffect(()=>{
     if(!ref.current)return;
     if(lastId.current!==noteId){
-      ref.current.innerHTML=initialHTML||'';
+      ref.current.innerHTML=sanitizeHTML(initialHTML||'');
       lastId.current=noteId;
     }
   });
@@ -4080,7 +4250,8 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
 
   const insertImage=useCallback((src)=>{
     ref.current?.focus();
-    document.execCommand('insertHTML',false,`<img src="${src}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;" draggable="true"/>`);
+    const safe=String(src).replace(/"/g,'&quot;'); // never let a raw URL break out of the attribute
+    document.execCommand('insertHTML',false,`<img src="${safe}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;" draggable="true"/>`);
     emit();
   },[emit]);
 
@@ -4258,8 +4429,8 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const reorderNotes=(from,to)=>{if(from===to)return;setNotes(prev=>{const live=prev.filter(n=>!n.deleted);const dead=prev.filter(n=>n.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});};
   const newNote=()=>{const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);setShowCreateMenu(false);};
   const newGroup=()=>{const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};setNotes(prev=>[p,...prev]);setSelectedId(p.id);setActiveEntryId(null);setShowCreateMenu(false);};
-  const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true}:n));if(selectedId===id)setSelectedId(null);};
-  const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false}:n));
+  const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n));if(selectedId===id)setSelectedId(null);};
+  const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false,deletedAt:null}:n));
   const hardDeleteItem=id=>{if(window.confirm('Excluir permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));if(selectedId===id)setSelectedId(null);}};
 
   // ── SIDEBAR item ──
@@ -4527,8 +4698,8 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
   };
   const startEdit=p=>{setText(p.text);setPlatform(p.platform||'Instagram');setEditId(p.id);setTrash(false);};
   const cancelEdit=()=>{setText('');setEditId(null);setPlatform('Instagram');};
-  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
-  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false}:x));
+  const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
   const changePostPlatform=(id,pl)=>setPosts(p=>p.map(x=>x.id===id?{...x,platform:pl}:x));
   const displayed=trash?trashedPosts:activePosts;
@@ -4737,8 +4908,8 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   const [trash,setTrash]=useState(false);
   const tagColor=s=>({'Ativo':'tag-green','Lead':'tag-yellow','Inativo':'tag-gray','Arquivado':'tag-gray'}[s]||'tag-gray');
   const save=form=>{setClients(p=>p.map(c=>c.id===form.id?form:c));setSelected(null);};
-  const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true}:c));setSelected(null);};
-  const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false}:c));
+  const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true,deletedAt:new Date().toISOString()}:c));setSelected(null);};
+  const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false,deletedAt:null}:c));
   const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
   const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
@@ -4826,7 +4997,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
 });
 
 // - SYNC HUB -
-const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMobile,onResetIdentity})=>{
+const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncDetail,onManualPush,onDiscardLocal,isMobile,onResetIdentity})=>{
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -4836,7 +5007,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   const [backupHistory,setBackupHistory]=useState(()=>bhHistoryLoad());
   const refreshHistory=()=>setBackupHistory(bhHistoryLoad());
 
-  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar'};
+  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado'};
   const handleRestoreFromHistory=(entry)=>{
     const dt=new Date(entry.at).toLocaleString('pt-BR');
     const c=entry.counts||{};
@@ -4872,10 +5043,16 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
     if(!window.confirm('Forçar sync vai enviar seus dados locais para a nuvem, sobrescrevendo qualquer versão mais recente no Firestore. Continuar?'))return;
     setLoading(true);
     try{
-      await pushState(appState,fbUser.uid);
+      await onManualPush();
       showStatus('ok','✓ Dados enviados!');
     }catch(e){showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
+  };
+  const handleDiscardLocal=()=>{
+    if(!window.confirm('Descartar as alterações locais não enviadas e puxar a versão da nuvem?\n\nSuas alterações atuais serão guardadas no Histórico de Backups antes — dá pra desfazer.'))return;
+    const ok=onDiscardLocal();
+    if(ok){showStatus('ok','✓ Dados da nuvem aplicados. As alterações locais estão no histórico.');refreshHistory();}
+    else showStatus('err','Ainda não recebi nada da nuvem nesta sessão — nada para puxar.');
   };
 
   const handleReupload=async()=>{
@@ -4897,14 +5074,20 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
     const data=await buildSyncPayload(appState,true);
     const blob=new Blob([data],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
+    const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${localDateISO()}.json`;a.click();URL.revokeObjectURL(url);
   };
   const handleImportFile=e=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
     reader.onload=ev=>{
-      try{const data=JSON.parse(ev.target.result);onImport(data);showStatus('ok','✓ Importado!');}
-      catch{showStatus('err','Arquivo inválido.');}
+      try{
+        const data=JSON.parse(ev.target.result);
+        Promise.resolve(onImport(data)).then(ok=>{
+          if(ok===false)showStatus('err','O arquivo não parece um backup do BoardHub (nenhuma seção reconhecida).');
+          else{showStatus('ok','✓ Importado!');refreshHistory();}
+        });
+      }
+      catch{showStatus('err','Arquivo inválido (JSON malformado).');}
     };
     reader.readAsText(file);e.target.value='';
   };
@@ -4919,7 +5102,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
   ];
 
   const syncColor={'synced':'#276b3e','syncing':'#92700b','error':'#9B1C1C','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
-  const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando...','error':'Erro de sincronização','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
+  const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando...','error':'Erro de sincronização — alterações locais preservadas','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
   const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
 
   return(
@@ -4980,6 +5163,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
                 <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
                   <Icon name={syncIcon} size={12}/>{syncLabel}
                 </div>
+                {syncStatus==='error'&&syncDetail&&<div style={{fontSize:'.7rem',color:'#9B1C1C',marginTop:3,lineHeight:1.4,wordBreak:'break-word'}}>{syncDetail}</div>}
               </div>
             </div>
             <div style={{display:'flex',gap:8,width:'100%'}}>
@@ -4990,6 +5174,11 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,isMob
                 <Icon name="log-out" size={13}/> Sair
               </button>
             </div>
+            {syncStatus==='error'&&(
+              <button className="btn btn-danger" style={{width:'100%',justifyContent:'center'}} onClick={handleDiscardLocal} disabled={loading}>
+                <Icon name="cloud-download" size={14}/> Descartar locais e puxar da nuvem
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -5410,6 +5599,28 @@ const ShortcutsModal=({onClose})=>{
   );
 };
 
+// - ERROR BOUNDARY -
+// A single render error used to nuke the whole app to a white screen (the
+// window error handler only touched the splash, long removed by then).
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={error:null};}
+  static getDerivedStateFromError(error){return{error};}
+  componentDidCatch(err,info){console.error('[BoardHub] Render error:',err,info);}
+  render(){
+    if(this.state.error){
+      return React.createElement('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',padding:24}},
+        React.createElement('div',{style:{maxWidth:440,textAlign:'center',display:'flex',flexDirection:'column',gap:14}},
+          React.createElement('div',{style:{fontFamily:'Cormorant Garamond,serif',fontSize:'2.2rem',fontWeight:500,color:'var(--text)'}},'BoardHub'),
+          React.createElement('div',{style:{fontSize:'.9rem',color:'#9B1C1C',lineHeight:1.6}},'Algo quebrou na interface: '+(this.state.error&&this.state.error.message||'erro desconhecido')),
+          React.createElement('div',{style:{fontSize:'.8rem',color:'var(--muted)',lineHeight:1.6}},'Seus dados locais e o histórico de backups estão preservados. Recarregue para continuar; se o erro persistir após um import, restaure um backup na tela Sincronizar.'),
+          React.createElement('button',{onClick:()=>location.reload(),style:{margin:'6px auto 0',padding:'10px 24px',background:'var(--text)',color:'white',border:'none',borderRadius:8,cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.9rem'}},'Recarregar')
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const App=()=>{
   const autoMobile=useIsMobile();
   const [forceMobile,setForceMobileRaw]=useState(null);
@@ -5424,10 +5635,13 @@ const App=()=>{
     if(splash){splash.style.opacity='0';setTimeout(()=>splash.remove(),350);}
   },[]);
 
+  // IDB garbage collection — delayed so it never competes with startup I/O
+  useEffect(()=>{const t=setTimeout(gcIdb,8000);return()=>clearTimeout(t);},[]);
+
   // Daily backup: once per day on first open (into rotating history)
   useEffect(()=>{
     try{
-      const today=new Date().toISOString().slice(0,10);
+      const today=localDateISO();
       const list=bhHistoryLoad();
       if(list.some(e=>e.reason==='daily'&&e.at.slice(0,10)===today))return;
       const snap=lsLoad();
@@ -5499,7 +5713,8 @@ const App=()=>{
   },[]);
 
   // Firestore real-time listener — fires instantly when any device saves
-  const _isApplyingRemote=useRef(false);
+  // (v23: removed _isApplyingRemote — it was written in three places and read
+  //  in zero; the real remote-vs-edit detection is _remoteApplyId below.)
   // False on first render (initial state from localStorage is NOT a user edit).
   // Set to true after the first auto-save effect fires so subsequent renders are tracked.
   const _isMounted=useRef(false);
@@ -5525,7 +5740,10 @@ const App=()=>{
            nonEmpty(persisted.galleryPosts)||nonEmpty(persisted.noteGroups);
   })());
   const _didInitialReconcile=useRef(false);
+  const _hasRemoteData=useRef(false);      // true once the listener has seen a real 'state' doc
+  const _applyMergedRef=useRef(null);      // lets "discard local & pull" re-run the merge on demand
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
+  const [syncDetail,setSyncDetail]=useState(''); // human-readable reason when syncStatus==='error'
   useEffect(()=>{
     if(!fbUser)return;
     if(!_fbDb)return;
@@ -5536,10 +5754,20 @@ const App=()=>{
     // Backward compat: if a v3.0 install wrote everything into 'state', the
     // listener picks that up too and applies notes/gallery from there.
     const _remoteCache={};
+    // Largest _updated across the cached remote docs, as ISO (''=unknown)
+    const _remoteUpdatedAt=()=>{
+      let max=0;
+      Object.values(_remoteCache).forEach(d=>{
+        const u=d&&d._updated;
+        const t=u&&typeof u.toDate==='function'?u.toDate().getTime():(u?new Date(u).getTime():0);
+        if(t>max)max=t;
+      });
+      return max?new Date(max).toISOString():'';
+    };
     const applyMerged=()=>{
       const main=_remoteCache['state'];
       if(!main)return; // nothing yet
-      // notes/gallery may live in their own docs (v3.1) or still inside main (v3.0 legacy)
+      // notes/gallery may live in their own docs (v3.1+) or still inside main (v3.0 legacy)
       const notesDoc=_remoteCache['notes'];
       const galleryDoc=_remoteCache['gallery'];
       const data={
@@ -5548,23 +5776,58 @@ const App=()=>{
         galleryPosts:(galleryDoc&&isArr(galleryDoc.galleryPosts)?galleryDoc.galleryPosts:null)||main.galleryPosts||[],
       };
       if(!data||typeof data._v!=='string')return;
-      if(_hasPendingLocalEdit.current)return;
+      _hasRemoteData.current=true;
+      // ── INITIAL RECONCILE — must run BEFORE the pending-edit gate ─────────────
+      // v22 checked _hasPendingLocalEdit first, so a single stray pre-login edit
+      // on a fresh device skipped this whole block forever: the cloud snapshot
+      // was never applied and the next push overwrote it with near-seed data —
+      // the exact class of the original data-loss incident.
+      //
+      // State machine on first remote contact:
+      //   local real data + dirty  → last-write-wins by timestamp:
+      //       local newer (±2min skew, ties favor active work) → keep local,
+      //         archive cloud version to history ('cloud-superseded'), push up
+      //       remote newer → apply remote; local goes to the pre-sync snapshot
+      //   local seed/empty + stray session edit → CLOUD WINS; the stray edits
+      //       are archived to history ('pre-login-edit'), never pushed over data
+      //   otherwise → apply remote (unchanged behavior)
+      // In every branch, the losing side lands in the backup history first.
       if(!_didInitialReconcile.current){
         _didInitialReconcile.current=true;
-        if(_bootDirty.current&&_localHadRealDataAtBoot.current){
-          _hasPendingLocalEdit.current=true;
-          try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
-          setSyncStatus('synced');
-          setSyncTick(t=>t+1);
-          return;
+        const localDirty=_bootDirty.current||_hasPendingLocalEdit.current;
+        if(localDirty&&_localHadRealDataAtBoot.current){
+          const remoteAt=_remoteUpdatedAt();
+          let localAt='';try{localAt=localStorage.getItem(LAST_EDIT_KEY)||'';}catch{}
+          const SKEW_MS=2*60*1000;
+          const localWins=(!remoteAt||!localAt)
+            ? true // can't compare → preserve local real data (previous safe default)
+            : new Date(localAt).getTime()+SKEW_MS>=new Date(remoteAt).getTime();
+          if(localWins){
+            try{const{_updated,...cloudSnap}=data;bhCapture(cloudSnap,'cloud-superseded');}catch{}
+            _hasPendingLocalEdit.current=true;
+            try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
+            setSyncStatus('synced');
+            setSyncTick(t=>t+1);
+            return;
+          }
+          // remote is newer → fall through and apply it (pre-sync snapshot below)
+        }else if(_hasPendingLocalEdit.current&&!_localHadRealDataAtBoot.current){
+          // Fresh/seed device with a stray pre-login edit: cloud is authoritative.
+          try{const cur=_latestState.current;if(cur&&bhStateHasData(cur))bhCapture(cur,'pre-login-edit');}catch{}
+          // fall through to apply (flags cleared just below)
         }
+      }else if(_hasPendingLocalEdit.current){
+        // Live local edits not yet pushed — a snapshot must never overwrite them.
+        // The push retry chain keeps the flag until the data is safely in the
+        // cloud; the server echo of that push brings us back in sync afterwards.
+        return;
       }
       const isArr2=v=>Array.isArray(v);
       try{
         const cur=lsLoad();
         if(cur)bhCapture(cur,'pre-sync');
       }catch(e){}
-      _isApplyingRemote.current=true;
+      _hasPendingLocalEdit.current=false;
       _remoteApplyId.current=_remoteApplyId.current+1;
       if(data.projects&&isArr2(data.projects)){
         setProjects(data.projects);
@@ -5581,11 +5844,15 @@ const App=()=>{
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
+      setSyncDetail('');
       setSyncStatus('synced');
-      setTimeout(()=>{ _isApplyingRemote.current=false; },200);
     };
+    _applyMergedRef.current=applyMerged;
     const isArr=v=>Array.isArray(v);
     const unsub=col.onSnapshot(colSnap=>{
+      // Brand-new account: the cloud legitimately has nothing. Without this the
+      // status stayed stuck on "Sincronizando..." until the first local edit.
+      if(colSnap.empty&&!colSnap.metadata.fromCache){setSyncStatus('synced');return;}
       let hasUpdates=false;
       colSnap.docChanges().forEach(change=>{
         const snap=change.doc;
@@ -5596,15 +5863,17 @@ const App=()=>{
       if(hasUpdates)applyMerged();
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
+      setSyncDetail(err&&err.message||'');
       setSyncStatus('error');
     });
-    return unsub;
+    return ()=>{_applyMergedRef.current=null;unsub();};
   },[fbUser]);
 
   // Auto-save localStorage + debounced push to Firestore
   const saveFlashTimer=useRef(null);
   const fbPushTimer=useRef(null);
   const _retryTimer=useRef(null);
+  const _pushAttempt=useRef(0);
   useEffect(()=>{
     // Compare against _remoteApplyId to detect whether this render was triggered
     // by remote data being applied (vs. a genuine user edit).
@@ -5617,7 +5886,10 @@ const App=()=>{
       // hydration, not a change the user made, so we must not block Firestore from
       // overwriting it with the authoritative cloud state.
       _hasPendingLocalEdit.current=true;
-      try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
+      try{
+        localStorage.setItem(DIRTY_KEY,'1');
+        localStorage.setItem(LAST_EDIT_KEY,new Date().toISOString()); // feeds last-write-wins
+      }catch{}
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
@@ -5635,38 +5907,59 @@ const App=()=>{
       // Only push if the user actually made changes (not a remote echo)
       if(!fbUser||!_hasPendingLocalEdit.current)return;
       clearTimeout(fbPushTimer.current);
-      fbPushTimer.current=setTimeout(async()=>{
+      fbPushTimer.current=setTimeout(()=>{
         const doPush=async()=>{
-          const approxBytes=new Blob([JSON.stringify(stripBase64(state))]).size;
-          if(approxBytes>900000){console.warn('[BoardHub] State too large for Firestore (',Math.round(approxBytes/1024),'KB), skipping push.');setSyncStatus('error');return;}
+          // Firestore's 1MB limit is PER DOCUMENT. v22 measured the whole state
+          // against 900KB and gave up — blocking sync in scenarios the 3-doc
+          // split was designed to survive. Measure each payload separately and
+          // name the offender so the user knows what to trim.
+          const clean=stripBase64(state);
+          const {notes,galleryPosts,...mainClean}=clean;
+          const sz=o=>new Blob([JSON.stringify(o)]).size;
+          const docs={'estado':sz(mainClean),'notas':sz(notes||[]),'galeria':sz(galleryPosts||[])};
+          const over=Object.entries(docs).find(([,b])=>b>950000);
+          if(over){
+            const msg='Documento "'+over[0]+'" com '+Math.round(over[1]/1024)+'KB excede o limite de 1MB do Firestore. Divida notas/posts muito grandes.';
+            console.warn('[BoardHub] '+msg);
+            setSyncDetail(msg);setSyncStatus('error');
+            return;
+          }
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
+          _pushAttempt.current=0;
           _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
           try{localStorage.setItem(DIRTY_KEY,'0');}catch{} // cloud now has the latest local data
           clearTimeout(_retryTimer.current);
+          setSyncDetail('');
           setSyncStatus('synced');
         };
-        try{
-          await doPush();
-        }catch(e){
-          console.error('[BoardHub] Firestore push:',e);
-          setSyncStatus('error');
-          // Retry once after 8 s. On success _hasPendingLocalEdit clears normally;
-          // on failure clear it anyway so the snapshot listener is not blocked forever.
-          clearTimeout(_retryTimer.current);
-          _retryTimer.current=setTimeout(async()=>{
-            try{ await doPush(); }
-            catch(e2){
-              console.error('[BoardHub] Firestore push retry failed:',e2);
-              // Give up — allow remote snapshots through so the device stays in sync
-              _hasPendingLocalEdit.current=false;
-              setSyncStatus('error');
+        const attemptPush=async()=>{
+          try{await doPush();}
+          catch(e){
+            console.error('[BoardHub] Firestore push (attempt '+(_pushAttempt.current+1)+'):',e);
+            setSyncDetail(e&&e.message||'');
+            setSyncStatus('error');
+            // v23: NEVER clear _hasPendingLocalEdit on failure. v22 cleared it after
+            // the 2nd failed attempt "so the listener isn't blocked" — which let a
+            // stale remote snapshot silently overwrite the very edits that failed
+            // to upload. Local edits are only surrendered when they reach the cloud
+            // or when the user explicitly discards them in the Sync screen.
+            const delays=[8000,30000,120000];
+            const d=delays[_pushAttempt.current];
+            if(d!=null){
+              _pushAttempt.current++;
+              clearTimeout(_retryTimer.current);
+              _retryTimer.current=setTimeout(attemptPush,d);
             }
-          },8000);
-        }
+            // Out of retries → stay in 'error'; the next edit, a manual push or
+            // "discard local" resolves it. DIRTY stays '1' for the boot reconcile.
+          }
+        };
+        _pushAttempt.current=0;
+        attemptPush();
       },2000);
     },2500);
-    return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);};
+    return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);clearTimeout(_retryTimer.current);};
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity,syncTick]);
 
   // Flush the current state to localStorage the moment the tab is hidden or closed.
@@ -5723,18 +6016,52 @@ const App=()=>{
     setShowNewProject(false);
     setSelectedProject(p);
     setView('project-detail');
+    setNavTick(t=>t+1);
     window.history.pushState(null,'',`#project-detail/${p.id}`);
   },[]);
-  const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true}:p)),[]);
+  const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true,deletedAt:new Date().toISOString()}:p)),[]);
   // Stable handler (reads current project via ref) so ProjectDetail's React.memo isn't
   // defeated by a fresh inline arrow on every App render (e.g. saveFlash/syncStatus toggles).
   const handleSoftDeleteSelected=useCallback(()=>{const sp=selectedProjectRef.current;if(sp)softDeleteProject(sp.id);},[softDeleteProject]);
-  const handleSelectProject=useCallback(p=>{setSelectedProject(p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);},[]);
+  const handleSelectProject=useCallback(p=>{setSelectedProject(p);setView('project-detail');setNavTick(t=>t+1);window.history.pushState(null,'',`#project-detail/${p.id}`);},[]);
   const handleAddProject=useCallback(()=>setShowNewProject(true),[]);
   const handleCloseNewProject=useCallback(()=>setShowNewProject(false),[]);
   const handleBackToProjects=useCallback(()=>navigate('projects'),[navigate]);
   const handleAddGlobalMentor=useCallback(m=>{setMentors(prev=>[...prev,m]);},[]);
   const handleResetIdentity=useCallback(()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);},[]);
+
+  // Manual "Forçar sync" — routed through App so the pending/dirty flags are
+  // cleared on success (v22's SyncHub pushed directly and left them stale).
+  const manualPush=useCallback(async()=>{
+    if(!fbUser)throw new Error('Sem login Google ativo.');
+    setSyncStatus('syncing');
+    try{
+      await pushState(_latestState.current,fbUser.uid);
+      _pushAttempt.current=0;
+      _hasPendingLocalEdit.current=false;
+      try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
+      clearTimeout(_retryTimer.current);
+      setSyncDetail('');
+      setSyncStatus('synced');
+    }catch(e){
+      setSyncDetail(e&&e.message||'');
+      setSyncStatus('error');
+      throw e;
+    }
+  },[fbUser]);
+
+  // Escape hatch when pushes keep failing: archive the local edits to the
+  // backup history, drop the pending flag and re-apply the cached cloud state.
+  const discardLocalAndPull=useCallback(()=>{
+    if(!_hasRemoteData.current||!_applyMergedRef.current)return false;
+    try{const cur=_latestState.current;if(cur&&bhStateHasData(cur))bhCapture(cur,'descartado');}catch{}
+    _pushAttempt.current=0;
+    clearTimeout(_retryTimer.current);
+    _hasPendingLocalEdit.current=false;
+    try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
+    _applyMergedRef.current();
+    return true;
+  },[]);
 
   const clearSave=()=>{
     if(!window.confirm('⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'))return;
@@ -5767,18 +6094,25 @@ const App=()=>{
   };
 
   const handleImport=async data=>{
+    // Shape validation. v22 checked truthiness only — an object where an array
+    // was expected passed the check and crashed every .filter() downstream.
+    // Mirrors the isArr guards the remote listener already applied.
+    if(!data||typeof data!=='object'||Array.isArray(data))return false;
     const ingested=await ingestImages(data);
-    if(ingested.projects)setProjects(ingested.projects);
-    if(ingested.clients)setClients(ingested.clients);
-    if(ingested.mentors)setMentors(ingested.mentors);
-    if(ingested.notes)setNotes(ingested.notes);
-    if(ingested.tasks)setTasks(ingested.tasks);
-    if(ingested.socialPosts)setSocialPosts(ingested.socialPosts);
-    if(ingested.galleryPosts)setGalleryPosts(ingested.galleryPosts);
-    if(ingested.galleryFolders)setGalleryFolders(ingested.galleryFolders);
-    if(ingested.noteGroups)setNoteGroups(ingested.noteGroups);
-    if(ingested.pomoData)setPomoData(ingested.pomoData);
-    if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);}
+    const A=Array.isArray;
+    let applied=0;
+    if(A(ingested.projects)){setProjects(ingested.projects);applied++;}
+    if(A(ingested.clients)){setClients(ingested.clients);applied++;}
+    if(A(ingested.mentors)){setMentors(ingested.mentors);applied++;}
+    if(A(ingested.notes)){setNotes(ingested.notes);applied++;}
+    if(A(ingested.tasks)){setTasks(ingested.tasks);applied++;}
+    if(A(ingested.socialPosts)){setSocialPosts(ingested.socialPosts);applied++;}
+    if(A(ingested.galleryPosts)){setGalleryPosts(ingested.galleryPosts);applied++;}
+    if(A(ingested.galleryFolders)){setGalleryFolders(ingested.galleryFolders);applied++;}
+    if(A(ingested.noteGroups)){setNoteGroups(ingested.noteGroups);applied++;}
+    if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(ingested.pomoData);applied++;}
+    if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);applied++;}
+    return applied>0;
   };
 
   // Update page title when identity changes
@@ -5808,7 +6142,7 @@ const App=()=>{
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} syncDetail={syncDetail} onManualPush={manualPush} onDiscardLocal={discardLocalAndPull} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
       </main>
     </div>
   );
@@ -5817,7 +6151,7 @@ const App=()=>{
 // Mount immediately — images load progressively via useIdbUrl.
 // _prefetchDone runs in parallel and registers fetches in _inflightFetch
 // so components join in-flight IDB reads instead of duplicating them.
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
