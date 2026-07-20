@@ -906,12 +906,37 @@ const getStateRef=uid=>{
   if(!_fbDb)return null;
   return _fbDb.collection('users').doc(uid).collection('boardhub').doc('state');
 };
+const getNotesRef=uid=>{
+  if(!_fbDb)return null;
+  return _fbDb.collection('users').doc(uid).collection('boardhub').doc('notes');
+};
+const getGalleryRef=uid=>{
+  if(!_fbDb)return null;
+  return _fbDb.collection('users').doc(uid).collection('boardhub').doc('gallery');
+};
 
-// Push stripped state to Firestore
+// Strip soft-deleted items from arrays before push (saves space, irrelevant to other devices)
+const stripDeleted=arr=>(Array.isArray(arr)?arr.filter(x=>!x.deleted):arr);
+
+// Push stripped state to Firestore — split across 3 documents to stay under 1MB each:
+//   state  → projects, clients, mentors, tasks, socialPosts, pomoData, identity, noteGroups, galleryFolders
+//   notes  → notes array (can be 500KB+ with rich text)
+//   gallery → galleryPosts array (300KB+ with metadata)
 const pushState=async(state,uid)=>{
-  const ref=getStateRef(uid);
-  if(!ref)throw new Error('Firebase not initialized');
-  await ref.set({...stripBase64(state),_v:'3.0',_updated:firebase.firestore.FieldValue.serverTimestamp()});
+  const stateRef=getStateRef(uid);
+  const notesRef=getNotesRef(uid);
+  const galleryRef=getGalleryRef(uid);
+  if(!stateRef||!notesRef||!galleryRef)throw new Error('Firebase not initialized');
+  const clean=stripBase64(state);
+  const ts=firebase.firestore.FieldValue.serverTimestamp();
+  const {notes,galleryPosts,...main}=clean;
+  await Promise.all([
+    stateRef.set({...main,projects:stripDeleted(main.projects),clients:stripDeleted(main.clients),
+      mentors:stripDeleted(main.mentors),socialPosts:stripDeleted(main.socialPosts),
+      _v:'3.1',_updated:ts}),
+    notesRef.set({notes:stripDeleted(notes||[]),_updated:ts}),
+    galleryRef.set({galleryPosts:stripDeleted(galleryPosts||[]),_updated:ts}),
+  ]);
 };
 
 // Upload a file to Firebase Storage, return permanent CDN URL
@@ -4059,6 +4084,61 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     emit();
   },[emit]);
 
+  // Upload the image instead of embedding it as base64 inline. A single pasted
+  // screenshot can be 100-500KB as base64 — embed a couple of those and the
+  // note's HTML alone can blow past Firestore's 1MB-per-document hard limit,
+  // taking down sync for the whole account (not just this note).
+  // NOTE: deliberately does NOT use the shared uploadImage()'s idb:// local
+  // fallback — that scheme only resolves inside the app's own <Img>/<BgImg>
+  // components, not in raw contentEditable HTML, where it would just render
+  // as a broken image. Last-resort here is inline base64, same as before this
+  // fix — a working (if heavy) image beats a silently lost paste.
+  const insertImageFile=useCallback(async(file)=>{
+    const compressed=await _compressImage(file);
+    if(_fbReady&&_fbAuth?.currentUser){
+      try{insertImage(await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid));return;}
+      catch(e){console.warn('[BoardHub] Storage upload failed for note image, trying fallback:',e.message);}
+    }
+    try{insertImage(await _uploadImgur(compressed));return;}
+    catch(e){console.warn('[BoardHub] Imgur fallback failed for note image, embedding inline:',e.message);}
+    const r=new FileReader();
+    r.onload=ev=>insertImage(ev.target.result);
+    r.readAsDataURL(compressed);
+  },[insertImage]);
+
+  // One-time migration: if this note was already carrying heavy inline base64
+  // images (from before this fix), lift them out to Storage and shrink the
+  // document, so a note that already tripped the 1MB ceiling once won't do it
+  // again the next time it's opened.
+  useEffect(()=>{
+    if(!initialHTML||!initialHTML.includes('data:image'))return;
+    if(!_fbReady||!_fbAuth?.currentUser)return; // only migrate when we can actually offload
+    let cancelled=false;
+    (async()=>{
+      await new Promise(r=>setTimeout(r,50)); // let the DOM populate with initialHTML
+      if(cancelled||!ref.current)return;
+      const heavy=[...ref.current.querySelectorAll('img[src^="data:image"]')].filter(img=>img.src.length>20000);
+      if(!heavy.length)return;
+      let changed=false;
+      for(const img of heavy){
+        if(cancelled)return;
+        try{
+          const blob=await(await fetch(img.src)).blob();
+          const file=new File([blob],'note-img.png',{type:blob.type||'image/png'});
+          const compressed=await _compressImage(file);
+          img.src=await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid);
+          changed=true;
+        }catch(e){console.warn('[BoardHub] Legacy note-image migration failed for one image:',e.message);}
+      }
+      if(changed&&!cancelled&&ref.current){
+        onSave(ref.current.innerHTML);
+        console.info('[BoardHub] Moved inline note images to cloud storage, freeing up document space.');
+      }
+    })();
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   const handleKeyDown=e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}};
 
   const handleDrop=e=>{
@@ -4076,13 +4156,13 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     e.preventDefault();
     const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
     if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
-    files.forEach(async f=>{const c=await _compressImage(f);const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);});
+    files.forEach(f=>insertImageFile(f));
   };
   const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
   const handlePaste=e=>{
     const items=e.clipboardData?.items||[];
     const img=[...items].find(i=>i.type.startsWith('image/'));
-    if(img){e.preventDefault();const f=img.getAsFile();_compressImage(f).then(c=>{const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);});}
+    if(img){e.preventDefault();insertImageFile(img.getAsFile());}
   };
   const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{}};
 
@@ -4118,8 +4198,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
           <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={async e=>{
             const f=e.target.files[0];if(!f)return;
-            const c=await _compressImage(f);
-            const r=new FileReader();r.onload=ev=>insertImage(ev.target.result);r.readAsDataURL(c);
+            insertImageFile(f);
             e.target.value='';
           }}/>
           <Icon name="image" size={13}/>
@@ -5449,65 +5528,72 @@ const App=()=>{
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
   useEffect(()=>{
     if(!fbUser)return;
-    const ref=getStateRef(fbUser.uid);
-    if(!ref)return;
+    if(!_fbDb)return;
+    const col=_fbDb.collection('users').doc(fbUser.uid).collection('boardhub');
     setSyncStatus('syncing');
-    const unsub=ref.onSnapshot(snap=>{
-      if(!snap.exists)return;
-      // Skip our own write echo (hasPendingWrites=true = the local write hasn't
-      // reached the server yet — it's our own data bouncing back)
-      if(snap.metadata.hasPendingWrites)return;
-      const data=snap.data();
+    // Listen to the entire boardhub subcollection — covers the main 'state' doc
+    // plus the 'notes' and 'gallery' docs added in v3.1.
+    // Backward compat: if a v3.0 install wrote everything into 'state', the
+    // listener picks that up too and applies notes/gallery from there.
+    const _remoteCache={};
+    const applyMerged=()=>{
+      const main=_remoteCache['state'];
+      if(!main)return; // nothing yet
+      // notes/gallery may live in their own docs (v3.1) or still inside main (v3.0 legacy)
+      const notesDoc=_remoteCache['notes'];
+      const galleryDoc=_remoteCache['gallery'];
+      const data={
+        ...main,
+        notes:(notesDoc&&isArr(notesDoc.notes)?notesDoc.notes:null)||main.notes||[],
+        galleryPosts:(galleryDoc&&isArr(galleryDoc.galleryPosts)?galleryDoc.galleryPosts:null)||main.galleryPosts||[],
+      };
       if(!data||typeof data._v!=='string')return;
-      // Skip if the user has local changes that haven't been pushed yet —
-      // applying now would overwrite their unsaved work. The flag clears when the
-      // push succeeds (or is abandoned after retries).
       if(_hasPendingLocalEdit.current)return;
-      // Initial reconciliation: on the first cloud snapshot after load, if a previous
-      // session left unpushed local edits (dirty), the cloud may be stale. Keep the
-      // local data and push it up instead of letting a stale cloud snapshot erase it.
       if(!_didInitialReconcile.current){
         _didInitialReconcile.current=true;
         if(_bootDirty.current&&_localHadRealDataAtBoot.current){
           _hasPendingLocalEdit.current=true;
           try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
           setSyncStatus('synced');
-          setSyncTick(t=>t+1); // trigger a push to sync local up to the cloud
+          setSyncTick(t=>t+1);
           return;
         }
-        // Either not dirty, or dirty flag is a false positive (no real local
-        // data was ever loaded this session) — safe to fall through and apply
-        // the cloud's real data below instead of silently discarding it.
       }
-      const isArr=v=>Array.isArray(v);
-      // Snapshot current local state into backup history before overwriting with remote
+      const isArr2=v=>Array.isArray(v);
       try{
         const cur=lsLoad();
         if(cur)bhCapture(cur,'pre-sync');
       }catch(e){}
       _isApplyingRemote.current=true;
-      _remoteApplyId.current=_remoteApplyId.current+1; // signal to auto-save effect
-      if(data.projects&&isArr(data.projects)){
+      _remoteApplyId.current=_remoteApplyId.current+1;
+      if(data.projects&&isArr2(data.projects)){
         setProjects(data.projects);
-        // Keep the open project view in sync — without this, edits from another
-        // device only appear after leaving and re-entering the project
         setSelectedProject(prev=>prev?(data.projects.find(p=>p.id===prev.id)||prev):prev);
       }
-      if(data.clients&&isArr(data.clients))setClients(data.clients);
-      if(data.mentors&&isArr(data.mentors))setMentors(data.mentors);
-      if(data.notes&&isArr(data.notes))setNotes(data.notes);
-      if(data.tasks&&isArr(data.tasks))setTasks(data.tasks);
-      if(data.socialPosts&&isArr(data.socialPosts))setSocialPosts(data.socialPosts);
-      if(data.galleryPosts&&isArr(data.galleryPosts))setGalleryPosts(data.galleryPosts);
-      if(data.galleryFolders&&isArr(data.galleryFolders))setGalleryFolders(data.galleryFolders);
-      if(data.noteGroups&&isArr(data.noteGroups))setNoteGroups(data.noteGroups);
+      if(data.clients&&isArr2(data.clients))setClients(data.clients);
+      if(data.mentors&&isArr2(data.mentors))setMentors(data.mentors);
+      if(data.notes&&isArr2(data.notes))setNotes(data.notes);
+      if(data.tasks&&isArr2(data.tasks))setTasks(data.tasks);
+      if(data.socialPosts&&isArr2(data.socialPosts))setSocialPosts(data.socialPosts);
+      if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(data.galleryPosts);
+      if(data.galleryFolders&&isArr2(data.galleryFolders))setGalleryFolders(data.galleryFolders);
+      if(data.noteGroups&&isArr2(data.noteGroups))setNoteGroups(data.noteGroups);
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
-      try{localStorage.setItem(DIRTY_KEY,'0');}catch{} // local now matches cloud
+      try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
       setSyncStatus('synced');
-      // Only needs to cover React's batched render (~one tick). We no longer rely
-      // on this flag in the push guard — _remoteApplyId handles that correctly.
       setTimeout(()=>{ _isApplyingRemote.current=false; },200);
+    };
+    const isArr=v=>Array.isArray(v);
+    const unsub=col.onSnapshot(colSnap=>{
+      let hasUpdates=false;
+      colSnap.docChanges().forEach(change=>{
+        const snap=change.doc;
+        if(snap.metadata.hasPendingWrites)return; // skip our own echoes
+        _remoteCache[snap.id]=snap.data();
+        hasUpdates=true;
+      });
+      if(hasUpdates)applyMerged();
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
       setSyncStatus('error');
