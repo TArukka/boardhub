@@ -20,6 +20,13 @@
     grids only ever show ≤480px thumbnails, so a 100+ image post no longer creates
     100+ multi-MB object URLs up front. First ~3 rows carry priority (load on
     open); the rest generate on scroll. Full-res is fetched only in the lightbox.
+  • NEW: cold grid images show the ORIGINAL instantly (single IDB read), then swap
+    to the generated thumbnail and release the transient full-res URL — instant
+    first pixel like the earlier full-warm build, but the big URL is freed right
+    after the swap and never cached, so 100+ image posts don't leak full-res.
+  • FASTER: thumbnails now generate via createImageBitmap (off-main-thread decode
+    + resize) instead of new Image()+canvas — the main cause of cold-open lag on
+    large source photos. Falls back to the canvas path on older engines.
   • Net effect: fast open + smooth scroll on very large posts, with session memory
     bounded to small thumbnails of what you've actually viewed.
   IDEAS
@@ -814,31 +821,55 @@ const _httpThumb=url=>{
 };
 // Preload a URL off-DOM; resolves with the URL once decoded (for progressive swaps).
 const _preload=u=>new Promise(res=>{const im=new Image();im.onload=()=>res(u);im.onerror=()=>res('');im.src=u;});
-const _makeThumbBlob=blob=>new Promise(res=>{
-  try{
-    const img=new Image();const u=URL.createObjectURL(blob);
-    img.onload=()=>{
-      URL.revokeObjectURL(u);
-      let{width:w,height:h}=img;
-      if(Math.max(w,h)<=THUMB_MAX){res(blob);return;} // already small enough
-      const r=THUMB_MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);
+const _makeThumbBlob=async blob=>{
+  // Fast path: createImageBitmap decodes AND downscales off the main thread —
+  // dramatically cheaper than new Image()+canvas for large source photos, which
+  // is what made cold thumbnails feel slow on big posts.
+  if(typeof createImageBitmap==='function'){
+    try{
+      const probe=await createImageBitmap(blob);
+      const pw=probe.width,ph=probe.height;
+      if(Math.max(pw,ph)<=THUMB_MAX){if(probe.close)probe.close();return blob;}
+      const r=THUMB_MAX/Math.max(pw,ph),w=Math.round(pw*r),h=Math.round(ph*r);
+      let bmp=probe;
+      try{ // resize during decode where supported; probe closed either way
+        bmp=await createImageBitmap(blob,{resizeWidth:w,resizeHeight:h,resizeQuality:'high'});
+        if(probe.close)probe.close();
+      }catch{/* engine ignores resize opts — draw the full probe scaled instead */}
       const c=document.createElement('canvas');c.width=w;c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      c.toBlob(b=>res(b||blob),'image/webp',0.72);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(u);res(blob);};
-    img.src=u;
-  }catch{res(blob);}
-});
+      c.getContext('2d').drawImage(bmp,0,0,w,h);
+      if(bmp.close)bmp.close();
+      const out=await new Promise(res=>c.toBlob(b=>res(b||blob),'image/webp',0.72));
+      return out;
+    }catch{/* fall through to the classic path */}
+  }
+  // Fallback: classic Image + canvas (older engines / decode failures).
+  return await new Promise(res=>{
+    try{
+      const img=new Image();const u=URL.createObjectURL(blob);
+      img.onload=()=>{
+        URL.revokeObjectURL(u);
+        let{width:w,height:h}=img;
+        if(Math.max(w,h)<=THUMB_MAX){res(blob);return;}
+        const r=THUMB_MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        c.toBlob(b=>res(b||blob),'image/webp',0.72);
+      };
+      img.onerror=()=>{URL.revokeObjectURL(u);res(blob);};
+      img.src=u;
+    }catch{res(blob);}
+  });
+};
 // Resolve (generating + persisting once) a thumbnail object URL for an idb key.
-const getThumbUrl=key=>{
+const getThumbUrl=(key,blobP)=>{
   if(_thumbCache[key])return Promise.resolve(_thumbCache[key]);
   if(_thumbInflight[key])return _thumbInflight[key];
   _thumbInflight[key]=(async()=>{
     try{
       let tb=await idbGet('thumb_'+key);
       if(!tb){
-        const full=await idbGet(key);
+        const full=await (blobP||idbGet(key)); // reuse the caller's read when provided
         if(!full){delete _thumbInflight[key];return '';}
         tb=await _makeThumbBlob(full);
         try{await idbPut('thumb_'+key,tb);}catch{/* render cache only — ignore quota */}
@@ -882,10 +913,29 @@ const useDisplayUrl=(src,thumb)=>{
     // ── local idb:// ──
     const key=src.slice(6);
     if(thumb){
-      if(_thumbCache[key]){setUrl(_thumbCache[key]);return;}
-      if(_objUrlCache[key])setUrl(_objUrlCache[key]); // show full immediately, swap to thumb when ready
-      getThumbUrl(key).then(u=>{if(!cancelled&&u)setUrl(u);});
-      return()=>{cancelled=true;};
+      if(_thumbCache[key]){setUrl(_thumbCache[key]);return()=>{cancelled=true;};}
+      // Cold thumbnail. Show the ORIGINAL immediately for an instant first pixel,
+      // then swap to the small persisted thumbnail and release the big transient
+      // URL. The transient URL is intentionally NOT stored in _objUrlCache (the
+      // lightbox's full-res cache), so releasing it here affects nothing else —
+      // this is what keeps grids fast without leaking full-res blobs for 100+
+      // image posts. A single idbGet feeds both the instant display and the
+      // thumbnail generation.
+      let transientFull='';
+      const blobP=idbGet(key);
+      blobP.then(blob=>{
+        if(cancelled||!blob||_thumbCache[key])return;
+        transientFull=URL.createObjectURL(blob);
+        if(!cancelled&&!_thumbCache[key])setUrl(transientFull);
+      }).catch(()=>{});
+      getThumbUrl(key,blobP).then(u=>{
+        if(cancelled)return;
+        if(u)setUrl(u);
+        // Defer the revoke so the thumbnail has painted before the transient URL
+        // goes away (avoids any flash during the src swap).
+        if(transientFull){const t=transientFull;transientFull='';setTimeout(()=>URL.revokeObjectURL(t),2000);}
+      });
+      return()=>{cancelled=true;if(transientFull)URL.revokeObjectURL(transientFull);};
     }
     // Full-res path (card/lightbox) — PROGRESSIVE: show the (usually cached) 480px
     // thumbnail first so the image appears instantly, then read the original blob
