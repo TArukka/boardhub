@@ -10,6 +10,19 @@
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
   BoardHub v23 — Auditoria & Retrabalho Claude (jul/2026)
+  PERCEIVED PERFORMANCE
+  • NEW: first paint no longer waits on (or competes with) image I/O. The old
+    prefetch read every local blob from disk at module-eval time; it now runs in
+    idle time, in small batches, purely as background warming.
+  • NEW: local (idb://) images are viewport-gated — a blob is read from disk and
+    thumbnailed only when it scrolls within ~400px of view. Opening a card renders
+    its cards instantly and loads the first visible rows first; rows below wait
+    until scrolled near. Cloud images already had this via loading=lazy; lightbox
+    (priority) images bypass the gate and load at once.
+  IDEAS
+  • NEW: reordenar entradas dentro de um grupo — arrastar no desktop (grip +
+    handle, mesmo padrão da barra lateral), setas ↑↓ no mobile (touch não faz
+    HTML5 drag). A nova ordem sincroniza e entra no backup como o resto do estado.
   SYNC / DATA SAFETY
   • FIX P0: initial reconcile now runs BEFORE the pending-edit gate — a stray
     pre-login edit on a fresh device no longer lets a near-seed push overwrite
@@ -745,45 +758,41 @@ const _objUrlCache={};
 // they share one IDB transaction instead of each opening their own.
 const _inflightFetch={};
 
-// Prefetch all idb:// image refs from persisted state into the object URL cache
-// so BgImg/Img components get their URL synchronously on first render (no flash).
-const _prefetchDone = (()=>{
-  if(!persisted)return Promise.resolve();
-  const keys=[];
+// Background image-cache warming. v23: this used to run at module-eval time and
+// read EVERY idb:// blob from disk in one shot, competing with the first paint on
+// galleries with many local images. It now runs AFTER first paint, in idle time,
+// in small batches — a low-priority nice-to-have. The images the user actually
+// sees are served on demand by the viewport gate in <Img>/<BgImg> (useInView),
+// so warming only helps images opened without scrolling (e.g. inside a card that
+// was off-screen). Registers each read in _inflightFetch so on-demand resolvers
+// join the same request instead of duplicating the IDB read.
+const _idleCb=(cb)=>((typeof window!=='undefined'&&window.requestIdleCallback)||((f)=>setTimeout(()=>f({timeRemaining:()=>0}),200)))(cb);
+const warmImageCache=()=>{
+  if(!persisted)return;
+  const keys=[];const seen=new Set();
   const collect=obj=>{
     if(Array.isArray(obj)){obj.forEach(collect);}
     else if(obj&&typeof obj==='object'){Object.values(obj).forEach(collect);}
-    else if(typeof obj==='string'&&obj.startsWith('idb://'))keys.push(obj.slice(6));
+    else if(typeof obj==='string'&&obj.startsWith('idb://')){const k=obj.slice(6);if(!seen.has(k)){seen.add(k);keys.push(k);}}
   };
   collect(persisted);
-  if(!keys.length)return Promise.resolve();
-  return openIdb().then(db=>{
-    try{
-      // Single transaction — all keys at once
-      const tx=db.transaction('images','readonly');
-      const store=tx.objectStore('images');
-      // Register each fetch in _inflightFetch so useIdbUrl components can
-      // join these in-flight requests instead of opening duplicate IDB reads
-      const promises=keys.map(key=>{
-        if(_objUrlCache[key])return Promise.resolve(_objUrlCache[key]);
-        if(!_inflightFetch[key]){
-          _inflightFetch[key]=new Promise(res=>{
-            const req=store.get(key);
-            req.onsuccess=e=>{
-              const blob=e.target.result;
-              if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
-              delete _inflightFetch[key];
-              res(_objUrlCache[key]||'');
-            };
-            req.onerror=()=>{delete _inflightFetch[key];res('');};
-          });
-        }
-        return _inflightFetch[key];
-      });
-      return Promise.all(promises);
-    }catch{return Promise.resolve();}
-  }).catch(()=>{});
-})();
+  if(!keys.length)return;
+  let i=0;const BATCH=6;
+  const step=()=>{
+    if(i>=keys.length)return;
+    const slice=keys.slice(i,i+BATCH);i+=BATCH;
+    Promise.all(slice.map(key=>{
+      if(_objUrlCache[key])return Promise.resolve();
+      if(_inflightFetch[key])return _inflightFetch[key];
+      _inflightFetch[key]=idbGet(key).then(blob=>{
+        if(blob&&!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
+        delete _inflightFetch[key];return _objUrlCache[key]||'';
+      }).catch(()=>{delete _inflightFetch[key];return '';});
+      return _inflightFetch[key];
+    })).then(()=>_idleCb(step));
+  };
+  _idleCb(step);
+};
 
 // --- THUMBNAIL LAYER ---------------------------------------------------------
 // Grid/cover surfaces display a downscaled variant instead of the full image:
@@ -885,22 +894,49 @@ const useDisplayUrl=(src,thumb)=>{
 // Back-compat full-res resolver (used by Vid and any direct callers).
 const useIdbUrl=src=>useDisplayUrl(src,false);
 
+// Viewport gate for lazily reading LOCAL (idb://) images. Returns [refCallback,
+// inView]. Reading a blob from IDB + generating its thumbnail is the expensive
+// part of showing a local image, so we defer it until the element is within
+// ~400px of the viewport (≈2-3 rows ahead). The first rows of a freshly opened
+// card are on-screen immediately, so they resolve at once; rows further down
+// wait until scrolled near. When gating is disabled (cloud/data images, priority
+// images, or no IntersectionObserver) inView is true from the start.
+const useInView=(enabled)=>{
+  const hasIO=typeof IntersectionObserver!=='undefined';
+  const [inView,setInView]=React.useState(!enabled||!hasIO);
+  const obsRef=React.useRef(null);
+  const setRef=React.useCallback(node=>{
+    if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
+    if(inView||!enabled||!hasIO||!node)return;
+    obsRef.current=new IntersectionObserver(entries=>{
+      if(entries.some(e=>e.isIntersecting)){setInView(true);if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}}
+    },{rootMargin:'400px'});
+    obsRef.current.observe(node);
+  },[inView,enabled,hasIO]);
+  React.useEffect(()=>()=>{if(obsRef.current)obsRef.current.disconnect();},[]);
+  return [setRef,inView];
+};
+
 // Img: auto-resolves idb:// refs. Uses the thumbnail variant by default for grid/cover
 // surfaces; pass `full` for lightbox/hero views that need the original resolution.
 const Img=({src,priority,full,thumb=!full,...props})=>{
-  const url=useDisplayUrl(src,thumb);
-  if(!url)return <div style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
+  const gate=typeof src==='string'&&src.startsWith('idb://')&&!priority;
+  const [setRef,inView]=useInView(gate);
+  const url=useDisplayUrl(gate&&!inView?null:src,thumb);
+  if(!url)return <div ref={setRef} style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
   // If a cloud thumbnail variant 404s, fall back to the original URL once.
   const onErr=thumb&&typeof src==='string'&&/^https?:\/\//.test(src)&&src!==url
     ?e=>{if(e.currentTarget.src!==src)e.currentTarget.src=src;}:props.onError;
-  return <img {...props} src={url} loading={priority?'eager':'lazy'} decoding="async" onError={onErr}
+  return <img {...props} ref={setRef} src={url} loading={priority?'eager':'lazy'} decoding="async" onError={onErr}
     style={{...props.style,animation:'imgFadeIn .25s ease'}}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs (thumbnail by default).
 const BgImg=({src,className,style,children,full,thumb=!full,...props})=>{
-  const url=useDisplayUrl(src,thumb);
-  return <div className={className} style={{background:url?'none':'var(--border)',backgroundSize:'cover',...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
+  const gate=typeof src==='string'&&src.startsWith('idb://');
+  const [setRef,inView]=useInView(gate);
+  const url=useDisplayUrl(gate&&!inView?null:src,thumb);
+  return <div ref={setRef} className={className} style={{background:url?'none':'var(--border)',backgroundSize:'cover',...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
 };
 
 // Video detection helper — checks extension in any URL format (idb://, https://, data:)
@@ -4396,6 +4432,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const flushEntryTitleRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
   const dragIdxRef=useRef(null);
+  const entryDragIdxRef=useRef(null); // drag index for reordering entries inside a group
 
   useEffect(()=>{if(!showCreateMenu)return;const close=e=>{if(e.key==='Escape')setShowCreateMenu(false);};const out=()=>setShowCreateMenu(false);document.addEventListener('keydown',close);const t=setTimeout(()=>document.addEventListener('click',out),0);return()=>{document.removeEventListener('keydown',close);clearTimeout(t);document.removeEventListener('click',out);};},[showCreateMenu]);
 
@@ -4427,6 +4464,9 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
 
   // ── CRUD ──
   const reorderNotes=(from,to)=>{if(from===to)return;setNotes(prev=>{const live=prev.filter(n=>!n.deleted);const dead=prev.filter(n=>n.deleted);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...dead];});};
+  // Reorder entries within the selected group. Same splice pattern as reorderNotes.
+  const reorderEntries=(from,to)=>{if(from===to||!selectedId)return;updProj(selectedId,proj=>{const next=[...(proj.entries||[])];const[m]=next.splice(from,1);next.splice(to,0,m);return{...proj,entries:next};});};
+  const moveEntry=(idx,dir)=>{const to=idx+dir;const len=(selectedItem?.entries||[]).length;if(to<0||to>=len)return;reorderEntries(idx,to);};
   const newNote=()=>{const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false};newNoteCooldownRef.current=Date.now();setNotes(p=>[n,...p]);setSelectedId(n.id);setShowCreateMenu(false);};
   const newGroup=()=>{const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};setNotes(prev=>[p,...prev]);setSelectedId(p.id);setActiveEntryId(null);setShowCreateMenu(false);};
   const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n));if(selectedId===id)setSelectedId(null);};
@@ -4515,10 +4555,17 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
               <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
                 {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.78rem',color:'var(--muted)',padding:'8px 0'}}>Nenhuma entrada.</div>}
                 {(selectedItem.entries||[]).map((e,i)=>(
-                  <div key={e.id} onClick={()=>setActiveEntryId(e.id)}
+                  <div key={e.id} className="drag-item" draggable
+                    onDragStart={ev=>{ev.dataTransfer.effectAllowed='move';entryDragIdxRef.current=i;ev.currentTarget.style.opacity='0.4';}}
+                    onDragEnd={ev=>{ev.currentTarget.style.opacity='1';entryDragIdxRef.current=null;document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}}
+                    onDragOver={ev=>{ev.preventDefault();ev.currentTarget.classList.add('drag-over');}}
+                    onDragLeave={ev=>{ev.currentTarget.classList.remove('drag-over');}}
+                    onDrop={ev=>{ev.preventDefault();ev.currentTarget.classList.remove('drag-over');if(entryDragIdxRef.current!=null&&entryDragIdxRef.current!==i){reorderEntries(entryDragIdxRef.current,i);entryDragIdxRef.current=null;}}}
+                    onClick={()=>setActiveEntryId(e.id)}
                     style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:`1px solid ${activeEntryId===e.id?'var(--text)':'transparent'}`,background:activeEntryId===e.id?'var(--surface)':'transparent',transition:'all .15s',display:'flex',alignItems:'center',gap:6}}
                     onMouseEnter={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={el=>{if(activeEntryId!==e.id)el.currentTarget.style.background='transparent';}}>
+                    <span className="drag-handle" style={{color:'var(--muted)',flexShrink:0,lineHeight:0}}><Icon name="grip-vertical" size={10}/></span>
                     <span style={{fontSize:'.68rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
                     <span style={{fontSize:'.8rem',fontWeight:500,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</span>
                   </div>
@@ -4649,11 +4696,17 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
         <div style={{display:'flex',flexDirection:'column',gap:4}}>
           <div style={{fontWeight:700,fontSize:'.9rem',marginBottom:4,paddingBottom:8,borderBottom:'1px solid var(--border)'}}>{selectedItem.title}</div>
           {(selectedItem.entries||[]).length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'12px 0'}}>Nenhuma entrada ainda.</div>}
-          {(selectedItem.entries||[]).map(e=>(
-            <div key={e.id} onClick={()=>{setActiveEntryId(e.id);setMobileView('entry-detail');}}
-              style={{padding:'12px 14px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
-              <div style={{fontWeight:600,fontSize:'.88rem'}}>{e.title}</div>
-              <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2}}>{e.date}</div>
+          {(selectedItem.entries||[]).map((e,i)=>(
+            <div key={e.id} style={{display:'flex',alignItems:'stretch',gap:6}}>
+              <div onClick={()=>{setActiveEntryId(e.id);setMobileView('entry-detail');}}
+                style={{flex:1,minWidth:0,padding:'12px 14px',borderRadius:10,cursor:'pointer',background:'var(--surface)',border:'1px solid var(--border)'}}>
+                <div style={{fontWeight:600,fontSize:'.88rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title}</div>
+                <div style={{fontSize:'.72rem',color:'var(--muted)',marginTop:2}}>{e.date}</div>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',flexShrink:0}}>
+                <button onClick={()=>moveEntry(i,-1)} disabled={i===0} className="btn btn-ghost" style={{padding:'2px 8px',opacity:i===0?.3:1}} aria-label="Mover para cima"><Icon name="chevron-up" size={14}/></button>
+                <button onClick={()=>moveEntry(i,1)} disabled={i===(selectedItem.entries||[]).length-1} className="btn btn-ghost" style={{padding:'2px 8px',opacity:i===(selectedItem.entries||[]).length-1?.3:1}} aria-label="Mover para baixo"><Icon name="chevron-down" size={14}/></button>
+              </div>
             </div>
           ))}
         </div>
@@ -6147,11 +6200,11 @@ const App=()=>{
     </div>
   );
 };
-// Mount after prefetch so all idb:// images are in cache before first render
-// Mount immediately — images load progressively via useIdbUrl.
-// _prefetchDone runs in parallel and registers fetches in _inflightFetch
-// so components join in-flight IDB reads instead of duplicating them.
+// Mount immediately — first paint is not blocked by any image I/O. Visible images
+// resolve on demand (viewport-gated in <Img>/<BgImg>); the rest are warmed in the
+// background during idle time so nothing competes with startup.
 ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
+_idleCb(warmImageCache);
 </script>
 </body>
 </html>
