@@ -9,6 +9,247 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
+  ══ P0-2 — REGRAS DE SEGURANÇA (VERIFICAR NO CONSOLE) ═══════════════════════
+  A DEFAULT_FB_CFG está hardcoded logo abaixo. Isso é normal em Firebase web e a
+  apiKey não é segredo — ela identifica o projeto, não autoriza nada. O que
+  efetivamente protege os dados são as SECURITY RULES, que não moram neste
+  arquivo e não dão para auditar pelo código. Se estiverem em modo de teste
+  ("allow read, write: if true"), qualquer pessoa com a apiKey — que está aqui —
+  lê e escreve TUDO.
+  Estas são as regras que correspondem exatamente ao que o app usa hoje:
+    Firestore : users/{uid}/boardhub/{state|notes|gallery}   (3 documentos)
+    Storage   : users/{uid}/images/{key}
+    Auth      : Google (signInWithPopup) — não há login anônimo
+  ── Firestore Rules ────────────────────────────────────────────────────────
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /users/{userId}/boardhub/{docId} {
+          allow read, write: if request.auth != null
+                             && request.auth.uid == userId;
+        }
+      }
+    }
+  Tudo que não casa com um match é negado por padrão — não é preciso (nem
+  adianta) acrescentar um "match /{document=**} { allow read,write: if false; }":
+  o Firestore concede acesso se QUALQUER regra permitir, então um deny-all no fim
+  não revoga o allow acima. É inofensivo, só não protege nada.
+  Se quiser apertar mais, dá para fixar os três documentos:
+          && docId in ['state','notes','gallery']
+  — lembrando que isso quebra no dia em que um quarto documento for criado (o
+  P2-3 do backlog sugeria exatamente isso para o pomoData).
+  ── Storage Rules ──────────────────────────────────────────────────────────
+    rules_version = '2';
+    service firebase.storage {
+      match /b/{bucket}/o {
+        match /users/{userId}/images/{imageId} {
+          allow read, write: if request.auth != null
+                             && request.auth.uid == userId;
+        }
+      }
+    }
+  Endurecimento opcional na escrita, para que uma sessão roubada não vire
+  hospedagem de arquivo grátis (confira os limites contra o que você sobe de
+  verdade antes de aplicar):
+          && request.resource.size < 25 * 1024 * 1024
+          && request.resource.contentType.matches('image/.*|video/.*')
+  ── Como verificar ─────────────────────────────────────────────────────────
+  1. console.firebase.google.com → o projeto → Firestore Database → aba Rules.
+  2. Repetir em Storage → aba Rules.
+  3. Se aparecer "if true" ou uma data de expiração de modo de teste, trocar
+     pelo bloco acima e Publicar.
+  4. O Rules Playground (na mesma tela) testa antes de publicar: simule uma
+     leitura de users/OUTRO_UID/boardhub/state autenticado como você — tem que
+     ser NEGADA.
+  ═══════════════════════════════════════════════════════════════════════════
+
+  BoardHub v23.7 — P3: ergonomia de teclado (jul/2026)
+  Último item do backlog da auditoria. Não é conformidade WCAG — é velocidade de
+  uso para quem passa o dia no app e não quer tirar a mão do teclado.
+  • Os 57 <input> sem rótulo associado foram resolvidos em UMA linha: o <Field>
+    passou de <div><span class=label> para <label><span class=label>. Um <label>
+    envolvendo o controle cria a associação IMPLÍCITA do HTML — clicar no rótulo
+    foca o campo, leitores de tela anunciam o nome — sem precisar inventar
+    id/htmlFor para cada input. Conferi antes de trocar: nenhum dos 23 <Field>
+    tem <button> dentro nem mais de um controle, então não há ativação dupla.
+  • 7 cards que eram <div onClick> ganharam role="button" + tabIndex + Enter/
+    Espaço: cards de projeto, posts da galeria (na aba e dentro da pasta do
+    projeto), cards de cliente, os três cards de estatística do dashboard, as
+    notas recentes e o expansor de projeto. NÃO viraram <button>: eles têm botões
+    dentro (excluir, handle de arrastar) e <button> dentro de <button> é HTML
+    inválido — o parser desfaz o aninhamento e o layout quebra.
+    A guarda que importa: Enter/Espaço disparado por um controle DE DENTRO do
+    card pertence a ele, não ao card. Sem isso, teclar no botão de excluir também
+    abriria o projeto. Testado (I12).
+    Cards na lixeira não recebem role/tabIndex: lá eles não são clicáveis, e
+    fingir que são só atrapalharia a navegação por Tab.
+  • 9 botões só-ícone que não anunciavam nada ganharam title + aria-label — o
+    title dá tooltip de graça no desktop. Os que já tinham title foram deixados
+    como estavam.
+  ──────
+  BoardHub v23.6 — P1-3 remedido: o gargalo não era o lsSave (jul/2026)
+  O plano dizia que o autosave travava a thread por "dezenas de ms" serializando o
+  estado inteiro, e propunha dividir o localStorage em chaves por domínio —
+  reconhecendo que isso toca lsLoad/lsSave, bhCapture, import/export e o
+  reconcile. Antes de mexer na camada que já causou perda de dados duas vezes,
+  medi. Estado sintético de 1 MB (30 projetos, 300 posts de galeria, 60 notas com
+  rich text, ~400 dias de pomodoro), neste container de teste:
+    JSON.stringify(estado inteiro) ................  4,1 ms
+    bhSig (stringify + djb2 caractere a caractere)  11,3 ms
+    bhHistoryLoad (parse do histórico inteiro) ....  24,3 ms   ← A CADA autosave
+    bhCapture → trySave (stringify do histórico) ..  48,1 ms
+  A premissa estava errada por uma ordem de grandeza, e o custo real estava no
+  vizinho: o autosave chamava bhHistoryLoad() a cada 2,5 s só para ler list[0].at
+  e decidir se já tinham passado 30 min desde o último snapshot. Parsear vários MB
+  de JSON para ler um timestamp.
+  • FIX P1-3: o timestamp do último snapshot passa a viver em
+    boardhub_backup_last_at (~30 bytes), alimentado por bhCapture e cacheado em
+    memória. Se a chave sumir, reconstrói do histórico UMA vez por sessão. O
+    histórico inteiro só é lido por quem precisa dele de verdade: bhCapture, o
+    gcIdb, a tela de Sync e o backup diário — todos fora do caminho quente.
+  • NÃO FEITO, de propósito: o split do localStorage por domínio. Medi também a
+    versão memoizada por referência (só re-serializa o domínio cuja referência
+    mudou): economiza ~2 ms por autosave, a cada 2,5 s. Dois milissegundos não
+    justificam reescrever a persistência de um app que já perdeu dados duas vezes.
+    Se um dia o acervo crescer a ponto de o lsSave aparecer num profile real, a
+    memoização por referência dá 70% sem trocar o formato de armazenamento — é
+    por onde começar, não pelo split de chaves.
+  • ACHADO QUE NÃO É P1-3 E É MAIOR QUE ELE: com estado de 1 MB, 12 snapshots do
+    histórico ocupam ~12,5 MB. A cota do localStorage é ~5 MB. O fallback de cota
+    do bhCapture vai derrubando entradas até caber, então o histórico rotativo
+    projetado para ~19 snapshots guarda, na prática, 4. Não mexi nisso: mudar
+    onde os backups moram (IndexedDB não tem essa cota) é decisão de projeto, não
+    correção pontual. Mas o sistema de backup não guarda o que parece guardar.
+  ──────
+  BoardHub v23.5 — P1-1: cache do bundle compilado (jul/2026)
+  DIAGNÓSTICO: o design single-file obrigava o @babel/standalone a transpilar
+  390KB de JSX em TODA abertura. Era de longe o maior custo de startup — maior
+  que tudo que foi otimizado na camada de imagens — e é trabalho 100% repetido:
+  o mesmo texto de entrada produz sempre o mesmo JS de saída.
+  MEDIDO (neste container de teste, não na sua máquina — o seu desktop é bem mais
+  rápido, mas a ordem de grandeza vale):
+    • babel.min.js = 2,78 MB brutos / 592 KB gzipado. O plano estimava ~400KB;
+      é mais que o dobro disso.
+    • transpilar os 390KB de JSX = ~2,4 s de main thread.
+  Os dois desapareceram de todo carregamento que não seja o primeiro após uma
+  edição do arquivo.
+  COMO FUNCIONA
+  • O bloco JSX virou type="text/x-boardhub-jsx" (o Babel não pega mais sozinho)
+    e o <script src> do Babel saiu do <head> — agora é injetado sob demanda.
+  • Um loader no fim do <body> calcula FNV-1a do fonte e procura
+    bundle_v1_<hash>-<comprimento> no IndexedDB (banco próprio, boardhub_bundle,
+    separado do de imagens — o GC de blobs não encosta nele).
+    hit → executa o cache, o Babel nem é baixado. miss → injeta o Babel,
+    transpila, executa e grava.
+  • O hash é DO FONTE: editar o arquivo invalida sozinho. Não existe estado
+    "cache velho de arquivo novo". Só o bundle atual fica guardado (prune).
+  • EFEITO COLATERAL BOM: com o cache quente o app abre sem rede nenhuma. Antes,
+    sem conseguir baixar o Babel, não abria de jeito nenhum.
+  CUSTO HONESTO: o primeiro carregamento (e o primeiro após cada edição) fica um
+  pouco MAIS lento, porque o download do Babel só começa depois que a consulta ao
+  IDB falha, em vez de acontecer em paralelo com o React.
+  SEGURANÇA DO CAMINHO DE BOOT (é o caminho de boot — as três mitigações do plano
+  estão todas implementadas e testadas):
+  • parse e execução separados: new Function(code) PARSEIA sem executar. Bundle
+    corrompido estoura ali, antes de qualquer efeito colateral, e o fallback para
+    o Babel fica limpo.
+  • se parseou mas estourou no meio da execução, o app pode estar meio
+    inicializado — aí não dá para rodar o Babel por cima. Limpa o cache e
+    recarrega UMA vez (guarda em sessionStorage contra loop).
+  • sem IndexedDB (modo privado em alguns engines) o app abre normalmente, só não
+    cacheia.
+  • botão "Limpar cache do app" na Zona Perigosa do Sync, que também mostra a
+    origem deste boot (cache ou babel).
+  • FIX encontrado pelo teste: o loader passa runtime:'classic' EXPLÍCITO para o
+    preset react. Em @babel/standalone 7.23.9 esse já é o default, mas no Babel 8
+    o default virou 'automatic' — que emite require("react/jsx-runtime"), coisa
+    que não existe numa página com React como global UMD. Reproduzi a quebra
+    rodando o loader contra o standalone 8.0.4: o app não monta. Com a URL
+    pinada em 7.23.9 isso não acontece hoje, mas era uma bomba-relógio para o dia
+    de subir a versão.
+  ──────
+  BoardHub v23.4 — Lote 3 da auditoria: correções pontuais (jul/2026)
+  Quatro bugs sem acoplamento entre si. Nenhum deles perde dados; três produzem
+  trabalho desnecessário e um amplia superfície de ataque.
+  • FIX P2-1 (o mais irritante no uso diário): abrir um modal, começar a digitar
+    num campo e o foco pular para fora sozinho. Causa: o effect do Modal tinha
+    [onClose] nas deps e os 4 call sites passam arrow inline — identidade nova a
+    cada render do pai. Qualquer re-render desmontava e remontava o effect, que
+    no mount chama boxRef.focus(). Ou seja, o pai re-renderizava e o modal
+    roubava o foco do input. onClose agora vive num ref e o effect roda com [].
+    Medido no teste: com o código antigo, cada render do pai gerava um foco extra
+    no box (1→2→3); agora fica em 1.
+  • FIX P1-4: _compressImage podia AUMENTAR o arquivo. PNG era re-encodado como
+    PNG com o parâmetro de quality ignorado, e o canvas descarta a paleta
+    indexada do original — um screenshot PNG de 500KB saía com 600KB. Agora
+    encoda WebP (que suporta alpha, então não há motivo para preservar PNG) e só
+    aceita o resultado se ele realmente encolheu. O mesmo guard-rail vale para
+    JPEG já bem comprimido, que antes era trocado pelo WebP mesmo quando o WebP
+    ficava maior.
+  • FIX P2-2: o sanitizer só rodava na ENTRADA do RichEditor. O que era SALVO era
+    o innerHTML cru do contentEditable — e um paste traz markup arbitrário da
+    origem, que ia direto para localStorage/Firestore e voltava como innerHTML no
+    outro dispositivo. Agora os 3 pontos de save (emit, flushSave e a migração de
+    imagens legadas) sanitizam. Sanitiza-se o VALOR salvo, nunca o DOM vivo:
+    mexer no contentEditable durante a digitação mataria o cursor. O allowlist
+    também ganhou srcdoc (executa HTML dentro de iframe), formaction (redireciona
+    o submit para javascript:), data:text/html no teste de protocolo, o atributo
+    action, e <base> na lista de remoção.
+  • FIX P1-2: key posicional em 6 grades de imagem. Reordenar fazia o React
+    reusar o elemento errado — a imagem pulava de célula e era redecodificada à
+    toa. Com o reorder de entradas da v23 isso virou acionável. A src é a
+    identidade; o índice só desempata quando a MESMA src aparece duas vezes, e aí
+    os dois elementos são visualmente idênticos.
+    NÃO alterado, apesar de estar na lista original: o key={idx} dos 4 slots fixos
+    de imagem de referência do mentor. Ali a lista é [0,1,2,3] e a POSIÇÃO é a
+    identidade — trocar pela src quebraria o slot vazio no meio.
+  ──────
+  BoardHub v23.3 — P0-1: a nuvem estava apagando as referências de imagem local (jul/2026)
+  DIAGNÓSTICO: uma única função misturava duas responsabilidades sem relação, e
+  isso bastava para destruir imagens de forma irreversível. stripBase64() tratava
+  "data:image/...;base64,..." e "idb://<key>" como a mesma coisa — "conteúdo local
+  que não vai para a nuvem" — e substituía os dois por ''. Mas eles não são a
+  mesma coisa: o primeiro é PAYLOAD (megabytes, estoura o limite de 1MB/documento
+  do Firestore, tem que sair mesmo); o segundo é uma REFERÊNCIA de ~40 bytes que
+  não ameaça limite nenhum. Como pushState() usava essa função, a nuvem gravava
+  images:['','','']; como o listener aplica ARRAYS INTEIROS
+  (setGalleryPosts(data.galleryPosts)), esses vazios voltavam para o estado local
+  na sincronização seguinte — e a referência morria no próprio dispositivo que
+  tinha o blob. 24h depois o gcIdb não encontrava mais a referência e apagava o
+  blob. Sequência mínima: salvar offline → voltar online → push grava '' → próximo
+  boot aplica o array vazio → gcIdb roda → arquivo perdido.
+  • FIX P0-1 (data loss): stripBase64 → stripInlineImages. Remove só o payload
+    data:image e PRESERVA idb://. Um dispositivo que não tem o blob mostra
+    placeholder, o que é infinitamente melhor que destruir a referência no
+    dispositivo que tem. Os 4 call sites (pushState, bhCapture, buildSyncPayload,
+    guarda de tamanho) foram atualizados. Nota: o call site do bhCapture é o
+    fallback de quota do HISTÓRICO DE BACKUPS — ou seja, o backup e o gcIdb (que
+    lê referências do histórico) perdiam a informação juntos. Fechados os dois.
+  • FIX P0-1 (gcIdb): "não está referenciado no estado agora" é evidência fraca
+    demais para apagar um blob — uma aplicação remota ruim, um estado que não
+    carregou ou um import pela metade produzem exatamente esse sintoma. O GC
+    agora exige a chave sem referência em DUAS varreduras separadas por ≥24h
+    (ledger em boardhub_gc_pending). Se a referência voltar (undo, restauração de
+    backup, reconcile), a chave sai do ledger e o relógio zera. Custo: um órfão
+    sobrevive ~1 dia a mais. Na dúvida, não coletar.
+  • FIX (mesma família, encontrado no caminho): lsLoad() devolvendo null fazia o
+    GC concluir "nada é referenciado" e apagar TUDO. É literalmente a classe de
+    falha do incidente original — estado vazio destruindo dados reais. Agora
+    aborta a varredura.
+  • NEW: <Img>/<BgImg> distinguem "ainda carregando" de "este dispositivo não tem
+    este arquivo". Precisou de sinal novo: resolver para '' chama setState com o
+    mesmo valor e o React descarta a atualização — não havia re-render possível.
+    useDisplayUrlState devolve [url,missing]; useDisplayUrl virou wrapper fino
+    (Vid e chamadores diretos não mudaram). O placeholder é ícone + title/
+    aria-label, não texto: as células vão de 16px a full-bleed e texto quebraria
+    as pequenas.
+  • Invariante da v23.2 verificada com instrumentação real em
+    IDBObjectStore.prototype.get: havendo thumbnail, o original NUNCA é lido.
+  • ATENÇÃO: este fix impede a destruição daqui pra frente; não recupera o que já
+    foi apagado. Posts que hoje estão com images:['','',''] na nuvem já perderam
+    a referência nos dois lados. O que ainda pode tê-la é o Histórico de Backups
+    e blobs órfãos que o gcIdb ainda não coletou.
+  ──────
   BoardHub v23.2 — Pipeline de imagens reescrito (jul/2026)
   DIAGNÓSTICO: v23 ficou mais lenta que a build anterior porque a grade passou a
   fazer o DOBRO do trabalho por célula. O resolver lia o ORIGINAL, pintava, e
@@ -178,7 +419,8 @@
 <!-- Critical render-path scripts only -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+<!-- Babel NÃO entra no caminho crítico: é injetado sob demanda pelo loader
+     no fim do <body>, e só quando o cache do bundle compilado não bate. -->
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <!-- Firebase loaded LAZILY after first paint — see _lazyFirebase() below -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -457,7 +699,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
     });
   </script>
 </div>
-<script type="text/babel" data-presets="react">
+<script type="text/x-boardhub-jsx" id="bh-jsx-source">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // - DATE HELPERS (local timezone) -
@@ -549,6 +791,25 @@ const bhCounts=s=>({
   tasks:(s.tasks||[]).length,
 });
 const bhHistoryLoad=()=>{try{const r=localStorage.getItem(BH_HISTORY_KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch{return [];}};
+// v23.6 P1-3: o autosave chamava bhHistoryLoad() a CADA gravação só para ler
+// list[0].at e decidir se já passaram 30 min desde o último snapshot. Com acervo
+// grande isso é um JSON.parse de vários MB a cada 2,5 s — medido em ~24 ms para
+// 12 snapshots de um estado de 1 MB, contra ~4 ms do lsSave que o plano
+// apontava como o gargalo. O timestamp agora vive numa chave própria de ~30
+// bytes; o histórico inteiro só é lido por quem precisa dele de verdade
+// (bhCapture, gcIdb, a tela de Sync e o backup diário, todos fora do caminho
+// quente). Se a chave sumir, cai para o histórico UMA vez por sessão.
+const BH_LAST_AT_KEY='boardhub_backup_last_at';
+let _bhLastAt=null;
+const bhLastAt=()=>{
+  if(_bhLastAt!==null)return _bhLastAt;
+  try{const v=localStorage.getItem(BH_LAST_AT_KEY);if(v){_bhLastAt=v;return v;}}catch{}
+  const l=bhHistoryLoad();
+  _bhLastAt=(l[0]&&l[0].at)||'';
+  try{if(_bhLastAt)localStorage.setItem(BH_LAST_AT_KEY,_bhLastAt);}catch{}
+  return _bhLastAt;
+};
+const bhMarkCaptured=at=>{_bhLastAt=at;try{localStorage.setItem(BH_LAST_AT_KEY,at);}catch{}};
 const bhRetention=list=>{
   // Two tiers, one merged list (newest-first):
   //  • WEEKLY tier (reason 'daily'): one slot per weekday, captured on first open
@@ -598,13 +859,14 @@ const bhCapture=(state,reason)=>{
       let l=[...list];
       while(l.length>1){
         l.pop();
-        try{trySave(l);return true;}catch{}
+        try{trySave(l);bhMarkCaptured(entry.at);return true;}catch{}
       }
       try{
-        const lean={...entry,state:(typeof stripBase64==='function'?stripBase64(state):state)};
+        const lean={...entry,state:(typeof stripInlineImages==='function'?stripInlineImages(state):state)};
         trySave([lean]);
       }catch{return false;}
     }
+    bhMarkCaptured(entry.at);
     return true;
   }catch{return false;}
 };
@@ -628,7 +890,7 @@ const bhCapture=(state,reason)=>{
       if(list.some(e=>e.sig===sig))return;
       list=bhRetention([{at:o.at,reason:o.key==='boardhub_daily_backup'?'daily':'pre-sync',sig,counts:bhCounts(data),state:data},...list]
         .sort((a,b)=>a.at<b.at?1:-1));
-      try{localStorage.setItem(BH_HISTORY_KEY,JSON.stringify(list));}catch{}
+      try{localStorage.setItem(BH_HISTORY_KEY,JSON.stringify(list));if(list[0]&&list[0].at)bhMarkCaptured(list[0].at);}catch{}
     });
     oldKeys.forEach(k=>localStorage.removeItem(k));
     localStorage.removeItem('boardhub_daily_backup_date');
@@ -739,10 +1001,31 @@ const Icon=({name,size=16,style={}})=>{
  'check-circle','play','pause','brain','coffee','timer','clock','rotate-ccw','grip-vertical',
  'chevron-right','chevron-up','chevron-down','file-text','folder','menu','smartphone','monitor','camera','book-open',
  'list-checks','check-square','user-plus','image-plus','calendar-days','maximize-2','loader',
- 'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle'
+ 'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle','image-off'
 ].forEach(_resolveIcon);
 
-const Field=({label,children})=><div style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</div>;
+// v23.7 P3: era <div><span class=label>. Um <label> envolvendo o controle cria a
+// associação IMPLÍCITA do HTML — clicar no rótulo foca o campo e leitores de tela
+// anunciam o nome — sem precisar inventar id/htmlFor para 57 inputs. Conferido
+// antes: nenhum dos 23 <Field> tem <button> dentro nem mais de um controle, então
+// não existe risco de ativação dupla.
+const Field=({label,children})=><label style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</label>;
+
+// v23.7 P3: um <div onClick> não é alcançável por Tab nem acionável por Enter.
+// Converter estes cards para <button> não serve: eles têm botões dentro (excluir,
+// handle de arrastar), e <button> dentro de <button> é HTML inválido — o parser
+// desfaz o aninhamento e o layout quebra. role+tabIndex+onKeyDown dá o mesmo
+// comportamento de teclado sem tocar na árvore. O onClick de cada card fica onde
+// está; isto só acrescenta o caminho de teclado.
+const keyActivate=(onActivate,label,enabled=true)=>enabled?{
+  role:'button',tabIndex:0,'aria-label':label,
+  onKeyDown:e=>{
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    // Enter/Espaço disparado por um controle DE DENTRO do card pertence a ele,
+    // não ao card: sem esta guarda, teclar no botão de excluir também abriria.
+    if(e.target!==e.currentTarget&&e.target.closest&&e.target.closest('button,a,input,select,textarea'))return;
+    e.preventDefault();onActivate(e);
+  }}:null;
 const readFile=file=>new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file);});
 
 // - RESPONSIVE HOOK -
@@ -1090,10 +1373,17 @@ const _syncUrl=(src,thumb)=>{
 // Unified resolver for idb://, https://, or data: sources. With thumb=true it prefers
 // the downscaled variant for grid/cover display. Checks caches synchronously so
 // prefetched images render with zero flash.
-const useDisplayUrl=(src,thumb)=>{
+// v23.3: devolve [url, missing]. `missing` só fica true quando a resolução de um
+// idb:// TERMINOU e não achou blob nenhum — é o que distingue "ainda carregando"
+// (retângulo cinza mudo) de "este dispositivo não tem esse arquivo" (placeholder
+// explicando). Sem esse sinal não há re-render: resolver para '' chama setState
+// com o mesmo valor e o React descarta a atualização.
+const useDisplayUrlState=(src,thumb)=>{
   const sync=_syncUrl(src,thumb);
   const [state,setState]=React.useState(sync);
+  const [missing,setMissing]=React.useState(false);
   React.useEffect(()=>{
+    setMissing(false);
     if(!src||typeof src!=='string'){setState(src||'');return;}
     let cancelled=false;
     // ── cloud / data ──
@@ -1117,22 +1407,42 @@ const useDisplayUrl=(src,thumb)=>{
       // multiplied by a screenful, is what made this slower than the build
       // before it. Nothing on a grid touches an original anymore.
       if(_thumbCache[key]){_touchThumb(key);setState(_thumbCache[key]);return()=>{cancelled=true;};}
-      getThumbUrl(key).then(u=>{if(!cancelled&&u)setState(u);});
+      getThumbUrl(key).then(u=>{if(cancelled)return;if(u)setState(u);else setMissing(true);});
       return()=>{cancelled=true;};
     }
     // FULL (lightbox/hero): show the thumbnail instantly if it's around, then
     // swap in the original. One image at a time, so the read is never contended.
     if(_objUrlCache[key]){_touchObjUrl(key);setState(_objUrlCache[key]);return()=>{cancelled=true;};}
-    if(_thumbCache[key]){_touchThumb(key);setState(_thumbCache[key]);}
-    _warmFull(key).then(u=>{if(!cancelled&&u)setState(u);});
+    const hadThumb=!!_thumbCache[key];
+    if(hadThumb){_touchThumb(key);setState(_thumbCache[key]);}
+    _warmFull(key).then(u=>{if(cancelled)return;if(u)setState(u);else if(!hadThumb)setMissing(true);});
     return()=>{cancelled=true;};
   },[src,thumb]);
   // A synchronous cache hit wins over stale state (e.g. the viewport gate just
   // flipped and the effect hasn't run yet) — that's the frame we're saving.
-  return state||sync;
+  const url=state||sync;
+  return [url,missing&&!url];
 };
+const useDisplayUrl=(src,thumb)=>useDisplayUrlState(src,thumb)[0];
 // Back-compat full-res resolver (used by Vid and any direct callers).
 const useIdbUrl=src=>useDisplayUrl(src,false);
+
+// v23.3 P1-2: key posicional em lista de imagem faz o React reusar o elemento
+// errado quando a lista é reordenada ou perde um item — a imagem "pula" para
+// outra célula e é redecodificada à toa. Com o reorder de entradas adicionado na
+// v23 isso virou acionável na prática. A src é única dentro de um post, então
+// ela É a identidade. O índice só entra como desempate quando a MESMA src
+// aparece duas vezes; nesse caso os dois elementos são visualmente idênticos e
+// reusar "o errado" não produz troca visível.
+// O indexOf deixa isto O(n²) por lista. Em grades de dezenas de imagens é ruído,
+// e evita reescrever cada grade para pré-calcular as keys.
+const imgKey=(src,i,list)=>{const s=String(src);return list.indexOf(src)===i?s:s+'#'+i;};
+
+// Placeholder para referência local cujo blob não existe NESTE dispositivo.
+// A referência sobrevive ao sync (v23.3 P0-1); o blob não viaja. Mostrar isso
+// explicitamente evita que um retângulo cinza seja lido como imagem corrompida.
+const LOCAL_IMG_MISSING='Imagem local: o arquivo está em outro dispositivo. Abra o BoardHub nele para vê-la aqui — a referência foi preservada.';
+const MissingLocalImg=()=><Icon name="image-off" size={16} style={{width:'55%',height:'55%',maxWidth:22,maxHeight:22,color:'var(--muted)',opacity:.5}}/>;
 
 // Viewport gate for lazily reading LOCAL (idb://) images. Returns [refCallback,
 // inView]. Reading a blob from IDB + generating its thumbnail is the expensive
@@ -1167,8 +1477,14 @@ const Img=({src,priority,full,thumb=!full,...props})=>{
   const gate=!priority&&typeof src==='string'&&(src.startsWith('idb://')||(!thumb&&/^https?:\/\//.test(src)));
   const [setRef,inView]=useInView(gate);
   const local=typeof src==='string'&&src.startsWith('idb://');
-  const url=useDisplayUrl(gate&&!inView?null:src,thumb);
-  if(!url)return <div ref={setRef} style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
+  const [url,missing]=useDisplayUrlState(gate&&!inView?null:src,thumb);
+  if(!url)return (
+    <div ref={setRef}
+      title={missing?LOCAL_IMG_MISSING:undefined}
+      role={missing?'img':undefined} aria-label={missing?LOCAL_IMG_MISSING:undefined} aria-hidden={missing?undefined:true}
+      style={{background:'var(--border)',borderRadius:'inherit',display:'flex',alignItems:'center',justifyContent:'center',...(props.style||{})}}>
+      {missing?<MissingLocalImg/>:null}
+    </div>);
   // If a cloud thumbnail variant 404s, fall back to the original URL once.
   const onErr=thumb&&typeof src==='string'&&/^https?:\/\//.test(src)&&src!==url
     ?e=>{if(e.currentTarget.src!==src)e.currentTarget.src=src;}:props.onError;
@@ -1184,8 +1500,18 @@ const Img=({src,priority,full,thumb=!full,...props})=>{
 const BgImg=({src,className,style,children,full,thumb=!full,...props})=>{
   const gate=typeof src==='string'&&(src.startsWith('idb://')||(!thumb&&/^https?:\/\//.test(src)));
   const [setRef,inView]=useInView(gate);
-  const url=useDisplayUrl(gate&&!inView?null:src,thumb);
-  return <div ref={setRef} className={className} style={{background:url?'none':'var(--border)',backgroundSize:'cover',...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>{children}</div>;
+  const [url,missing]=useDisplayUrlState(gate&&!inView?null:src,thumb);
+  // O badge vai como FILHO (nenhum call site passa children) e leva o title
+  // consigo, para não sobrescrever um title vindo de {...props} do chamador.
+  const show=missing&&!url;
+  return <div ref={setRef} className={className}
+    style={{background:url?'none':'var(--border)',backgroundSize:'cover',
+      ...(show?{display:'flex',alignItems:'center',justifyContent:'center'}:null),
+      ...style,backgroundImage:url?`url(${url})`:'none'}} {...props}>
+    {show?<span title={LOCAL_IMG_MISSING} role="img" aria-label={LOCAL_IMG_MISSING}
+      style={{display:'flex',alignItems:'center',justifyContent:'center',width:'100%',height:'100%'}}><MissingLocalImg/></span>:null}
+    {children}
+  </div>;
 };
 
 // Video detection helper — checks extension in any URL format (idb://, https://, data:)
@@ -1293,7 +1619,7 @@ const pushState=async(state,uid)=>{
   const notesRef=getNotesRef(uid);
   const galleryRef=getGalleryRef(uid);
   if(!stateRef||!notesRef||!galleryRef)throw new Error('Firebase not initialized');
-  const clean=stripBase64(state);
+  const clean=stripInlineImages(state);
   const ts=firebase.firestore.FieldValue.serverTimestamp();
   const {notes,galleryPosts,...main}=clean;
   await Promise.all([
@@ -1366,8 +1692,15 @@ const _compressImage=async(file)=>{
       const canvas=document.createElement('canvas');
       canvas.width=w;canvas.height=h;
       canvas.getContext('2d').drawImage(img,0,0,w,h);
-      const fmt=file.type==='image/png'?'image/png':'image/webp';
-      canvas.toBlob(blob=>res(blob||file),fmt,fmt==='image/png'?undefined:0.82);
+      // v23.3 P1-4: PNG era re-encodado como PNG, com quality ignorado. O canvas
+      // descarta a paleta indexada do original, então um screenshot PNG de 500KB
+      // podia SAIR MAIOR do que entrou. WebP suporta alpha, então não há motivo
+      // para preservar PNG aqui. E o resultado só é aceito se realmente encolheu
+      // — vale também para JPEG já bem comprimido, que antes sempre era trocado
+      // pelo WebP mesmo quando o WebP ficava maior.
+      // (engine sem suporte a WebP no toBlob cai para PNG; nesse caso o
+      //  comparativo de tamanho devolve o original e nada piora)
+      canvas.toBlob(blob=>res(blob&&blob.size<file.size?blob:file),'image/webp',0.82);
     };
     img.onerror=()=>{URL.revokeObjectURL(objUrl);res(file);};
     img.src=objUrl;
@@ -1442,12 +1775,24 @@ const reuploadLocalImages=async(state,onProgress)=>{
   }
   return rehydrateIdbRefs(state,map);
 };
-// Strip idb:// and base64 refs — these are local-only and never go to Firebase/Gist
-const isLocalImg=v=>typeof v==='string'&&(v.startsWith('data:image')||v.startsWith('idb://'));
-const stripBase64=obj=>{
-  if(Array.isArray(obj))return obj.map(stripBase64);
-  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=stripBase64(obj[k]);return out;}
-  if(isLocalImg(obj))return '';
+// v23.3 P0-1: esta função (antiga stripBase64) misturava DUAS coisas que não têm
+// nada a ver uma com a outra:
+//   • "data:image/...;base64,..." é PAYLOAD. Pode ter megabytes e estoura o
+//     limite de 1MB/documento do Firestore. Tem que sair mesmo.
+//   • "idb://<key>" é REFERÊNCIA — ~40 bytes apontando para um blob local.
+//     Não ameaça limite nenhum.
+// Apagar a referência no push fazia a nuvem gravar '' no lugar dela; como o
+// listener aplica ARRAYS INTEIROS (setGalleryPosts(data.galleryPosts)), esse ''
+// voltava para o estado local na sincronização seguinte e matava a referência no
+// próprio dispositivo que tinha o blob. 24h depois o gcIdb não encontrava mais a
+// referência e apagava o blob — perda irreversível.
+// Um dispositivo que não tem o blob mostra placeholder (ver <Img>/<BgImg>), o que
+// é infinitamente melhor que destruir a referência no dispositivo que tem.
+const isInlineImg=v=>typeof v==='string'&&v.startsWith('data:image');
+const stripInlineImages=obj=>{
+  if(Array.isArray(obj))return obj.map(stripInlineImages);
+  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=stripInlineImages(obj[k]);return out;}
+  if(isInlineImg(obj))return '';
   return obj;
 };
 
@@ -1465,7 +1810,9 @@ const resolveIdbRefs=async obj=>{
 
 // Build a self-contained JSON export (images embedded as base64)
 const buildSyncPayload=async(state,includeImages=true)=>{
-  const resolved=includeImages?await resolveIdbRefs(state):stripBase64(state);
+  // (o ramo includeImages=false hoje não tem call site; se voltar a ter, um export
+  //  "sem imagens" deve derrubar também os idb://, que não resolvem em outra máquina)
+  const resolved=includeImages?await resolveIdbRefs(state):stripInlineImages(state);
   return JSON.stringify({...resolved,_v:'3.0',_exported:new Date().toISOString()});
 };
 
@@ -1496,28 +1843,54 @@ const _idbKeyAgeMs=k=>{
   const m=/^(?:thumb_)?(?:media_|img_)(\d+)_/.exec(k);
   return m?Date.now()-Number(m[1]):0; // unknown format → treat as fresh (keep)
 };
+// v23.3 P0-1 — SEGUNDA CONDIÇÃO ALÉM DE "NÃO REFERENCIADO".
+// "não está no estado agora" é evidência fraca demais para apagar um blob: uma
+// aplicação remota ruim, um estado que não carregou ou um import pela metade
+// produzem exatamente esse sintoma. O GC agora exige que a chave apareça sem
+// referência em DUAS varreduras separadas por pelo menos 24h — o ledger abaixo
+// guarda a primeira observação. Se a referência voltar (undo, restauração de
+// backup, sync que reconcilia), a chave sai do ledger e o relógio zera.
+// Custo: um blob órfão sobrevive ~1 dia a mais. Na dúvida, não coletar.
+const GC_LEDGER_KEY='boardhub_gc_pending';
+const GC_GRACE_MS=24*3600*1000;
+const _gcLedgerLoad=()=>{try{const o=JSON.parse(localStorage.getItem(GC_LEDGER_KEY));return o&&typeof o==='object'&&!Array.isArray(o)?o:{};}catch{return{};}};
+const _gcLedgerSave=o=>{try{Object.keys(o).length?localStorage.setItem(GC_LEDGER_KEY,JSON.stringify(o)):localStorage.removeItem(GC_LEDGER_KEY);}catch{}};
 const gcIdb=async()=>{
   try{
-    const referenced=new Set();
     const live=lsLoad();
-    if(live)collectIdbKeys(live,referenced);
+    // Estado ausente ou ilegível: não há como saber o que está referenciado, e
+    // "nada referenciado" significaria apagar TUDO. É a mesma classe de falha do
+    // incidente original (estado vazio sobrescrevendo dados reais) — abortar.
+    if(!live)return;
+    const referenced=new Set();
+    collectIdbKeys(live,referenced);
     bhHistoryLoad().forEach(e=>{if(e&&e.state)collectIdbKeys(e.state,referenced);});
     const db=await openIdb();
     const keys=await new Promise((res,rej)=>{
       const r=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).getAllKeys();
       r.onsuccess=e=>res(e.target.result||[]);r.onerror=e=>rej(e.target.error);
     });
-    const doomed=keys.filter(k=>{
-      if(typeof k!=='string')return false;
-      if(_idbKeyAgeMs(k)<24*3600*1000)return false;
+    const now=Date.now();
+    const ledger=_gcLedgerLoad();
+    const nextLedger={};
+    const doomed=[];
+    for(const k of keys){
+      if(typeof k!=='string')continue;
       const base=k.startsWith('thumb_')?k.slice(6):k;
-      return !referenced.has(base);
-    });
+      if(referenced.has(base))continue;            // vivo → nem entra no ledger
+      if(_idbKeyAgeMs(k)<GC_GRACE_MS)continue;     // recém-criado, estado pode não ter sido gravado
+      const first=ledger[k];
+      const firstMs=first?new Date(first).getTime():NaN;
+      if(!(firstMs>0)){nextLedger[k]=new Date(now).toISOString();continue;} // 1ª observação: só anota
+      if(now-firstMs<GC_GRACE_MS){nextLedger[k]=first;continue;}            // ainda dentro da carência
+      doomed.push(k);
+    }
+    _gcLedgerSave(nextLedger);
     if(!doomed.length)return;
     const tx=db.transaction(IDB_STORE,'readwrite');
     doomed.forEach(k=>tx.objectStore(IDB_STORE).delete(k));
     await new Promise(res=>{tx.oncomplete=res;tx.onerror=res;tx.onabort=res;});
-    console.info('[BoardHub] IDB GC: removed',doomed.length,'orphaned blob(s).');
+    console.info('[BoardHub] IDB GC: removed',doomed.length,'orphaned blob(s) after grace period.');
   }catch(e){console.warn('[BoardHub] IDB GC skipped:',e);}
 };
 
@@ -1540,12 +1913,20 @@ const _modalStack=[];
 const Modal=({title,onClose,children,width=480})=>{
   const boxRef=useRef(null);
   const tokenRef=useRef(null);
+  // v23.3 P2-1: os 4 call sites passam arrow inline, então onClose troca de
+  // identidade a cada render do pai. Com [onClose] nas deps, qualquer render do
+  // pai desmontava e remontava este effect: o modal saía e voltava para o
+  // _modalStack e — o sintoma visível — o box era re-focado, roubando o foco do
+  // input que o usuário estava preenchendo dentro do modal. O ref mantém o
+  // handler sempre atual sem que a identidade dele participe do ciclo de vida.
+  const onCloseRef=useRef(onClose);
+  useEffect(()=>{onCloseRef.current=onClose;});
   useEffect(()=>{
     const token={};tokenRef.current=token;_modalStack.push(token);
     const prevFocus=document.activeElement;
     boxRef.current?.focus();
     const h=e=>{
-      if(e.key==='Escape'&&_modalStack[_modalStack.length-1]===token)onClose();
+      if(e.key==='Escape'&&_modalStack[_modalStack.length-1]===token)onCloseRef.current();
     };
     document.addEventListener('keydown',h);
     return()=>{
@@ -1553,7 +1934,7 @@ const Modal=({title,onClose,children,width=480})=>{
       const i=_modalStack.indexOf(token);if(i>-1)_modalStack.splice(i,1);
       if(prevFocus&&prevFocus.focus)try{prevFocus.focus();}catch{}
     };
-  },[onClose]);
+  },[]);
   const trapTab=e=>{
     if(e.key!=='Tab'||!boxRef.current)return;
     const f=boxRef.current.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
@@ -2556,7 +2937,8 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
       {/* Stats row */}
       <div style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10,flexShrink:0}:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isSmall?8:10,marginBottom:isSmall?8:12,flexShrink:0}}>
         {stats.map((s,si)=>(
-          <div key={s.label} className={'card card-click stat-value stagger-'+(si+1)} onClick={()=>setView(s.view)} style={isMobile?{padding:'10px 12px',display:'flex',flexDirection:'column',gap:4,minWidth:0,overflow:'hidden'}:{padding:isSmall?'10px 14px':'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+          <div key={s.label} className={'card card-click stat-value stagger-'+(si+1)} onClick={()=>setView(s.view)}
+            {...keyActivate(()=>setView(s.view),s.label)} style={isMobile?{padding:'10px 12px',display:'flex',flexDirection:'column',gap:4,minWidth:0,overflow:'hidden'}:{padding:isSmall?'10px 14px':'12px 16px',display:'flex',alignItems:'center',gap:12}}>
             {!isMobile&&<div style={{width:30,height:30,borderRadius:8,background:(s.color||'#999')+'15',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:s.color}}><Icon name={s.icon} size={14}/></div>}
             {isMobile&&<Icon name={s.icon} size={13} style={{color:s.color||'var(--muted)'}}/>}
             <div style={{flex:1,minWidth:0}}>
@@ -2594,7 +2976,8 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                 const evs=p.timelineEvents||[];const expanded=expandedProjectId===p.id;
                 return(
                 <div key={p.id} className="card card-project">
-                  <div className="card-click" onClick={()=>setExpandedProjectId(id=>id===p.id?null:p.id)} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
+                  <div className="card-click" onClick={()=>setExpandedProjectId(id=>id===p.id?null:p.id)}
+                    {...keyActivate(()=>setExpandedProjectId(id=>id===p.id?null:p.id),'Expandir projeto '+(p.title||''))} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
                     <BgImg src={p.cover} style={{width:28,height:28,borderRadius:6,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
@@ -2700,7 +3083,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               <div style={{display:'flex',gap:7,marginBottom:tasks.length>0?8:0,flexShrink:0}}>
                 <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
                   placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.8rem',color:'var(--text)',paddingBottom:3}}/>
-                <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px',fontSize:'.73rem'}}><Icon name="plus" size={12}/></button>
+                <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px',fontSize:'.73rem'}} title="Adicionar atividade" aria-label="Adicionar atividade"><Icon name="plus" size={12}/></button>
               </div>
               {tasks.length===0&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'12px 0',color:'var(--muted)'}}>
                 <Icon name="check-circle" size={18} style={{opacity:.25}}/>
@@ -2733,7 +3116,8 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
             </div>}
             <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:5}}>
               {recentNotes.map(n=>(
-                <div key={n.id} className="card card-click" onClick={()=>setView('ideas')} style={{padding:isSmall?'6px 10px':'7px 12px'}}>
+                <div key={n.id} className="card card-click" onClick={()=>setView('ideas')}
+                  {...keyActivate(()=>setView('ideas'),'Abrir ideias: '+(n.title||''))} style={{padding:isSmall?'6px 10px':'7px 12px'}}>
                   <div style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
                   <div style={{fontSize:'.66rem',color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.content}</div>
                 </div>
@@ -2877,7 +3261,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
               {!trash&&!isMobile&&<button className="btn btn-dark" onClick={onAdd}><Icon name="plus" size={14}/> Novo</button>}
             </div>
           </div>
-          {isMobile&&!trash&&<button className="fab" onClick={onAdd}><Icon name="plus" size={24}/></button>}
+          {isMobile&&!trash&&<button className="fab" onClick={onAdd} title="Novo projeto" aria-label="Novo projeto"><Icon name="plus" size={24}/></button>}
           {trash&&<TrashBanner label="Projetos" onExit={()=>setTrash(false)}/>}
           {!trash&&(
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:isMobile?12:16,flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?8:0}}>
@@ -2926,6 +3310,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:isMobile?12:16}}>
             {visible.map(p=>(
               <div key={p.id} className="card" draggable={!trash}
+                {...keyActivate(()=>onSelect(p),'Abrir projeto '+(p.title||''),!trash)}
                 style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'grab',opacity:trash?0.85:1,position:'relative'}}
                 onClick={()=>{if(!trash&&Date.now()-projDragEnd.current>160)onSelect(p);}}
                 onDragStart={e=>{if(trash){e.preventDefault();return;}projDrag.current=p.id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(p.id));}catch{}e.currentTarget.style.opacity='0.4';}}
@@ -3061,7 +3446,7 @@ const AddMentorInline=({onAdd})=>{
         placeholder="Nome do mentor..." className="input-box" style={{flex:2,minWidth:120,fontSize:'.8rem',padding:'6px 10px'}}/>
       <input value={area} onChange={e=>setArea(e.target.value)} onKeyDown={e=>e.key==='Enter'&&save()}
         placeholder="Área (ex: Narrativa)" className="input-box" style={{flex:2,minWidth:100,fontSize:'.8rem',padding:'6px 10px'}}/>
-      <button onClick={save} className="btn btn-dark" style={{padding:'6px 12px',fontSize:'.78rem'}}><Icon name="check" size={12}/></button>
+      <button onClick={save} className="btn btn-dark" style={{padding:'6px 12px',fontSize:'.78rem'}} title="Salvar mentor" aria-label="Salvar mentor"><Icon name="check" size={12}/></button>
       <button onClick={()=>{setOpen(false);setName('');setArea('');}} className="btn btn-ghost" style={{padding:'6px 8px'}}><Icon name="x" size={12}/></button>
     </div>
   );
@@ -3772,7 +4157,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   ?<div style={{textAlign:'center',padding:'24px 12px',color:'var(--muted)',fontSize:'.82rem'}}>Nenhum post nesta pasta ainda.</div>
                   :<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isMobile?8:12}}>
                     {folderPosts.map(post=>{const src=post.bannerImage||(post.images&&post.images[0]);return(
-                      <div key={post.id} className="card card-click" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}>
+                      <div key={post.id} className="card card-click" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}
+                        {...keyActivate(()=>setGalleryPopup(post),'Abrir post '+(post.title||''))}>
                         <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                           {src
                             ?(isVideoSrc(src)
@@ -3962,7 +4348,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
                     <span style={{cursor:'grab',color:isMiniActive?'rgba(255,255,255,.4)':'var(--border)',display:'flex',flexShrink:0}} onMouseDown={e=>e.stopPropagation()}><Icon name="grip-vertical" size={11}/></span>
-                    <button onClick={toggleExpand} style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
+                    <button onClick={toggleExpand} title="Expandir ou recolher grupo" aria-label="Expandir ou recolher grupo" style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
                       <Icon name="chevron-right" size={13}/>
                     </button>
                     <Icon name="folder" size={13} style={{flexShrink:0,color:isMiniActive?'white':'var(--muted)'}}/>
@@ -4041,8 +4427,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
-                    {(activeMini.frames||[]).map((img,i)=>(
-                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
+                    {(activeMini.frames||[]).map((img,i,list)=>(
+                      <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         <button onClick={()=>{const f=[...(activeMini.frames||[])];f.splice(i,1);updateMini('frames',f);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
@@ -4080,8 +4466,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                   {(note.images||[]).length>0&&(
                     <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
-                      {(note.images||[]).map((img,i)=>(
-                        <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
+                      {(note.images||[]).map((img,i,list)=>(
+                        <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                           <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                           <button onClick={()=>{const imgs=[...(note.images||[])];imgs.splice(i,1);updateInnerNote('images',imgs);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                         </div>
@@ -4162,8 +4548,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 {/* Images - 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
-                    {(activeResearch.images||[]).map((img,i)=>(
-                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
+                    {(activeResearch.images||[]).map((img,i,list)=>(
+                      <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                         <button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
@@ -4198,10 +4584,10 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               {galleryPopup.content&&<p style={{fontSize:'.9rem',lineHeight:1.7,color:'var(--text)',margin:'0 0 16px',whiteSpace:'pre-wrap'}}>{galleryPopup.content}</p>}
               {(galleryPopup.images||[]).length>0&&(
                 <div style={{display:'flex',flexDirection:'column',gap:12}}>
-                  {(galleryPopup.images||[]).map((img,i)=>(
+                  {(galleryPopup.images||[]).map((img,i,list)=>(
                     isVideoSrc(img)
-                      ?<Vid key={i} src={img} controls playsInline style={{width:'100%',borderRadius:10,display:'block',background:'#000'}}/>
-                      :<Img key={i} full src={img} style={{width:'100%',borderRadius:10,display:'block'}}/>
+                      ?<Vid key={imgKey(img,i,list)} src={img} controls playsInline style={{width:'100%',borderRadius:10,display:'block',background:'#000'}}/>
+                      :<Img key={imgKey(img,i,list)} full src={img} style={{width:'100%',borderRadius:10,display:'block'}}/>
                   ))}
                 </div>
               )}
@@ -4331,8 +4717,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
-          {selected.images.map((img,i)=>(
-            <div key={i} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
+          {selected.images.map((img,i,list)=>(
+            <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
               {isVideoSrc(img)
                 ?<Vid src={img} controls playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block',borderRadius:10}}/>
                 :<Img src={img} priority={i<(isMobile?6:9)} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -4471,7 +4857,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           <div style={{borderBottom:'1px solid var(--border)',paddingBottom:8,marginBottom:16}}><span className="label">{month}</span></div>
           <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?10:14}}>
             {monthPosts.map(post=>(
-              <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}>
+              <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}
+                {...keyActivate(()=>setSelected(post),'Abrir post '+(post.title||''),!trash)}>
                 <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
                     ?(()=>{const src=post.bannerImage||(post.images[0]||post.images[post.images.length-1]);
@@ -4510,17 +4897,23 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
 // (or a compromised cloud doc) carrying <script>/<img onerror=...> would run
 // with the user's live Firebase session. Strip active content before it ever
 // touches innerHTML.
+// v23.3 P2-2: o allowlist não cobria três vetores. srcdoc executa HTML
+// arbitrário dentro de um iframe; formaction redireciona o submit de um form
+// para uma URL javascript:; e href="data:text/html,..." abre um documento com
+// script na mesma origem. base href também entra na lista de remoção — reescreve
+// o destino de todo link relativo do documento.
+const _BAD_PROTO=/^\s*(?:javascript:|vbscript:|data:text\/html)/i;
 const sanitizeHTML=html=>{
   if(!html||typeof html!=='string')return html||'';
   try{
     const t=document.createElement('template');
     t.innerHTML=html;
-    t.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form').forEach(el=>el.remove());
+    t.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form,base').forEach(el=>el.remove());
     t.content.querySelectorAll('*').forEach(el=>{
       [...el.attributes].forEach(a=>{
         const n=a.name.toLowerCase();
-        if(n.startsWith('on'))el.removeAttribute(a.name);
-        else if((n==='href'||n==='src'||n==='xlink:href')&&/^\s*javascript:/i.test(a.value))el.removeAttribute(a.name);
+        if(n.startsWith('on')||n==='srcdoc'||n==='formaction')el.removeAttribute(a.name);
+        else if((n==='href'||n==='src'||n==='xlink:href'||n==='action')&&_BAD_PROTO.test(a.value))el.removeAttribute(a.name);
       });
     });
     return t.innerHTML;
@@ -4543,14 +4936,20 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     }
   });
 
+  // v23.3 P2-2: o sanitizer só rodava na ENTRADA (ao popular o editor). O que
+  // era SALVO era o innerHTML cru do contentEditable — e um paste traz markup
+  // arbitrário da origem, que ia direto para localStorage/Firestore e voltava
+  // como innerHTML no outro dispositivo. Sanitizar na saída fecha o ciclo.
+  // Sanitiza-se o VALOR salvo, nunca o DOM vivo: mexer no contentEditable
+  // durante a digitação mataria o cursor.
   const emit=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(ref.current.innerHTML);},800);
+    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));},800);
   },[onSave]);
 
   const flushSave=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    if(ref.current)onSave(ref.current.innerHTML);
+    if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));
   },[onSave]);
 
   const exec=(cmd,val)=>{ref.current?.focus();document.execCommand(cmd,false,val||null);emit();};
@@ -4609,7 +5008,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         }catch(e){console.warn('[BoardHub] Legacy note-image migration failed for one image:',e.message);}
       }
       if(changed&&!cancelled&&ref.current){
-        onSave(ref.current.innerHTML);
+        onSave(sanitizeHTML(ref.current.innerHTML));
         console.info('[BoardHub] Moved inline note images to cloud storage, freeing up document space.');
       }
     })();
@@ -5268,7 +5667,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
           {!trash&&!isMobile&&<button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>}
         </div>
       </div>
-      {isMobile&&!trash&&<button className="fab" onClick={add}><Icon name="plus" size={24}/></button>}
+      {isMobile&&!trash&&<button className="fab" onClick={add} title="Novo cliente" aria-label="Novo cliente"><Icon name="plus" size={24}/></button>}
       {trash&&<TrashBanner label="Clientes" onExit={()=>setTrash(false)}/>}
       {isMobile&&!trash?(
         <div className="card" style={{overflow:'hidden',borderRadius:12}}>
@@ -5289,7 +5688,8 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
       ):(
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)',gap:14}}>
         {visible.map((c,idx)=>(
-          <div key={c.id} {...(trash?{}:dragProps(idx))} className={`card drag-item`} style={{padding:22,cursor:trash?'default':'pointer',position:'relative'}} onClick={()=>!trash&&setSelected(c)}>
+          <div key={c.id} {...(trash?{}:dragProps(idx))} className={`card drag-item`} style={{padding:22,cursor:trash?'default':'pointer',position:'relative'}} onClick={()=>!trash&&setSelected(c)}
+            {...keyActivate(()=>setSelected(c),'Abrir cliente '+(c.name||''),!trash)}>
             {!trash&&<span className="drag-handle" style={{position:'absolute',top:8,right:8,color:'var(--muted)',lineHeight:0,zIndex:1}}><Icon name="grip-vertical" size={13}/></span>}
             <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
               {c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
@@ -5322,6 +5722,9 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
 
 // - SYNC HUB -
 const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncDetail,syncNotice,onDismissNotice,onManualPush,onDiscardLocal,isMobile,onResetIdentity})=>{
+  // De onde veio o JS que está rodando: 'cache' (bundle compilado reaproveitado)
+  // ou 'babel' (transpilado agora). Diagnóstico de graça para o P1-1.
+  const bundleSource=(typeof window!=='undefined'&&window.__bhBundleCache&&window.__bhBundleCache.source)||'?';
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -5455,13 +5858,13 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
       {status&&(
         <div style={{padding:'8px 14px',borderRadius:10,marginBottom:10,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.82rem',display:'flex',alignItems:'center',gap:10}}>
           <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={15}/>{status.msg}
-          <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
+          <button onClick={()=>setStatus(null)} title="Fechar aviso" aria-label="Fechar aviso" style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
         </div>
       )}
       {syncNotice&&(
         <div style={{padding:'10px 14px',borderRadius:10,marginBottom:10,background:'#EFF6FF',border:'1px solid #BFDBFE',color:'#1E40AF',fontSize:'.82rem',display:'flex',alignItems:'flex-start',gap:10,lineHeight:1.5}}>
           <Icon name="info" size={15} style={{flexShrink:0,marginTop:2}}/><span>{syncNotice}</span>
-          <button onClick={onDismissNotice} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2,flexShrink:0}}><Icon name="x" size={13}/></button>
+          <button onClick={onDismissNotice} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2,flexShrink:0}} title="Fechar aviso" aria-label="Fechar aviso"><Icon name="x" size={13}/></button>
         </div>
       )}
 
@@ -5605,6 +6008,18 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
           <button className="btn btn-outline" onClick={onResetIdentity} style={{fontSize:'.82rem'}}>
             <Icon name="pencil" size={13}/> Renomear Hub
           </button>
+          {/* v23.5 P1-1: escotilha de emergência do cache de bundle. O hash do
+              fonte já invalida sozinho, mas se algum dia o app abrir estranho
+              este botão devolve o boot ao caminho Babel puro. */}
+          <button className="btn btn-outline" style={{fontSize:'.82rem'}}
+            title={'Recompila o app do zero no próximo carregamento. Origem deste boot: '+bundleSource}
+            onClick={async()=>{
+              if(!window.confirm('Limpar o cache do app compilado? O próximo carregamento vai recompilar do zero (mais lento uma vez). Nenhum dado é afetado.'))return;
+              try{await window.__bhBundleCache?.clear?.();}catch{}
+              location.reload();
+            }}>
+            <Icon name="refresh-cw" size={13}/> Limpar cache do app ({bundleSource})
+          </button>
           <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
             <Icon name="alert-triangle" size={14}/> Resetar tudo
           </button>
@@ -5641,7 +6056,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
       <div className="modal" style={{maxWidth:580}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
           <h2 className="serif" style={{fontSize:'1.6rem',fontWeight:400,margin:0}}>{form.name||'Mentor'}</h2>
-          <button className="btn btn-ghost" onClick={onClose} style={{padding:6}}><Icon name="x" size={18}/></button>
+          <button className="btn btn-ghost" onClick={onClose} style={{padding:6}} title="Fechar" aria-label="Fechar"><Icon name="x" size={18}/></button>
         </div>
         <div style={{display:'flex',gap:16,alignItems:'flex-start',marginBottom:14}}>
           <input ref={photoRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhoto}/>
@@ -5847,7 +6262,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
               <span className="drag-handle" style={{position:'absolute',top:8,right:8,color:'white',lineHeight:0,zIndex:5,filter:'drop-shadow(0 1px 2px rgba(0,0,0,.4))'}}><Icon name="grip-vertical" size={13}/></span>
               {photos.length>0
                 ?<div style={{height:90,display:'grid',gridTemplateColumns:'repeat('+Math.min(photos.length,4)+',1fr)',gap:1,background:'var(--border)'}}>
-                    {photos.slice(0,4).map((img,i)=><Img key={i} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
+                    {photos.slice(0,4).map((img,i,list)=><Img key={imgKey(img,i,list)} src={img} style={{width:'100%',height:90,objectFit:'cover',display:'block'}}/>)}
                   </div>
                 :<div style={{height:90,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'2.8rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
@@ -5899,8 +6314,8 @@ const QuickCapture=({type,onClose,onAddTask,onAddNote})=>{
       <Icon name={type==='task'?'check-square':'file-text'} size={16} style={{color:'var(--muted)',flexShrink:0}}/>
       <input ref={inputRef} value={value} onChange={e=>setValue(e.target.value)} onKeyDown={onKey}
         placeholder={type==='task'?'Nova atividade...':'Nova nota...'}/>
-      <button className="btn btn-dark" style={{padding:'5px 12px',fontSize:'.78rem',flexShrink:0}} onClick={submit}><Icon name="plus" size={12}/></button>
-      <button className="btn btn-ghost" style={{padding:4,flexShrink:0}} onClick={onClose}><Icon name="x" size={14}/></button>
+      <button className="btn btn-dark" style={{padding:'5px 12px',fontSize:'.78rem',flexShrink:0}} onClick={submit} title="Adicionar" aria-label="Adicionar"><Icon name="plus" size={12}/></button>
+      <button className="btn btn-ghost" style={{padding:4,flexShrink:0}} onClick={onClose} title="Fechar" aria-label="Fechar"><Icon name="x" size={14}/></button>
     </div>,
     document.body
   );
@@ -6257,9 +6672,8 @@ const App=()=>{
       lsSave(state);
       // Session snapshot: while actively editing, keep a history point every ~30 min
       try{
-        const list=bhHistoryLoad();
-        const last=list[0];
-        if(!last||Date.now()-new Date(last.at).getTime()>30*60*1000)bhCapture(state,'auto');
+        const last=bhLastAt(); // chave leve, não o histórico inteiro (P1-3)
+        if(!last||Date.now()-new Date(last).getTime()>30*60*1000)bhCapture(state,'auto');
       }catch{}
       setSaveFlash(true);
       clearTimeout(saveFlashTimer.current);
@@ -6273,7 +6687,7 @@ const App=()=>{
           // against 900KB and gave up — blocking sync in scenarios the 3-doc
           // split was designed to survive. Measure each payload separately and
           // name the offender so the user knows what to trim.
-          const clean=stripBase64(state);
+          const clean=stripInlineImages(state);
           const {notes,galleryPosts,...mainClean}=clean;
           const sz=o=>new Blob([JSON.stringify(o)]).size;
           const docs={'estado':sz(mainClean),'notas':sz(notes||[]),'galeria':sz(galleryPosts||[])};
@@ -6517,6 +6931,135 @@ ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/
 // Pre-warm THUMBNAILS (not originals) during idle, once the first view has
 // settled — so navigating to a post finds its images already in memory.
 setTimeout(()=>_idleCb(warmThumbCache),1200);
+</script>
+<!-- ── LOADER DE BOOT (P1-1) ──────────────────────────────────────────────
+  DIAGNÓSTICO: o design single-file obrigava o @babel/standalone (~400KB de
+  download) a transpilar 382KB de JSX em TODA abertura do app. Era de longe o
+  maior custo de startup — maior que tudo que foi otimizado na camada de imagens.
+  E é trabalho 100% repetido: o mesmo texto de entrada produz o mesmo JS de saída.
+  ESTRATÉGIA: hash rápido do fonte → procura o bundle já compilado no IndexedDB.
+    • hit  → executa o cache. O Babel nem é baixado.
+    • miss → injeta o Babel, transpila, executa e grava para a próxima vez.
+  A chave inclui o hash DO FONTE, então editar o arquivo invalida sozinho — não
+  existe estado "cache velho de um arquivo novo".
+  CUSTO HONESTO: o primeiro carregamento (e o primeiro após cada edição) fica um
+  pouco MAIS lento, porque o download do Babel só começa depois que a consulta ao
+  IDB falha, em vez de acontecer em paralelo com o React. Todos os demais
+  carregamentos economizam ~400KB de rede e o transpile inteiro.
+-->
+<script>
+(function(){
+  var BABEL_URL='https://unpkg.com/@babel/standalone@7.23.9/babel.min.js';
+  var DB='boardhub_bundle', STORE='bundles', CACHE_V=1;
+  var RECOVER='bh_bundle_recover';
+  var el=document.getElementById('bh-jsx-source');
+  var src=el?el.textContent:'';
+
+  // FNV-1a 32 bits. Colidir exigiria dois fontes DE MESMO COMPRIMENTO com o mesmo
+  // hash — por isso o comprimento entra na chave. Errar a invalidação aqui
+  // significa rodar código velho, então o par vale o byte extra.
+  function hash(str){
+    var h=0x811c9dc5;
+    for(var i=0;i<str.length;i++){h^=str.charCodeAt(i);h=(h*0x01000193)>>>0;}
+    return h.toString(16)+'-'+str.length;
+  }
+  var KEY='bundle_v'+CACHE_V+'_'+hash(src);
+
+  function openDb(){return new Promise(function(res,rej){
+    if(!window.indexedDB)return rej(new Error('sem IndexedDB'));
+    var r=indexedDB.open(DB,1);
+    r.onupgradeneeded=function(e){try{e.target.result.createObjectStore(STORE);}catch(_){}};
+    r.onsuccess=function(e){res(e.target.result);};
+    r.onerror=function(e){rej(e.target.error||new Error('open falhou'));};
+  });}
+  function get(db,k){return new Promise(function(res){
+    try{var r=db.transaction(STORE,'readonly').objectStore(STORE).get(k);
+      r.onsuccess=function(e){res(e.target.result);};r.onerror=function(){res(null);};
+    }catch(_){res(null);}
+  });}
+  function put(db,k,v){return new Promise(function(res){
+    try{var tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put(v,k);
+      tx.oncomplete=function(){res(true);};tx.onerror=function(){res(false);};tx.onabort=function(){res(false);};
+    }catch(_){res(false);}
+  });}
+  // Só o bundle atual fica: sem isso cada edição do arquivo deixaria mais um
+  // bundle de ~500KB para trás.
+  function prune(db,keep){try{
+    var os=db.transaction(STORE,'readwrite').objectStore(STORE), r=os.getAllKeys();
+    r.onsuccess=function(e){(e.target.result||[]).forEach(function(k){if(k!==keep){try{os.delete(k);}catch(_){}}});};
+  }catch(_){}}
+  function wipe(){return new Promise(function(res){
+    try{var r=indexedDB.deleteDatabase(DB);r.onsuccess=r.onerror=r.onblocked=function(){res(true);};}
+    catch(_){res(false);}
+  });}
+
+  function loadBabel(){return new Promise(function(res,rej){
+    if(window.Babel)return res();
+    var t=document.createElement('script');
+    t.src=BABEL_URL;
+    t.onload=function(){window.Babel?res():rej(new Error('Babel carregou vazio'));};
+    t.onerror=function(){rej(new Error('não foi possível baixar o Babel'));};
+    document.head.appendChild(t);
+  });}
+
+  // new Function isola o parse da execução: um bundle corrompido estoura AQUI,
+  // antes de qualquer efeito colateral, e o fallback para o Babel fica limpo.
+  function compileOnly(code){return new Function(code);}
+
+  function viaBabel(db){
+    return loadBabel().then(function(){
+      // runtime:'classic' EXPLÍCITO. Em @babel/standalone 7.23.9 o default do
+      // preset react já é classic, mas esse default virou 'automatic' no Babel 8
+      // — e automatic emite require("react/jsx-runtime"), que não existe numa
+      // página que carrega o React como global UMD. O app quebraria inteiro, em
+      // silêncio, no dia em que a URL do standalone subisse de major. Fixar aqui
+      // custa nada e remove a dependência de um default que já mudou uma vez.
+      var out=window.Babel.transform(src,{presets:[['react',{runtime:'classic'}]],sourceType:'script'});
+      var code=out.code;
+      compileOnly(code)();
+      window.__bhBundleCache.source='babel';
+      if(db)put(db,KEY,{v:CACHE_V,code:code,at:Date.now()}).then(function(ok){if(ok)prune(db,KEY);});
+    });
+  }
+
+  window.__bhBundleCache={
+    key:KEY,
+    source:'pendente',
+    clear:function(){return wipe();}
+  };
+
+  var db=null;
+  openDb().then(function(d){db=d;return get(d,KEY);},function(){return null;})
+  .then(function(rec){
+    var code=rec&&rec.v===CACHE_V&&typeof rec.code==='string'&&rec.code.length>1000?rec.code:null;
+    if(!code)return viaBabel(db);
+    var fn;
+    try{fn=compileOnly(code);}
+    catch(e){
+      // Sintaxe inválida: nada foi executado. Descarta e segue pelo Babel.
+      console.warn('[BoardHub] cache de bundle inválido, recompilando:',e.message);
+      if(db)put(db,KEY,null);
+      return viaBabel(db);
+    }
+    try{fn();window.__bhBundleCache.source='cache';}
+    catch(e){
+      // Parseou mas estourou no meio da execução: o app pode estar meio
+      // inicializado, então NÃO dá para simplesmente rodar o Babel por cima.
+      // Limpa o cache e recarrega uma única vez (guarda em sessionStorage).
+      var once=false;try{once=sessionStorage.getItem(RECOVER)==='1';}catch(_){}
+      if(!once){
+        try{sessionStorage.setItem(RECOVER,'1');}catch(_){}
+        return wipe().then(function(){location.reload();});
+      }
+      throw e; // segunda falha: deixa o handler de erro do splash mostrar
+    }
+    try{sessionStorage.removeItem(RECOVER);}catch(_){}
+  })
+  .catch(function(e){
+    console.error('[BoardHub] boot falhou:',e);
+    window.dispatchEvent(new ErrorEvent('error',{message:'Falha ao inicializar: '+(e&&e.message||e)}));
+  });
+})();
 </script>
 </body>
 </html>
