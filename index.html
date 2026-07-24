@@ -9,27 +9,80 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
+  BoardHub v23.2 — Pipeline de imagens reescrito (jul/2026)
+  DIAGNÓSTICO: v23 ficou mais lenta que a build anterior porque a grade passou a
+  fazer o DOBRO do trabalho por célula. O resolver lia o ORIGINAL, pintava, e
+  só então trocava pelo thumbnail — duas leituras em IndexedDB, dois decodes
+  (um deles de uma fonte de 1400px dentro de uma célula de ~200px) e dois paints
+  por imagem visível. Some a isso o warmer de boot, que carregava até 100 blobs
+  full-res em transações separadas e enfileirava as leituras pequenas que a
+  grade realmente precisava.
+  • GRADE = SÓ THUMBNAIL. Uma leitura, um decode, um paint. Nenhuma superfície
+    de grade/capa toca mais no original; full-res agora é exclusivo do lightbox
+    (OBJURL_CAP 100→12, porque só uma imagem aparece por vez).
+  • LEITURAS EM LOTE: cada idbGet abria a própria transação — uma tela de 40
+    imagens = 40 transações enfileiradas, cada uma com seu commit. Leituras no
+    mesmo tick agora colapsam em UMA transação com N gets (o React comita o
+    efeito de todas as células visíveis no mesmo tick, então uma tela inteira
+    vira uma transação só).
+  • THUMBNAIL GERADO NO UPLOAD, não na primeira exibição — o custo cai onde o
+    usuário já está esperando. Navegar nunca mais paga decode+encode.
+  • WARMER DE BOOT AGORA AQUECE THUMBNAILS (antes: originais, e a função do
+    changelog v23 sequer era chamada — rodava outra, full-res). Como os
+    thumbnails ficam residentes, o resolver devolve a URL de forma SÍNCRONA no
+    primeiro render: sem frame de placeholder, sem fade, sem segundo paint —
+    que era exatamente a sensação de "instantâneo" da build antiga, só que
+    custando ~40KB por imagem em vez de ~300KB.
+  • Segunda passada do warmer gera thumbnails que ainda não existem (migração
+    de acervo antigo), throttled em 3 concorrentes e limitada a 150/sessão.
+  • Geração de thumbnail com UM decode (era dois: um probe de dimensões + um
+    resize); downscale de alta qualidade no canvas dá o mesmo resultado.
+  • LRU de thumbnails (THUMB_CAP=600, ~15-25MB) substitui o de full-res.
+  • loading="lazy" removido de imagens locais (já têm gate próprio de viewport —
+    era um segundo atraso sobre um recurso que já está em memória); fade de
+    250ms mantido só para imagens de rede. Gate ampliado 400px→600px.
+  • FIX: vídeo em getThumbUrl gerava um "thumbnail" que era o vídeo inteiro
+    persistido sob thumb_<key>. Agora serve o original.
+  ──────
+  BoardHub v23.1 — Correção crítica de perda de dados no 1º login (jul/2026)
+  • FIX P0 (data loss): logging into an account for the FIRST TIME on a device
+    could push the demo SEED over a real cloud save. Root cause: the "does local
+    hold real data?" guard only tested for non-empty arrays, and the SEED ships
+    with 3 demo projects + clients + mentors + notes. Any device that had merely
+    OPENED the app once before logging in had that demo content persisted with a
+    fresh edit timestamp, so last-write-wins compared "seed edited seconds ago"
+    against "real data synced yesterday" and the seed won.
+  • The deeper fix: last-write-wins is the wrong rule for first contact with an
+    account on a device. At that moment the cloud holds accumulated history and
+    local holds at most minutes of pre-login work. New rule — if this browser
+    profile has never completed a sync with this account (boardhub_synced_uid),
+    THE CLOUD ALWAYS WINS and timestamps are not consulted. Local state is
+    archived to the backup history first ('Local antes do 1º login') and an
+    on-screen notice explains what happened. LWW still applies afterwards, so
+    genuine offline editing on a known device is unaffected.
+  • Devices are marked as synced with an account after any successful apply or
+    push; SEED-initialized profiles are flagged (boardhub_seeded) so demo content
+    is never mistaken for real data again.
+  ——————
   BoardHub v23 — Auditoria & Retrabalho Claude (jul/2026)
-  PERCEIVED PERFORMANCE (built for 100+ image posts)
-  • NEW: first paint is never blocked by image I/O. The old prefetch read EVERY
-    local blob at startup; removed. Grids/covers are viewport-gated — a local
-    (idb://) image is read + thumbnailed only when it scrolls within ~400px of
-    view. Cloud images already lazy-load; lightbox images bypass the gate.
-  • NEW: opening a card warms a BOUNDED prefix (~first rows) of its images, as
-    THUMBNAILS not full-res, in gentle batches. This is the key memory decision:
-    grids only ever show ≤480px thumbnails, so a 100+ image post no longer creates
-    100+ multi-MB object URLs up front. First ~3 rows carry priority (load on
-    open); the rest generate on scroll. Full-res is fetched only in the lightbox.
-  • NEW: cold grid images show the ORIGINAL instantly (single IDB read), then swap
-    to the generated thumbnail and release the transient full-res URL — instant
-    first pixel like the earlier full-warm build, but the big URL is freed right
-    after the swap and never cached, so 100+ image posts don't leak full-res.
-  • FASTER: thumbnails now generate via createImageBitmap (off-main-thread decode
-    + resize) instead of new Image()+canvas — the main cause of cold-open lag on
-    large source photos. Falls back to the canvas path on older engines.
-  • Net effect: fast open + smooth scroll on very large posts, with session memory
-    bounded to small thumbnails of what you've actually viewed.
-  IDEAS
+  PERCEIVED PERFORMANCE (fast full-res warming, bounded for 100+ image posts)
+  • Reconciled approach: the speed comes from warming full-res blobs into memory
+    so the grid shows the original the instant it's cached — no thumbnail
+    generation on the critical path. This is the fast behavior of the earlier
+    build, now made safe for large posts by an LRU cap on the object-URL cache.
+  • Warming happens two ways: a background idle pass pre-loads blobs so browsing
+    feels pre-warmed, and opening a card eagerly warms its own images (first ~48)
+    right away. Display shows full-res immediately, then swaps to the small
+    thumbnail for render efficiency.
+  • MEMORY: the full-res cache is capped (OBJURL_CAP=100). Past the cap the
+    least-recently-shown blob is revoked; on-screen images were just touched so
+    they're never the ones evicted. A 100+ image post no longer pins every blob
+    for the session — scrolled-away images are reclaimed and re-read in ms if
+    revisited. First paint is still never blocked by image I/O, and idb:// grid
+    images remain viewport-gated so a huge post doesn't read all blobs at once.
+  • FASTER generation: thumbnails now build via createImageBitmap (off-main-thread
+    decode + resize) instead of new Image()+canvas, with a canvas fallback.
+  • Full-res is used directly in the lightbox; thumbnails persist across sessions.  IDEAS
   • NEW: reordenar entradas dentro de um grupo — arrastar no desktop (grip +
     handle, mesmo padrão da barra lateral), setas ↑↓ no mobile (touch não faz
     HTML5 drag). A nova ordem sincroniza e entra no backup como o resto do estado.
@@ -451,6 +504,18 @@ const _purgeTrash=s=>{
   return s;
 };
 const persisted = _purgeTrash(lsLoad());
+// - DEVICE/ACCOUNT SYNC MARKERS -
+// SYNCED_UID_KEY: the account this browser profile has actually completed a sync
+// with. Absent/different = this is the FIRST contact with that account here, and
+// the cloud must be treated as authoritative (see the reconcile state machine).
+// SEEDED_KEY: this profile's state was initialized from SEED and has never been
+// synced. Without it, persisted SEED data (3 demo projects, clients, mentors,
+// notes) is indistinguishable from real user data — which is exactly how a phone
+// that had been opened once before login pushed the demo content over a real
+// cloud save.
+const SYNCED_UID_KEY='boardhub_synced_uid';
+const SEEDED_KEY='boardhub_seeded';
+if(!persisted){try{localStorage.setItem(SEEDED_KEY,'1');}catch{}}
 
 // - BACKUP HISTORY -
 // Rotating snapshot history. Replaces the old two-slot system (pre_sync + daily),
@@ -768,35 +833,153 @@ const _objUrlCache={};
 // they share one IDB transaction instead of each opening their own.
 const _inflightFetch={};
 
-// On-open image warming. Grid/cover surfaces render THUMBNAILS (≤480px), never
-// the full-res original, so warming pre-generates the thumbnail for a card's
-// images — not the multi-MB blob. This is the crucial memory decision: a post
-// can hold 100+ images; warming full-res would create 100+ multi-MB object URLs
-// that persist for the whole session (they're never revoked). Thumbnails are
-// small, and only a bounded PREFIX is warmed (~first rows + lookahead); the rest
-// are generated on demand by the viewport gate in <Img>/<BgImg> as the user
-// scrolls. Full-res is loaded only when a single image is opened in the lightbox.
-// (v23 removed the old global warmer that read every idb:// blob in the state —
-//  fine for a few images, a memory bomb once posts routinely hold 100+.)
-const WARM_PREFIX=30;   // ~first 3-4 rows + a little lookahead
-const WARM_BATCH=6;     // thumbnails generate on a canvas — keep batches gentle
+// ── BATCHED IDB READS ───────────────────────────────────────────────
+// Every idbGet() opened its OWN transaction. Painting a grid of 40 images meant
+// 40 transactions, each with its own commit round-trip on the IDB thread — they
+// queue behind each other, so the last cell waited for 39 commits. Reads issued
+// in the same tick are now coalesced into ONE readonly transaction with N get()s
+// (React commits every visible cell's effect in the same tick, so a whole screen
+// of images becomes a single transaction).
+const _readQ=[];
+let _readScheduled=false;
+const _flushReads=()=>{
+  _readScheduled=false;
+  const batch=_readQ.splice(0,_readQ.length);
+  if(!batch.length)return;
+  const fail=()=>{_resetIdb();batch.forEach(i=>i.res(undefined));};
+  openIdb().then(db=>{
+    try{
+      const tx=db.transaction(IDB_STORE,'readonly');
+      const store=tx.objectStore(IDB_STORE);
+      batch.forEach(item=>{
+        try{
+          const r=store.get(item.key);
+          r.onsuccess=e=>item.res(e.target.result);
+          r.onerror=()=>item.res(undefined);
+        }catch{item.res(undefined);}
+      });
+      tx.onerror=fail;tx.onabort=fail;
+    }catch{fail();}
+  }).catch(fail);
+};
+// Same contract as idbGet, but coalesced. Used by every render-path read.
+const idbGetBatched=key=>new Promise(res=>{
+  _readQ.push({key,res});
+  if(!_readScheduled){_readScheduled=true;Promise.resolve().then(_flushReads);}
+});
+
+// ── THUMBNAIL CACHE — THE HOT PATH ─────────────────────────────────────
+// Grid/cover surfaces NEVER display an original, so thumbnails — not full-res
+// blobs — are what stays resident. A 480px WebP is ~20-50KB: hundreds of them
+// cost a few MB, versus hundreds of MB for the equivalent in originals, and each
+// one decodes ~8× cheaper than the 1400px source it came from.
+const THUMB_MAX=480;       // longest side, px — ample for any grid cell under object-fit:cover
+const THUMB_CAP=600;       // resident thumbnails (~15-25MB worst case)
+const _thumbCache={};      // idb key -> object URL for the thumbnail
+const _thumbInflight={};   // idb key -> Promise (dedupes read/generation)
+const _thumbOrder=[];      // keys, least-recently-shown first
+const _touchThumb=key=>{
+  const i=_thumbOrder.indexOf(key);
+  if(i>=0)_thumbOrder.splice(i,1);
+  _thumbOrder.push(key);
+  while(_thumbOrder.length>THUMB_CAP){
+    const old=_thumbOrder.shift();
+    if(old!==key&&_thumbCache[old]){URL.revokeObjectURL(_thumbCache[old]);delete _thumbCache[old];}
+  }
+};
+
+// ── FULL-RES OBJECT-URL CACHE ───────────────────────────────────────
+// Originals are now LIGHTBOX-ONLY, so this cache holds a handful of entries
+// instead of 100. Nothing on a grid pins a full-res blob anymore.
+const OBJURL_CAP=12;
+const _objUrlOrder=[]; // keys, least-recently-used first
+const _touchObjUrl=key=>{
+  const i=_objUrlOrder.indexOf(key);
+  if(i>=0)_objUrlOrder.splice(i,1);
+  _objUrlOrder.push(key);
+  while(_objUrlOrder.length>OBJURL_CAP){
+    const old=_objUrlOrder.shift();
+    if(old!==key&&_objUrlCache[old]){URL.revokeObjectURL(_objUrlCache[old]);delete _objUrlCache[old];}
+  }
+};
+// Read one idb:// blob at full resolution (deduped via _inflightFetch).
+const _warmFull=key=>{
+  if(_objUrlCache[key]){_touchObjUrl(key);return Promise.resolve(_objUrlCache[key]);}
+  if(_inflightFetch[key])return _inflightFetch[key];
+  _inflightFetch[key]=idbGetBatched(key).then(blob=>{
+    if(blob&&!_objUrlCache[key]){_objUrlCache[key]=URL.createObjectURL(blob);_touchObjUrl(key);}
+    delete _inflightFetch[key];return _objUrlCache[key]||'';
+  }).catch(()=>{delete _inflightFetch[key];return '';});
+  return _inflightFetch[key];
+};
+const _idleCb=cb=>((typeof window!=='undefined'&&window.requestIdleCallback)||(f=>setTimeout(()=>f({timeRemaining:()=>0}),200)))(cb);
+
+// ── THUMBNAIL GENERATION THROTTLE ────────────────────────────────────
+// Reading a thumbnail is cheap; GENERATING one (decode + downscale + encode) is
+// not. Uncapped, a screen of 40 cold cells fired 40 concurrent decodes and the
+// tab locked up. Generation is capped at 3 in flight — reads stay unthrottled.
+const _genQ=[];let _genActive=0;const GEN_MAX=3;
+const _genPump=()=>{
+  while(_genActive<GEN_MAX&&_genQ.length){
+    const job=_genQ.shift();_genActive++;
+    job().then(()=>{_genActive--;_genPump();},()=>{_genActive--;_genPump();});
+  }
+};
+const _enqueueGen=job=>new Promise(res=>{_genQ.push(()=>job().then(res,()=>res('')));_genPump();});
+
+// On-open warm: pull an opened card's THUMBNAILS into memory right away, so its
+// grid renders from cache instead of hitting IDB cell by cell. All the reads in
+// one prefix collapse into a single transaction via idbGetBatched.
+const WARM_PREFIX=80;
 const warmKeys=(srcs,limit=WARM_PREFIX)=>{
   if(!Array.isArray(srcs))return;
   const keys=[];
   for(const s of srcs){
-    if(typeof s==='string'&&s.startsWith('idb://')){keys.push(s.slice(6));if(keys.length>=limit)break;}
+    if(typeof s==='string'&&s.startsWith('idb://')){
+      const k=s.slice(6);
+      if(!_thumbCache[k]){keys.push(k);if(keys.length>=limit)break;}
+    }
   }
-  if(!keys.length)return;
-  let i=0;
-  const step=()=>{
-    if(i>=keys.length)return;
-    const slice=keys.slice(i,i+WARM_BATCH);i+=WARM_BATCH;
-    // getThumbUrl generates+caches the small thumbnail (deduped via _thumbInflight),
-    // reading the full blob only transiently. It's defined below; warmKeys only
-    // runs on card-open, long after module eval, so the forward ref is safe.
-    Promise.all(slice.map(k=>getThumbUrl(k))).then(()=>{if(i<keys.length)setTimeout(step,0);});
+  keys.forEach(k=>{try{getThumbUrl(k);}catch{}});
+};
+
+// Boot warm: fill the thumbnail cache during idle so navigating to a post finds
+// its images ALREADY in memory — the resolver then returns a URL synchronously
+// on the first render (no placeholder frame, no fade). That "already there"
+// property is what made the old build feel instant; it now costs thumbnails
+// instead of originals. Second pass generates any thumbnail that doesn't exist
+// yet (images uploaded before generation moved to upload time), throttled and
+// bounded so an old library migrates in the background without janking.
+const MIGRATE_CAP=150;
+const warmThumbCache=()=>{
+  if(!persisted)return;
+  const keys=[];const seen=new Set();
+  const collect=o=>{
+    if(Array.isArray(o))o.forEach(collect);
+    else if(o&&typeof o==='object')Object.values(o).forEach(collect);
+    else if(typeof o==='string'&&o.startsWith('idb://')){const k=o.slice(6);if(!seen.has(k)){seen.add(k);keys.push(k);}}
   };
-  step(); // eager first batch — the card is open, the user wants these now
+  collect(persisted);
+  if(!keys.length)return;
+  const missing=[];
+  let i=0;
+  const readStep=()=>{
+    if(i>=keys.length||_thumbOrder.length>=THUMB_CAP){_idleCb(()=>genStep(0));return;}
+    const slice=keys.slice(i,i+40);i+=40;
+    Promise.all(slice.map(k=>{
+      if(_thumbCache[k])return null;
+      return idbGetBatched('thumb_'+k).then(tb=>{
+        if(tb){if(!_thumbCache[k]){_thumbCache[k]=URL.createObjectURL(tb);_touchThumb(k);}}
+        else missing.push(k);
+      }).catch(()=>{});
+    })).then(()=>_idleCb(readStep));
+  };
+  const genStep=j=>{
+    if(j>=missing.length||j>=MIGRATE_CAP)return;
+    Promise.all(missing.slice(j,j+3).map(k=>{try{return getThumbUrl(k,true);}catch{return null;}}))
+      .then(()=>_idleCb(()=>genStep(j+3)));
+  };
+  _idleCb(readStep);
 };
 
 // --- THUMBNAIL LAYER ---------------------------------------------------------
@@ -806,9 +989,6 @@ const warmKeys=(srcs,limit=WARM_PREFIX)=>{
 //     persisted under "thumb_<key>" so it's generated only once. Local-only render
 //     cache — never synced/exported (state only ever references the original idb://<key>).
 // Full-resolution is still used wherever <Img full/> or <BgImg full/> is requested.
-const _thumbCache={};      // idb key -> object URL for the generated thumbnail
-const _thumbInflight={};   // idb key -> Promise (dedupes generation)
-const THUMB_MAX=480;       // longest side, px — ample for any grid cell under object-fit:cover
 // Smaller variant of a cloud URL for grid display, with the original kept as onError fallback.
 const _httpThumb=url=>{
   // Imgur direct link: i.imgur.com/<id>.<ext> -> <id>l.<ext> (640px thumbnail)
@@ -827,17 +1007,17 @@ const _makeThumbBlob=async blob=>{
   // is what made cold thumbnails feel slow on big posts.
   if(typeof createImageBitmap==='function'){
     try{
-      const probe=await createImageBitmap(blob);
-      const pw=probe.width,ph=probe.height;
-      if(Math.max(pw,ph)<=THUMB_MAX){if(probe.close)probe.close();return blob;}
+      // ONE decode. The previous version decoded twice (a probe for dimensions,
+      // then a second resizing decode); a high-quality canvas downscale of the
+      // already-decoded bitmap gets the same result for half the work.
+      const bmp=await createImageBitmap(blob);
+      const pw=bmp.width,ph=bmp.height;
+      if(Math.max(pw,ph)<=THUMB_MAX){if(bmp.close)bmp.close();return blob;}
       const r=THUMB_MAX/Math.max(pw,ph),w=Math.round(pw*r),h=Math.round(ph*r);
-      let bmp=probe;
-      try{ // resize during decode where supported; probe closed either way
-        bmp=await createImageBitmap(blob,{resizeWidth:w,resizeHeight:h,resizeQuality:'high'});
-        if(probe.close)probe.close();
-      }catch{/* engine ignores resize opts — draw the full probe scaled instead */}
       const c=document.createElement('canvas');c.width=w;c.height=h;
-      c.getContext('2d').drawImage(bmp,0,0,w,h);
+      const cx=c.getContext('2d');
+      cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
+      cx.drawImage(bmp,0,0,w,h);
       if(bmp.close)bmp.close();
       const out=await new Promise(res=>c.toBlob(b=>res(b||blob),'image/webp',0.72));
       return out;
@@ -861,101 +1041,95 @@ const _makeThumbBlob=async blob=>{
     }catch{res(blob);}
   });
 };
-// Resolve (generating + persisting once) a thumbnail object URL for an idb key.
-const getThumbUrl=(key,blobP)=>{
-  if(_thumbCache[key])return Promise.resolve(_thumbCache[key]);
+// Resolve a thumbnail object URL for an idb key. Reads the persisted thumbnail
+// (batched, cheap); only a genuine miss pays generation, and generation is
+// throttled so a screenful of cold cells can't stall the main thread.
+const getThumbUrl=(key,knownMissing)=>{
+  if(_thumbCache[key]){_touchThumb(key);return Promise.resolve(_thumbCache[key]);}
   if(_thumbInflight[key])return _thumbInflight[key];
   _thumbInflight[key]=(async()=>{
     try{
-      let tb=await idbGet('thumb_'+key);
-      if(!tb){
-        const full=await (blobP||idbGet(key)); // reuse the caller's read when provided
-        if(!full){delete _thumbInflight[key];return '';}
-        tb=await _makeThumbBlob(full);
-        try{await idbPut('thumb_'+key,tb);}catch{/* render cache only — ignore quota */}
+      const tb=knownMissing?null:await idbGetBatched('thumb_'+key);
+      if(tb){
+        if(!_thumbCache[key]){_thumbCache[key]=URL.createObjectURL(tb);}
+        _touchThumb(key);delete _thumbInflight[key];return _thumbCache[key];
       }
-      if(!_thumbCache[key])_thumbCache[key]=URL.createObjectURL(tb);
+      const u=await _enqueueGen(async()=>{
+        if(_thumbCache[key]){_touchThumb(key);return _thumbCache[key];}
+        const full=await idbGetBatched(key);
+        if(!full)return '';
+        // A video has no meaningful thumbnail here; generating one would store
+        // the entire video under thumb_<key>. Serve the original instead.
+        if(/^video\//i.test(full.type||'')){
+          if(!_objUrlCache[key]){_objUrlCache[key]=URL.createObjectURL(full);_touchObjUrl(key);}
+          return _objUrlCache[key];
+        }
+        const nb=await _makeThumbBlob(full);
+        try{await idbPut('thumb_'+key,nb);}catch{/* render cache only — ignore quota */}
+        if(!_thumbCache[key])_thumbCache[key]=URL.createObjectURL(nb);
+        _touchThumb(key);return _thumbCache[key]||'';
+      });
       delete _thumbInflight[key];
-      return _thumbCache[key];
+      return u;
     }catch{delete _thumbInflight[key];return '';}
   })();
   return _thumbInflight[key];
+};
+
+// Synchronous cache probe — no IDB, no promises. When it hits, the <img> gets
+// its src in the SAME render it mounts: no placeholder frame, no fade-in, no
+// second paint. This is the whole trick behind "instant".
+const _syncUrl=(src,thumb)=>{
+  if(!src||typeof src!=='string')return '';
+  if(/^https?:\/\//.test(src))return _httpThumb(src);
+  if(!src.startsWith('idb://'))return src;
+  const key=src.slice(6);
+  return thumb?(_thumbCache[key]||''):(_objUrlCache[key]||_thumbCache[key]||'');
 };
 
 // Unified resolver for idb://, https://, or data: sources. With thumb=true it prefers
 // the downscaled variant for grid/cover display. Checks caches synchronously so
 // prefetched images render with zero flash.
 const useDisplayUrl=(src,thumb)=>{
-  const getInitial=()=>{
-    if(!src||typeof src!=='string')return src||'';
-    if(/^https?:\/\//.test(src))return _httpThumb(src); // lighter variant is the instant start for both thumb and full
-    if(!src.startsWith('idb://'))return src;              // data: etc
-    const key=src.slice(6);
-    if(_thumbCache[key])return _thumbCache[key];          // cached thumbnail → instant, even for full mode
-    return _objUrlCache[key]||'';
-  };
-  const [url,setUrl]=React.useState(getInitial);
+  const sync=_syncUrl(src,thumb);
+  const [state,setState]=React.useState(sync);
   React.useEffect(()=>{
-    if(!src||typeof src!=='string'){setUrl(src||'');return;}
+    if(!src||typeof src!=='string'){setState(src||'');return;}
     let cancelled=false;
     // ── cloud / data ──
     if(!src.startsWith('idb://')){
       if(/^https?:\/\//.test(src)){
         const light=_httpThumb(src);
-        setUrl(light);
-        // Full mode: if a lighter variant exists (Imgur/Unsplash), upgrade to the
-        // original once it has decoded. Firebase URLs have no lighter variant
-        // (light===src) so this is a no-op and we already show the original.
-        if(!thumb&&light!==src)_preload(src).then(u=>{if(!cancelled&&u)setUrl(u);});
-      }else setUrl(src);
+        setState(light);
+        // Full mode: upgrade to the original once decoded, when a lighter
+        // variant exists (Imgur/Unsplash). Firebase URLs have no variant.
+        if(!thumb&&light!==src)_preload(src).then(u=>{if(!cancelled&&u)setState(u);});
+      }else setState(src);
       return()=>{cancelled=true;};
     }
     // ── local idb:// ──
     const key=src.slice(6);
     if(thumb){
-      if(_thumbCache[key]){setUrl(_thumbCache[key]);return()=>{cancelled=true;};}
-      // Cold thumbnail. Show the ORIGINAL immediately for an instant first pixel,
-      // then swap to the small persisted thumbnail and release the big transient
-      // URL. The transient URL is intentionally NOT stored in _objUrlCache (the
-      // lightbox's full-res cache), so releasing it here affects nothing else —
-      // this is what keeps grids fast without leaking full-res blobs for 100+
-      // image posts. A single idbGet feeds both the instant display and the
-      // thumbnail generation.
-      let transientFull='';
-      const blobP=idbGet(key);
-      blobP.then(blob=>{
-        if(cancelled||!blob||_thumbCache[key])return;
-        transientFull=URL.createObjectURL(blob);
-        if(!cancelled&&!_thumbCache[key])setUrl(transientFull);
-      }).catch(()=>{});
-      getThumbUrl(key,blobP).then(u=>{
-        if(cancelled)return;
-        if(u)setUrl(u);
-        // Defer the revoke so the thumbnail has painted before the transient URL
-        // goes away (avoids any flash during the src swap).
-        if(transientFull){const t=transientFull;transientFull='';setTimeout(()=>URL.revokeObjectURL(t),2000);}
-      });
-      return()=>{cancelled=true;if(transientFull)URL.revokeObjectURL(transientFull);};
+      // GRID: thumbnail ONLY. One small read, one small decode, one paint.
+      // The previous build read the ORIGINAL here too, painted it, then swapped
+      // to the thumbnail — two reads, two decodes (one of them a 1400px source
+      // into a ~200px cell) and two paints per visible image. That double work,
+      // multiplied by a screenful, is what made this slower than the build
+      // before it. Nothing on a grid touches an original anymore.
+      if(_thumbCache[key]){_touchThumb(key);setState(_thumbCache[key]);return()=>{cancelled=true;};}
+      getThumbUrl(key).then(u=>{if(!cancelled&&u)setState(u);});
+      return()=>{cancelled=true;};
     }
-    // Full-res path (card/lightbox) — PROGRESSIVE: show the (usually cached) 480px
-    // thumbnail first so the image appears instantly, then read the original blob
-    // in the background and swap to it. Previously this waited on the multi-MB
-    // original with nothing on screen — the cause of the slow card-open.
-    if(_objUrlCache[key]){setUrl(_objUrlCache[key]);return;}
-    if(_thumbCache[key])setUrl(_thumbCache[key]);
-    else getThumbUrl(key).then(u=>{if(!cancelled&&u&&!_objUrlCache[key])setUrl(u);});
-    if(!_inflightFetch[key]){
-      _inflightFetch[key]=idbGet(key).then(blob=>{
-        if(!blob){delete _inflightFetch[key];return '';}
-        if(!_objUrlCache[key])_objUrlCache[key]=URL.createObjectURL(blob);
-        delete _inflightFetch[key];
-        return _objUrlCache[key];
-      }).catch(()=>{delete _inflightFetch[key];return '';});
-    }
-    _inflightFetch[key].then(u=>{if(!cancelled&&u)setUrl(u);});
+    // FULL (lightbox/hero): show the thumbnail instantly if it's around, then
+    // swap in the original. One image at a time, so the read is never contended.
+    if(_objUrlCache[key]){_touchObjUrl(key);setState(_objUrlCache[key]);return()=>{cancelled=true;};}
+    if(_thumbCache[key]){_touchThumb(key);setState(_thumbCache[key]);}
+    _warmFull(key).then(u=>{if(!cancelled&&u)setState(u);});
     return()=>{cancelled=true;};
   },[src,thumb]);
-  return url;
+  // A synchronous cache hit wins over stale state (e.g. the viewport gate just
+  // flipped and the effect hasn't run yet) — that's the frame we're saving.
+  return state||sync;
 };
 // Back-compat full-res resolver (used by Vid and any direct callers).
 const useIdbUrl=src=>useDisplayUrl(src,false);
@@ -965,7 +1139,8 @@ const useIdbUrl=src=>useDisplayUrl(src,false);
 // part of showing a local image, so we defer it until the element is within
 // ~400px of the viewport (≈2-3 rows ahead). The first rows of a freshly opened
 // card are on-screen immediately, so they resolve at once; rows further down
-// wait until scrolled near. When gating is disabled (cloud/data images, priority
+// wait until scrolled near (600px ≈ 3-4 rows of lookahead — affordable now that
+// a row costs one batched thumbnail read). When gating is disabled (cloud/data images, priority
 // images, or no IntersectionObserver) inView is true from the start.
 const useInView=(enabled)=>{
   const hasIO=typeof IntersectionObserver!=='undefined';
@@ -976,7 +1151,7 @@ const useInView=(enabled)=>{
     if(inView||!enabled||!hasIO||!node)return;
     obsRef.current=new IntersectionObserver(entries=>{
       if(entries.some(e=>e.isIntersecting)){setInView(true);if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}}
-    },{rootMargin:'400px'});
+    },{rootMargin:'600px'});
     obsRef.current.observe(node);
   },[inView,enabled,hasIO]);
   React.useEffect(()=>()=>{if(obsRef.current)obsRef.current.disconnect();},[]);
@@ -991,13 +1166,18 @@ const Img=({src,priority,full,thumb=!full,...props})=>{
   // browser loading=lazy). Priority (lightbox) always loads at once.
   const gate=!priority&&typeof src==='string'&&(src.startsWith('idb://')||(!thumb&&/^https?:\/\//.test(src)));
   const [setRef,inView]=useInView(gate);
+  const local=typeof src==='string'&&src.startsWith('idb://');
   const url=useDisplayUrl(gate&&!inView?null:src,thumb);
   if(!url)return <div ref={setRef} style={{background:'var(--border)',borderRadius:'inherit',...(props.style||{})}} aria-hidden/>;
   // If a cloud thumbnail variant 404s, fall back to the original URL once.
   const onErr=thumb&&typeof src==='string'&&/^https?:\/\//.test(src)&&src!==url
     ?e=>{if(e.currentTarget.src!==src)e.currentTarget.src=src;}:props.onError;
-  return <img {...props} ref={setRef} src={url} loading={priority?'eager':'lazy'} decoding="async" onError={onErr}
-    style={{...props.style,animation:'imgFadeIn .25s ease'}}/>;
+  // Local blobs are already gated by our own IntersectionObserver — loading="lazy"
+  // on top of that is a second, browser-controlled delay on a resource that is
+  // already in memory. And the 250ms fade only reads as latency when the image
+  // was there all along, so it's kept for network images only.
+  return <img {...props} ref={setRef} src={url} loading={priority||local?'eager':'lazy'} decoding="async" onError={onErr}
+    style={local?props.style:{...props.style,animation:'imgFadeIn .25s ease'}}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs (thumbnail by default).
@@ -1149,15 +1329,26 @@ const _uploadImgur=async(file)=>{
 };
 
 // IDB local fallback
+const _isVideoFile=f=>/^video\//i.test(f.type||'');
 const _storeIdb=async(file)=>{
   const ext=(file.name||'').split('.').pop()||'bin';
   const key='media_'+Date.now()+'_'+Math.random().toString(36).slice(2)+'.'+ext;
   await idbPut(key,file);
+  // Build the 480px thumbnail NOW, while the upload is already running, instead
+  // of on first view. Browsing then never pays decode+encode: the grid only ever
+  // reads a small blob that is already there. Also seeds the in-memory cache, so
+  // the image just added renders instantly without touching IDB at all.
+  if(!_isVideoFile(file)){
+    try{
+      const tb=await _makeThumbBlob(file);
+      await idbPut('thumb_'+key,tb);
+      if(!_thumbCache[key]){_thumbCache[key]=URL.createObjectURL(tb);_touchThumb(key);}
+    }catch{/* a thumbnail is an optimisation — never fail an upload over it */}
+  }
   return 'idb://'+key;
 };
 
 // Core upload: Firebase Storage \u2192 Imgur (images only) \u2192 IDB
-const _isVideoFile=f=>/^video\//i.test(f.type||'');
 
 // Compress image to max 1400px longest side, 0.82 quality WebP/JPEG before any store/upload.
 // Skips videos, GIFs, and files already under 60KB.
@@ -5130,7 +5321,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
 });
 
 // - SYNC HUB -
-const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncDetail,onManualPush,onDiscardLocal,isMobile,onResetIdentity})=>{
+const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncDetail,syncNotice,onDismissNotice,onManualPush,onDiscardLocal,isMobile,onResetIdentity})=>{
   const [status,setStatus]=useState(null);
   const [loading,setLoading]=useState(false);
   const [reuploadProgress,setReuploadProgress]=useState(null);
@@ -5140,7 +5331,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   const [backupHistory,setBackupHistory]=useState(()=>bhHistoryLoad());
   const refreshHistory=()=>setBackupHistory(bhHistoryLoad());
 
-  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado'};
+  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login'};
   const handleRestoreFromHistory=(entry)=>{
     const dt=new Date(entry.at).toLocaleString('pt-BR');
     const c=entry.counts||{};
@@ -5265,6 +5456,12 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
         <div style={{padding:'8px 14px',borderRadius:10,marginBottom:10,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.82rem',display:'flex',alignItems:'center',gap:10}}>
           <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={15}/>{status.msg}
           <button onClick={()=>setStatus(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
+        </div>
+      )}
+      {syncNotice&&(
+        <div style={{padding:'10px 14px',borderRadius:10,marginBottom:10,background:'#EFF6FF',border:'1px solid #BFDBFE',color:'#1E40AF',fontSize:'.82rem',display:'flex',alignItems:'flex-start',gap:10,lineHeight:1.5}}>
+          <Icon name="info" size={15} style={{flexShrink:0,marginTop:2}}/><span>{syncNotice}</span>
+          <button onClick={onDismissNotice} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2,flexShrink:0}}><Icon name="x" size={13}/></button>
         </div>
       )}
 
@@ -5867,16 +6064,24 @@ const App=()=>{
   // (empty) local state to be pushed over a real cloud save.
   const _localHadRealDataAtBoot=useRef((()=>{
     if(!persisted)return false;
+    // SEED content is NOT real data. It ships with demo projects/clients/mentors/
+    // notes, so a plain "arrays are non-empty" test reports true on any device
+    // that merely opened the app once before logging in.
+    let seeded=false;try{seeded=localStorage.getItem(SEEDED_KEY)==='1';}catch{}
+    if(seeded)return false;
     const nonEmpty=arr=>Array.isArray(arr)&&arr.length>0;
     return nonEmpty(persisted.projects)||nonEmpty(persisted.clients)||nonEmpty(persisted.mentors)||
            nonEmpty(persisted.notes)||nonEmpty(persisted.tasks)||nonEmpty(persisted.socialPosts)||
            nonEmpty(persisted.galleryPosts)||nonEmpty(persisted.noteGroups);
   })());
+  // Which account this device has already completed a sync with ('' = none).
+  const _deviceSyncedUid=useRef((()=>{try{return localStorage.getItem(SYNCED_UID_KEY)||'';}catch{return '';}})());
   const _didInitialReconcile=useRef(false);
   const _hasRemoteData=useRef(false);      // true once the listener has seen a real 'state' doc
   const _applyMergedRef=useRef(null);      // lets "discard local & pull" re-run the merge on demand
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
   const [syncDetail,setSyncDetail]=useState(''); // human-readable reason when syncStatus==='error'
+  const [syncNotice,setSyncNotice]=useState(''); // informational note (e.g. first login on this device)
   useEffect(()=>{
     if(!fbUser)return;
     if(!_fbDb)return;
@@ -5911,43 +6116,62 @@ const App=()=>{
       if(!data||typeof data._v!=='string')return;
       _hasRemoteData.current=true;
       // ── INITIAL RECONCILE — must run BEFORE the pending-edit gate ─────────────
-      // v22 checked _hasPendingLocalEdit first, so a single stray pre-login edit
-      // on a fresh device skipped this whole block forever: the cloud snapshot
-      // was never applied and the next push overwrote it with near-seed data —
-      // the exact class of the original data-loss incident.
+      // v22 checked _hasPendingLocalEdit first, so a stray pre-login edit skipped
+      // this block forever and the next push overwrote the cloud — the original
+      // data-loss incident. v23.1 fixes the second half of the same problem:
+      // last-write-wins is the WRONG rule for the first login of an account on a
+      // device. At that moment the cloud holds the accumulated history while the
+      // local state holds, at most, minutes of pre-login work — and if the device
+      // had merely opened the app once before (persisting SEED: 3 demo projects,
+      // clients, mentors, notes) that demo content read as "real data" with a
+      // fresh timestamp and won the comparison. That is how a phone login pushed
+      // the default save over a real cloud state.
       //
       // State machine on first remote contact:
-      //   local real data + dirty  → last-write-wins by timestamp:
-      //       local newer (±2min skew, ties favor active work) → keep local,
-      //         archive cloud version to history ('cloud-superseded'), push up
-      //       remote newer → apply remote; local goes to the pre-sync snapshot
-      //   local seed/empty + stray session edit → CLOUD WINS; the stray edits
-      //       are archived to history ('pre-login-edit'), never pushed over data
-      //   otherwise → apply remote (unchanged behavior)
+      //   FIRST CONTACT with this account on this device (no SYNCED_UID match)
+      //       → CLOUD ALWAYS WINS. Local is archived to history first, never
+      //         pushed. Timestamps are not consulted: a fresh local stamp proves
+      //         nothing about whose data is more complete.
+      //   device already synced with this account (genuine offline-edit case)
+      //       → last-write-wins by timestamp (±2min skew, ties favor local):
+      //           local newer → keep local, archive cloud ('cloud-superseded')
+      //           remote newer → apply remote; local goes to the pre-sync snapshot
       // In every branch, the losing side lands in the backup history first.
       if(!_didInitialReconcile.current){
         _didInitialReconcile.current=true;
-        const localDirty=_bootDirty.current||_hasPendingLocalEdit.current;
-        if(localDirty&&_localHadRealDataAtBoot.current){
-          const remoteAt=_remoteUpdatedAt();
-          let localAt='';try{localAt=localStorage.getItem(LAST_EDIT_KEY)||'';}catch{}
-          const SKEW_MS=2*60*1000;
-          const localWins=(!remoteAt||!localAt)
-            ? true // can't compare → preserve local real data (previous safe default)
-            : new Date(localAt).getTime()+SKEW_MS>=new Date(remoteAt).getTime();
-          if(localWins){
-            try{const{_updated,...cloudSnap}=data;bhCapture(cloudSnap,'cloud-superseded');}catch{}
-            _hasPendingLocalEdit.current=true;
-            try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
-            setSyncStatus('synced');
-            setSyncTick(t=>t+1);
-            return;
+        const firstContact=_deviceSyncedUid.current!==fbUser.uid;
+        if(firstContact){
+          try{
+            const cur=_latestState.current;
+            if(cur&&bhStateHasData(cur)){
+              const{_updated,...cloudSnap}=data;
+              // Skip a pure-noise entry when local already mirrors the cloud.
+              if(bhSig(cur)!==bhSig(cloudSnap)){
+                bhCapture(cur,'local-prelogin');
+                setSyncNotice('Este dispositivo entrou na conta pela primeira vez: a versão da nuvem foi aplicada e os dados que estavam aqui foram guardados no Histórico de Backups.');
+              }
+            }
+          }catch{}
+          // fall through to apply the cloud state (flags cleared just below)
+        }else{
+          const localDirty=_bootDirty.current||_hasPendingLocalEdit.current;
+          if(localDirty&&_localHadRealDataAtBoot.current){
+            const remoteAt=_remoteUpdatedAt();
+            let localAt='';try{localAt=localStorage.getItem(LAST_EDIT_KEY)||'';}catch{}
+            const SKEW_MS=2*60*1000;
+            const localWins=(!remoteAt||!localAt)
+              ? true // can't compare → preserve local real data (previous safe default)
+              : new Date(localAt).getTime()+SKEW_MS>=new Date(remoteAt).getTime();
+            if(localWins){
+              try{const{_updated,...cloudSnap}=data;bhCapture(cloudSnap,'cloud-superseded');}catch{}
+              _hasPendingLocalEdit.current=true;
+              try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
+              setSyncStatus('synced');
+              setSyncTick(t=>t+1);
+              return;
+            }
+            // remote is newer → fall through and apply it (pre-sync snapshot below)
           }
-          // remote is newer → fall through and apply it (pre-sync snapshot below)
-        }else if(_hasPendingLocalEdit.current&&!_localHadRealDataAtBoot.current){
-          // Fresh/seed device with a stray pre-login edit: cloud is authoritative.
-          try{const cur=_latestState.current;if(cur&&bhStateHasData(cur))bhCapture(cur,'pre-login-edit');}catch{}
-          // fall through to apply (flags cleared just below)
         }
       }else if(_hasPendingLocalEdit.current){
         // Live local edits not yet pushed — a snapshot must never overwrite them.
@@ -5976,7 +6200,10 @@ const App=()=>{
       if(data.noteGroups&&isArr2(data.noteGroups))setNoteGroups(data.noteGroups);
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
-      try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
+      // This device now mirrors this account: record it so later boots use
+      // last-write-wins instead of the first-contact rule, and drop the seed mark.
+      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+      _deviceSyncedUid.current=fbUser.uid;
       setSyncDetail('');
       setSyncStatus('synced');
     };
@@ -6061,7 +6288,9 @@ const App=()=>{
           await pushState(state,fbUser.uid);
           _pushAttempt.current=0;
           _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
-          try{localStorage.setItem(DIRTY_KEY,'0');}catch{} // cloud now has the latest local data
+          // cloud now has the latest local data; this device is in sync with this account
+          try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+          _deviceSyncedUid.current=fbUser.uid;
           clearTimeout(_retryTimer.current);
           setSyncDetail('');
           setSyncStatus('synced');
@@ -6172,7 +6401,8 @@ const App=()=>{
       await pushState(_latestState.current,fbUser.uid);
       _pushAttempt.current=0;
       _hasPendingLocalEdit.current=false;
-      try{localStorage.setItem(DIRTY_KEY,'0');}catch{}
+      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+      _deviceSyncedUid.current=fbUser.uid;
       clearTimeout(_retryTimer.current);
       setSyncDetail('');
       setSyncStatus('synced');
@@ -6275,7 +6505,7 @@ const App=()=>{
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} syncDetail={syncDetail} onManualPush={manualPush} onDiscardLocal={discardLocalAndPull} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} syncDetail={syncDetail} syncNotice={syncNotice} onDismissNotice={()=>setSyncNotice('')} onManualPush={manualPush} onDiscardLocal={discardLocalAndPull} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
       </main>
     </div>
   );
@@ -6284,6 +6514,9 @@ const App=()=>{
 // on demand: grids/covers are viewport-gated (<Img>/<BgImg>), opening a card warms
 // a bounded prefix of thumbnails, and full-res is fetched only in the lightbox.
 ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
+// Pre-warm THUMBNAILS (not originals) during idle, once the first view has
+// settled — so navigating to a post finds its images already in memory.
+setTimeout(()=>_idleCb(warmThumbCache),1200);
 </script>
 </body>
 </html>
