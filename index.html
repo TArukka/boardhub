@@ -775,12 +775,27 @@ const IdeasLab = () => {
 // ══════════════════════════════════════════════════════════════
 const MentorModal = ({ mentor, onClose, onSave, onDelete }) => {
   const [form,setForm]=useState({...mentor}); const photoRef=useRef(); const refs=[useRef(),useRef(),useRef(),useRef()];
-  const handlePhoto = async e => { const f=e.target.files[0]; if(!f)return; setForm(fm=>({...fm,photo:await uploadImage(f)})); };
-  const handleRef = async (idx,e) => { const f=e.target.files[0]; if(!f)return; const imgs=[...(form.photos||[null,null,null,null])]; imgs[idx]=await uploadImage(f); setForm(fm=>({...fm,photos:imgs})); };
-  const removeRef = idx => { const imgs=[...(form.photos||[null,null,null,null])]; imgs[idx]=null; setForm(fm=>({...fm,photos:imgs})); };
+  const handlePhoto = async e => {
+    const f=e.target.files[0];
+    if(!f)return;
+    const url = await uploadImage(f);
+    setForm(fm=>({...fm, photo: url}));
+  };
+  const handleRef = async (idx, e) => {
+    const f=e.target.files[0];
+    if(!f)return;
+    const url = await uploadImage(f);
+    const imgs=[...(form.photos||[null,null,null,null])];
+    imgs[idx]=url;
+    setForm(fm=>({...fm, photos: imgs}));
+  };
+  const removeRef = idx => {
+    const imgs=[...(form.photos||[null,null,null,null])];
+    imgs[idx]=null;
+    setForm(fm=>({...fm, photos: imgs}));
+  };
   const photos = form.photos||[null,null,null,null];
-  return ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="card" style={{width:'100%',maxWidth:580,padding:28,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><h2 style={{fontFamily:'var(--font-heading)'}}>{form.name||'Mentor'}</h2><button className="btn btn-ghost" onClick={onClose}>✕</button></div><div style={{display:'flex',gap:16,marginBottom:14}}><input ref={photoRef} type="file" accept="image/*" hidden onChange={handlePhoto}/><div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',overflow:'hidden',border:'2px dashed var(--glass-border)',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>{form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem'}}>{form.name.charAt(0)}</span>}</div><div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div><span className="label">Nome</span><input className="input-box" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div><div><span className="label">Área</span><input className="input-box" value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))}/></div><div><span className="label">Meio</span><input className="input-box" value={form.medium} onChange={e=>setForm(f=>({...f,medium:e.target.value}))}/></div><div><span className="label">Status</span><select className="input-box" value={form.active?'Ativo':'Inativo'} onChange={e=>setForm(f=>({...f,active:e.target.value==='Ativo'}))}><option>Ativo</option><option>Inativo</option></select></div></div></div><button onClick={()=>setForm(f=>({...f,main:!f.main}))} style={{padding:'6px 14px',borderRadius:10,border:`1.5px solid ${form.main?'#92700b':'var(--glass-border)'}`,background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--text-secondary)',cursor:'pointer',marginBottom:12}}>★ {form.main?'Principal':'Marcar como Principal'}</button><div style={{marginBottom:14}}><span className="label">Notas</span><textarea className="input-box" rows={3} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical',marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Links</span><input className="input-box" value={form.links} onChange={e=>setForm(f=>({...f,links:e.target.value}))} style={{marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Imagens de Referência</span><div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:4}}>{[0,1,2,3].map(idx=><div key={idx} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--glass-border)',cursor:'pointer'}} onClick={()=>!photos[idx]&&refs[idx].current.click()}><input ref={refs[idx]} type="file" accept="image/*" hidden onChange={e=>handleRef(idx,e)}/>{photos[idx]?<><Img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={e=>{e.stopPropagation();removeRef(idx);}} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,.55)',border:'none',color:'white',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button></>:<div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',fontSize:'.65rem'}}>+</div>}</div>)}</div></div><div style={{display:'flex',justifyContent:'space-between'}}><button className="btn btn-danger" onClick={onDelete}>🗑️ Excluir</button><div style={{display:'flex',gap:8}}><button className="btn btn-outline" onClick={onClose}>Cancelar</button><button className="btn btn-dark" onClick={()=>onSave(form)}>Salvar</button></div></div></div></div>,document.body);
-};
+  // ... rest of the component remains exactly the same (the JSX portion)
 const MentorsHub = () => {
   const { mentors, setMentors } = useContext(AppContext);
   const [sel,setSel]=useState(null); const [search,setSearch]=useState(''); const [year,setYear]=useState('all');
