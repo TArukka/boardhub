@@ -1,893 +1,1025 @@
-<!--
-BoardHub v4 – Final polished version.
-Auto-save fixed, shape drawing undo history cleaned, all core features robust.
-Fabric.js v5, accurate Pomodoro, classy UI, single-file.
--->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>BoardHub – Classy Whiteboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
-  <style>
-    :root {
-      --bg: #F5EEDC;
-      --surface: rgba(255,248,240,0.94);
-      --text: #2C1E16;
-      --text-secondary: #5A4A3E;
-      --accent: #D4A843;
-      --accent-glow: rgba(212,168,67,0.35);
-      --accent2: #C17A5E;
-      --glass-border: rgba(255,255,255,0.3);
-      --shadow: 0 8px 32px rgba(0,0,0,0.1);
-      --radius: 14px;
-      --transition: 0.3s cubic-bezier(0.4,0,0.2,1);
-      --font-heading: 'Playfair Display', serif;
-      --font-ui: 'Inter', sans-serif;
-    }
-    body.dark {
-      --bg: #2C1E16;
-      --surface: rgba(44,30,22,0.96);
-      --text: #F5EEDC;
-      --text-secondary: #B8A99A;
-      --accent: #D4A843;
-      --accent-glow: rgba(212,168,67,0.25);
-      --accent2: #C17A5E;
-      --glass-border: rgba(255,255,255,0.08);
-      --shadow: 0 8px 32px rgba(0,0,0,0.5);
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-      font-family: var(--font-ui);
-      background: var(--bg);
-      color: var(--text);
-      transition: background var(--transition), color var(--transition);
-      overflow: hidden;
-      height: 100vh;
-      user-select: none;
-    }
-    #app { display:flex; height:100vh; width:100vw; position:relative; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>BoardHub — Storyboard OS</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════
+   BoardHub Complete — Classy & Jazzy
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  --bg: #F5EEDC;
+  --surface: rgba(255,248,240,0.96);
+  --text: #2C1E16;
+  --text-secondary: #5A4A3E;
+  --accent: #D4A843;
+  --accent-glow: rgba(212,168,67,0.35);
+  --accent2: #C17A5E;
+  --glass-border: rgba(255,255,255,0.3);
+  --shadow: 0 8px 32px rgba(28,25,23,0.1);
+  --radius: 14px;
+  --transition: 0.3s cubic-bezier(0.4,0,0.2,1);
+  --font-heading: 'Cormorant Garamond', serif;
+  --font-ui: 'Figtree', sans-serif;
+}
+body.dark {
+  --bg: #2C1E16;
+  --surface: rgba(44,30,22,0.96);
+  --text: #F5EEDC;
+  --text-secondary: #B8A99A;
+  --accent: #D4A843;
+  --accent-glow: rgba(212,168,67,0.25);
+  --accent2: #C17A5E;
+  --glass-border: rgba(255,255,255,0.08);
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  transition: background var(--transition), color var(--transition);
+  overflow-x: hidden;
+  height: 100vh;
+  user-select: none;
+}
+#root { height:100vh; display:flex; }
 
-    #layers-panel {
-      position:absolute; left:-320px; top:0; width:300px; height:100%;
-      background:var(--surface); backdrop-filter:blur(24px);
-      border-right:1px solid var(--glass-border); box-shadow:var(--shadow);
-      z-index:1000; display:flex; flex-direction:column; transition:left var(--transition);
-      padding:20px 14px; color:var(--text);
-    }
-    #layers-panel.open { left:0; }
-    .layers-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
-    .layers-header h3 { font-family:var(--font-heading); font-size:1.3rem; color:var(--accent); }
-    #layers-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
-    .layer-item { display:flex; align-items:center; gap:6px; background:rgba(0,0,0,0.05); border-radius:8px; padding:6px 8px; cursor:pointer; transition:background 0.2s; }
-    body.dark .layer-item { background:rgba(255,255,255,0.08); }
-    .layer-item.selected { background:var(--accent-glow); }
-    .layer-item input { flex:1; background:transparent; border:none; outline:none; font-size:0.85rem; color:inherit; font-family:var(--font-ui); }
-    .layer-item button { background:none; border:none; color:inherit; cursor:pointer; font-size:0.9rem; }
-    .layer-item button:hover { color:var(--accent); }
+/* ═══════ GLOBAL CLASSES ═══════ */
+.card{background:var(--surface);border:1px solid var(--glass-border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
+.card:hover{border-color:var(--accent);box-shadow:var(--shadow);}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:var(--font-ui);font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;}
+.btn-dark{background:var(--text);color:var(--bg);} .btn-dark:hover{opacity:0.9;}
+.btn-outline{background:transparent;color:var(--text-secondary);border:1px solid var(--glass-border);} .btn-outline:hover{border-color:var(--text);color:var(--text);}
+.btn-ghost{background:transparent;color:var(--text-secondary);border:none;padding:6px 10px;}
+.btn-ghost:hover{color:var(--text);}
+.btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;} .btn-danger:hover{background:#FEE2E2;}
+.tag{display:inline-block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:4px;}
+.tag-green{background:#E8F5EC;color:#276b3e;} .tag-yellow{background:#FEF9E7;color:#92700b;} .tag-gray{background:#F0EDE9;color:var(--text-secondary);} .tag-red{background:#FDEDED;color:#9B1C1C;}
+.input-box{background:var(--bg);border:1px solid var(--glass-border);border-radius:8px;padding:8px 12px;font-family:var(--font-ui);font-size:.85rem;color:var(--text);outline:none;width:100%;transition:border-color .2s;}
+.input-box:focus{border-color:var(--text);}
+.label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text-secondary);}
+.tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:var(--font-ui);font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
+.fade-up{animation:fadeUp .35s ease both;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
 
-    #canvas-container { flex:1; position:relative; background:transparent; }
-    canvas { display:block; }
+/* ═══════ SIDEBAR ═══════ */
+.sidebar{width:220px;min-width:220px;border-right:1px solid var(--glass-border);height:100vh;position:fixed;top:0;left:0;background:var(--surface);display:flex;flex-direction:column;padding:22px 14px 18px;z-index:30;overflow-y:auto;}
+.main-content{margin-left:220px;flex:1;padding:24px 32px;overflow-y:auto;height:100vh;box-sizing:border-box;}
 
-    #toolbar {
-      position:absolute; top:20px; left:50%; transform:translateX(-50%);
-      z-index:900; display:flex; flex-wrap:wrap; gap:5px; padding:8px 14px;
-      background:var(--surface); backdrop-filter:blur(24px); border-radius:40px;
-      border:1px solid var(--glass-border); box-shadow:var(--shadow); transition:all var(--transition);
-    }
-    #toolbar button, #toolbar .color-input-wrap {
-      background:transparent; border:none; color:var(--text); font-size:1rem;
-      padding:8px 12px; border-radius:30px; cursor:pointer; transition:all 0.2s;
-      display:flex; align-items:center; gap:4px; font-family:var(--font-ui); font-weight:500; white-space:nowrap;
-    }
-    #toolbar button:hover, #toolbar button.active { background:var(--accent-glow); color:var(--accent); }
-    #toolbar button:active { transform:scale(0.96); }
-    .color-input-wrap { position:relative; display:flex; align-items:center; }
-    #colorPicker { width:28px; height:28px; border:none; border-radius:50%; cursor:pointer; }
-    #brushSize { width:70px; accent-color:var(--accent); }
+/* ═══════ MOBILE ═══════ */
+.bottom-tab-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:80;background:var(--surface);backdrop-filter:blur(12px);border-top:1px solid var(--glass-border);padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
+.mobile-header{display:none;position:sticky;top:0;z-index:50;background:var(--surface);backdrop-filter:blur(12px);border-bottom:1px solid var(--glass-border);padding:14px 16px;align-items:center;justify-content:space-between;}
+.fab{display:none;position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:var(--bg);border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:70;align-items:center;justify-content:center;font-size:1.5rem;}
+@keyframes moreSheetIn{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
+.more-sheet-overlay{position:fixed;inset:0;z-index:90;animation:moreOverlayIn .2s ease;}
+@keyframes moreOverlayIn{from{opacity:0;}to{opacity:1;}}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .3s cubic-bezier(.32,.72,.5,1.02);max-height:70vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(28,25,23,.15);}
+.more-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--text-secondary);margin:0 auto 16px;}
+.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:var(--font-ui);font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s;}
+.more-sheet-item:active{background:var(--bg);}
+.more-sheet-item.active-sheet{background:var(--accent-glow);}
+@media(max-width:768px){
+  .sidebar{display:none;}
+  .main-content{margin-left:0;padding:0 16px 80px;height:auto;min-height:calc(100vh - 56px);overflow-y:auto;}
+  .bottom-tab-bar{display:flex;align-items:stretch;justify-content:space-around;}
+  .mobile-header{display:flex;}
+  .fab{display:flex;}
+}
+.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:var(--font-ui);font-size:.62rem;font-weight:600;color:var(--text-secondary);padding:6px 2px;transition:color .15s;}
+.bottom-tab-item.active{color:var(--text);}
 
-    #pomodoro-widget {
-      position:absolute; bottom:30px; right:30px; z-index:950;
-      background:var(--surface); backdrop-filter:blur(20px); border-radius:24px;
-      border:1px solid var(--glass-border); box-shadow:var(--shadow);
-      padding:18px; display:flex; flex-direction:column; align-items:center; gap:10px;
-      transition:all var(--transition); min-width:200px; cursor:grab;
-    }
-    #pomodoro-widget:active { cursor:grabbing; }
-    #pomodoro-widget.minimized {
-      border-radius:50%; min-width:70px; min-height:70px; padding:10px;
-      justify-content:center; bottom:20px; right:20px;
-    }
-    #pomodoro-widget.minimized .timer-controls,
-    #pomodoro-widget.minimized .timer-stats,
-    #pomodoro-widget.minimized .tick-toggle { display:none; }
-    #pomodoro-widget.minimized #timer-display { font-size:1.2rem; }
-    #timer-display { font-family:var(--font-heading); font-size:2rem; font-weight:700; color:var(--accent); }
-    .timer-controls { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
-    .timer-controls button {
-      background:rgba(0,0,0,0.06); border:none; border-radius:20px; padding:6px 14px;
-      cursor:pointer; color:var(--text); font-weight:500; font-size:0.85rem; transition:background 0.2s;
-    }
-    body.dark .timer-controls button { background:rgba(255,255,255,0.1); }
-    .timer-controls button:hover { background:var(--accent-glow); }
-    #pomodoro-ring { width:100px; height:100px; position:relative; }
-    #pomodoro-ring svg { transform:rotate(-90deg); width:100px; height:100px; }
-    #pomodoro-ring .bg { fill:none; stroke:rgba(128,128,128,0.2); stroke-width:6; }
-    #pomodoro-ring .progress { fill:none; stroke:var(--accent); stroke-width:6; stroke-linecap:round; transition:stroke-dashoffset 0.3s linear; }
-    .tick-toggle { display:flex; align-items:center; gap:4px; font-size:0.75rem; color:var(--text-secondary); }
-    .tick-toggle button { background:transparent; border:1px solid var(--glass-border); border-radius:12px; padding:2px 8px; color:var(--text); cursor:pointer; }
+/* ═══════ DASHBOARD, POMODORO, ETC ═══════ */
+.stat-card{padding:12px 16px;display:flex;align-items:center;gap:12px;}
+.project-card{padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+.task-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--glass-border);}
+.task-check{width:18px;height:18px;border-radius:5px;border:2px solid var(--glass-border);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.task-check.done{background:var(--text);border-color:var(--text);}
+.task-check.done::after{content:'';width:5px;height:9px;border:2px solid var(--bg);border-top:none;border-left:none;transform:rotate(45deg) translate(-1px,-1px);}
+.progress-ring{transform:rotate(-90deg);}
 
-    @media (max-width:768px) {
-      #toolbar { top:10px; gap:3px; padding:6px 8px; }
-      #toolbar button { font-size:0.8rem; padding:6px 8px; }
-      #pomodoro-widget { bottom:10px; right:10px; }
-      #layers-panel { width:260px; }
-    }
-    .hidden { display:none!important; }
-    button:focus-visible { outline:2px solid var(--accent); }
-  </style>
+/* ═══════ COMMAND PALETTE ═══════ */
+@keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
+.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);}
+.cmd-palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--glass-border);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.3);overflow:hidden;animation:cmdIn .2s cubic-bezier(.32,.72,.5,1.02);}
+.cmd-input-wrap{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--glass-border);}
+.cmd-input{flex:1;border:none;outline:none;background:transparent;font-family:var(--font-ui);font-size:1rem;color:var(--text);}
+.cmd-results{max-height:340px;overflow-y:auto;padding:8px;}
+.cmd-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;cursor:pointer;transition:background .1s;font-size:.88rem;}
+.cmd-item:hover,.cmd-item.cmd-active{background:var(--accent-glow);}
+.cmd-item-title{font-weight:600;font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cmd-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:5px;background:var(--bg);border:1px solid var(--glass-border);font-size:.68rem;font-weight:600;color:var(--text-secondary);}
+.cmd-footer{display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--glass-border);font-size:.72rem;color:var(--text-secondary);}
+
+/* ═══════ QUICK CAPTURE ═══════ */
+@keyframes quickCaptureIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+.quick-capture{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:85;background:var(--surface);border:1px solid var(--glass-border);border-radius:14px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;animation:quickCaptureIn .25s;min-width:320px;max-width:min(480px,90vw);}
+.quick-capture input{flex:1;border:none;outline:none;background:transparent;font-family:var(--font-ui);font-size:.9rem;color:var(--text);}
+
+/* ═══════ RICH EDITOR ═══════ */
+.rich-editor{outline:none;word-break:break-word;overflow-y:auto;min-height:80px;}
+.rich-editor:empty:before{content:attr(data-placeholder);color:var(--text-secondary);pointer-events:none;}
+.rich-toolbar-btn{display:flex;align-items:center;justify-content:center;width:28px;height:26px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:var(--text-secondary);transition:background .12s,color .12s;flex-shrink:0;}
+.rich-toolbar-btn:hover{background:var(--bg);color:var(--text);}
+
+/* ═══════ LIGHTBOX ═══════ */
+.lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
+.lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;cursor:default;}
+
+/* ═══════ GANTT ═══════ */
+.gantt-bar{transition:opacity .12s,box-shadow .12s;}
+.gantt-bar:hover{opacity:.88;}
+
+/* ═══════ COVER EDIT ═══════ */
+.cover-wrap{position:relative;overflow:hidden;}
+.cover-edit-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .25s;cursor:pointer;}
+.cover-wrap:hover .cover-edit-overlay{background:rgba(0,0,0,.45);opacity:1;}
+</style>
 </head>
 <body class="dark">
-  <div id="app">
-    <div id="layers-panel">
-      <div class="layers-header">
-        <h3>Layers</h3>
-        <button id="closeLayersBtn" style="background:none;border:none;font-size:1.2rem;color:var(--text);cursor:pointer;">✕</button>
-      </div>
-      <div id="layers-list"></div>
-    </div>
+<div id="root"></div>
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } = React;
 
-    <div id="toolbar">
-      <button id="layersToggle" title="Layers">📑</button>
-      <button id="selectTool" class="active" title="Select/Move">🖱️</button>
-      <button id="penTool" title="Pen">✒️</button>
-      <button id="eraserTool" title="Eraser">🧹</button>
-      <button id="rectTool" title="Rectangle">⬜</button>
-      <button id="circleTool" title="Circle">🔵</button>
-      <button id="lineTool" title="Line">📏</button>
-      <button id="textTool" title="Text">T</button>
-      <button id="stickyTool" title="Sticky Note">📝</button>
-      <button id="imageTool" title="Upload Image">🖼️</button>
-      <input type="file" id="imageInput" accept="image/*" hidden>
-      <button id="panTool" title="Pan">✋</button>
-      <span class="color-input-wrap"><input type="color" id="colorPicker" value="#D4A843"></span>
-      <input type="range" id="brushSize" min="1" max="50" value="4" title="Brush size">
-      <button id="undoBtn" title="Undo">↩️</button>
-      <button id="redoBtn" title="Redo">↪️</button>
-      <button id="gridToggle" title="Toggle Grid">📐</button>
-      <button id="themeToggle" title="Toggle Theme">🌓</button>
-      <button id="soundToggleBtn" title="Sound">🔊</button>
-      <button id="exportPNGBtn" title="Export PNG">🖼️↓</button>
-      <button id="exportSVGBtn" title="Export SVG">📄↓</button>
-      <button id="exportJSONBtn" title="Export JSON">💾</button>
-      <button id="importJSONBtn" title="Import JSON">📂</button>
-      <input type="file" id="importFileInput" accept=".json" hidden>
-    </div>
+// ══════════════════════════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════════════════════════
+const localDateISO = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const daysBetween = (a,b) => Math.round((new Date(b)-new Date(a))/86400000);
+const addDays = (s,d) => { const dt=new Date(s+'T12:00:00'); dt.setDate(dt.getDate()+d); return localDateISO(dt); };
+const todayISO = () => localDateISO();
+const deadlineInfo = dl => {
+  if(!dl) return null;
+  const diff=daysBetween(todayISO(),dl);
+  const date = new Date(dl+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');
+  if(diff<0) return {label:'atrasado '+Math.abs(diff)+'d',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
+  if(diff===0) return {label:'hoje!',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
+  if(diff===1) return {label:'amanhã',date,color:'#92700b',bg:'#FEF9E7',urgent:true};
+  if(diff<=7) return {label:'em '+diff+'d',date,color:'#92700b',bg:'#FEF9E7',urgent:false};
+  return {label:'em '+diff+'d',date,color:'var(--text-secondary)',bg:'var(--bg)',urgent:false};
+};
+const statusTag = s => ({'Em Andamento':'tag-green','Pausado':'tag-yellow','Concluído':'tag-gray','Cancelado':'tag-red'}[s]||'tag-gray');
+const fmtBRL = v => { const n=Number(v); return n&&!isNaN(n)?n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0}):null; };
+const fmtShort = d => { if(!d) return ''; const dt=new Date(d+'T12:00:00'); return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}); };
 
-    <div id="canvas-container">
-      <canvas id="boardCanvas"></canvas>
-    </div>
+// ══════════════════════════════════════════════════════════════
+// SEED DATA
+// ══════════════════════════════════════════════════════════════
+const _sd = (o) => { const d=new Date(); d.setDate(d.getDate()+o); return localDateISO(d); };
+const SEED = {
+  projects:[
+    {id:1,type:'work',title:"Comercial Nike Summer",client:"Wieden+Kennedy",status:"Em Andamento",startDate:_sd(-14),deadline:_sd(21),deleted:false,cover:"https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&q=80&w=1200",notes:"Referências de motion blur.",mentors:[],researchNotes:[],projectTasks:[{id:1,text:"Roughs v1",status:"Fazendo",startDate:localDateISO(),dueDate:_sd(7)},{id:2,text:"Cores finais",status:"Pendente",startDate:_sd(8),dueDate:_sd(14)}],timelineEvents:[],shotsTotal:12,shotsDone:4,budget:2500,paid:false},
+    {id:2,type:'personal',title:"Graphic Novel 'Ecos'",client:"Projeto Autoral",status:"Pausado",startDate:_sd(-45),deadline:_sd(60),deleted:false,cover:"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200",notes:"Estudo de arquitetura brutalista.",mentors:[],researchNotes:[],projectTasks:[],timelineEvents:[]},
+    {id:3,type:'work',title:"Série Documental — Amazônia",client:"TV Cultura",status:"Concluído",startDate:_sd(-90),deadline:_sd(-30),deleted:false,cover:"https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1200",notes:"Projeto concluído.",mentors:[],researchNotes:[],projectTasks:[{id:3,text:"Entrega final",status:"Concluído"}],timelineEvents:[]}
+  ],
+  clients:[
+    {id:1,name:"Fernanda Costa",company:"O2 Filmes",email:"fer@o2.com",role:"Produtora Executiva",status:"Ativo",notes:"",photo:"",deleted:false},
+    {id:2,name:"Carlos Mendes",company:"Freelance",email:"carlos@gmail.com",role:"Diretor",status:"Lead",notes:"",photo:"",deleted:false}
+  ],
+  mentors:[{id:1,name:"Hayao Miyazaki",area:"Narrativa Visual",medium:"Animação",notes:"Estudar uso de silêncio.",links:"",active:true,main:true,photo:"",photos:[null,null,null,null],deleted:false}],
+  notes:[{id:1,title:"Ideia para Curta",content:"Um robô que quer ser pintor.",date:"Hoje",deleted:false}],
+  tasks:[{id:1,text:"Revisar roughs do Nike",done:false,noteId:null}],
+  socialPosts:[],
+  galleryPosts:[],
+  galleryFolders:[{id:'work',label:'Work',deleted:false},{id:'movie-studies',label:'Movie Studies',deleted:false},{id:'sketchbooks',label:'Sketchbook',deleted:false}],
+  noteGroups:[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}]
+};
 
-    <div id="pomodoro-widget">
-      <div id="pomodoro-ring">
-        <svg viewBox="0 0 36 36">
-          <path class="bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
-          <path id="progressPath" class="progress" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-dasharray="100,100" stroke-dashoffset="0"/>
-        </svg>
-        <div id="timer-display" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);">25:00</div>
-      </div>
-      <div class="timer-stats" style="font-size:0.75rem;color:var(--text-secondary);">🍅 <span id="focusMinutes">0</span> min focus</div>
-      <div class="timer-controls">
-        <button id="timerStartBtn">▶ Start</button>
-        <button id="timerPauseBtn" style="display:none;">⏸ Pause</button>
-        <button id="timerResetBtn">↺ Reset</button>
-        <button id="timerSkipBtn">⏭ Skip</button>
-      </div>
-      <div class="tick-toggle">
-        <span>⏱️ Tick</span>
-        <button id="tickToggleBtn">On</button>
-      </div>
-    </div>
-  </div>
+// ══════════════════════════════════════════════════════════════
+// LOCAL STORAGE & BACKUP
+// ══════════════════════════════════════════════════════════════
+const LS_KEY = 'boardhub_v2';
+const lsLoad = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; } };
+const lsSave = s => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} };
+const THEME_KEY = 'boardhub_theme';
+const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch { return 'dark'; } };
 
-  <script>
-    (() => {
-      // ==================== CONFIG & STATE ====================
-      const WORK_MINUTES = 25;
-      const WORK_SECONDS = WORK_MINUTES * 60;
-      const BREAK_MINUTES = 5;
-      const BREAK_SECONDS = BREAK_MINUTES * 60;
+const BH_HISTORY_KEY = 'boardhub_backup_history';
+const bhSig = s => { const str = JSON.stringify(s); let h=5381; for(let i=0;i<str.length;i++) h=((h<<5)+h+str.charCodeAt(i))|0; return String(h); };
+const bhHistoryLoad = () => { try { return JSON.parse(localStorage.getItem(BH_HISTORY_KEY)) || []; } catch { return []; } };
+const bhLastAtKey = 'boardhub_backup_last_at';
+let _bhLastAt = null;
+const bhLastAt = () => { if(_bhLastAt!==null)return _bhLastAt; try{const v=localStorage.getItem(bhLastAtKey);if(v){_bhLastAt=v;return v;}}catch{} const l=bhHistoryLoad(); _bhLastAt=(l[0]&&l[0].at)||''; return _bhLastAt; };
+const bhMarkCaptured = at => { _bhLastAt=at; try{localStorage.setItem(bhLastAtKey,at);}catch{} };
+const bhRetention = list => {
+  const dailies=[], others=[];
+  list.forEach(e=>(e.reason==='daily'?dailies:others).push(e));
+  const byWeekday=new Map();
+  dailies.forEach(e=>{ const wd=new Date(e.at).getDay(); const cur=byWeekday.get(wd); if(!cur||e.at>cur.at) byWeekday.set(wd,e); });
+  const keptDailies=[...byWeekday.values()];
+  const keptOthers=[], seenDays=new Set();
+  others.forEach((e,i)=>{ if(i<6){keptOthers.push(e);seenDays.add(e.at.slice(0,10));return;} const day=e.at.slice(0,10); if(!seenDays.has(day)){keptOthers.push(e);seenDays.add(day);} });
+  return [...keptDailies,...keptOthers.slice(0,12)].sort((a,b)=>a.at<b.at?1:-1);
+};
+const bhCapture = (state, reason) => {
+  try {
+    if(!state || !state.projects) return false;
+    const sig = bhSig(state);
+    let list = bhHistoryLoad();
+    if(reason==='daily'){ const wd=new Date().getDay(); const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd); if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===localDateISO())return false; }
+    else { if(list[0]&&list[0].sig===sig)return false; }
+    const entry = { at: new Date().toISOString(), reason, sig, state };
+    list = bhRetention([entry, ...list]);
+    localStorage.setItem(BH_HISTORY_KEY, JSON.stringify(list));
+    bhMarkCaptured(entry.at);
+    const last = bhLastAt();
+    if(!last || Date.now()-new Date(last).getTime()>30*60*1000) bhMarkCaptured(new Date().toISOString());
+    return true;
+  } catch { return false; }
+};
 
-      const state = {
-        darkMode: true,
-        soundEnabled: true,
-        tool: 'select',
-        color: '#D4A843',
-        brushSize: 4,
-        gridVisible: true,
-      };
+// ══════════════════════════════════════════════════════════════
+// INDEXEDDB IMAGE STORE (batched reads)
+// ══════════════════════════════════════════════════════════════
+const IDB_NAME='boardhub_images', IDB_STORE='images';
+let _idb=null, _idbP=null;
+const openIdb = () => {
+  if(_idb?.objectStoreNames) { try { _idb.transaction(IDB_STORE,'readonly').abort(); return Promise.resolve(_idb); } catch { _idb=null; } }
+  if(_idbP) return _idbP;
+  _idbP = new Promise((res,rej) => { const r=indexedDB.open(IDB_NAME,1); r.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE); r.onsuccess=e=>{_idb=e.target.result;_idbP=null;res(_idb);}; r.onerror=e=>{_idbP=null;rej(e.target.error);}; });
+  return _idbP;
+};
+const idbPut = (k,b) => openIdb().then(db=>new Promise((res,rej)=>{const t=db.transaction(IDB_STORE,'readwrite');t.objectStore(IDB_STORE).put(b,k);t.oncomplete=()=>res();t.onerror=e=>rej(e.target.error);}));
+const _readQ=[];
+let _readScheduled=false;
+const _flushReads=()=>{ _readScheduled=false; const batch=_readQ.splice(0,_readQ.length); if(!batch.length)return; openIdb().then(db=>{try{const tx=db.transaction(IDB_STORE,'readonly');const store=tx.objectStore(IDB_STORE);batch.forEach(item=>{try{const r=store.get(item.key);r.onsuccess=e=>item.res(e.target.result);r.onerror=()=>item.res(undefined);}catch{item.res(undefined);}});tx.onerror=()=>batch.forEach(i=>i.res(undefined));}catch{batch.forEach(i=>i.res(undefined));}}); };
+const idbGet = key => new Promise(res=>{ _readQ.push({key,res}); if(!_readScheduled){_readScheduled=true;Promise.resolve().then(_flushReads);} });
 
-      const pomodoro = {
-        mode: 'work',
-        status: 'idle',
-        startTime: null,
-        elapsedBeforePause: 0,
-        totalDuration: WORK_SECONDS,
-        totalFocusMinutes: 0,
-        tickEnabled: true,
-        lastDisplayedSecond: -1,
-      };
+const THUMB_MAX=480;
+const _makeThumbBlob = async blob => {
+  if(typeof createImageBitmap==='function'){try{const bmp=await createImageBitmap(blob);if(Math.max(bmp.width,bmp.height)<=THUMB_MAX){bmp.close();return blob;}const r=THUMB_MAX/Math.max(bmp.width,bmp.height),w=Math.round(bmp.width*r),h=Math.round(bmp.height*r);const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(bmp,0,0,w,h);bmp.close();return await new Promise(res=>c.toBlob(b=>res(b||blob),'image/webp',0.72));}catch{}}
+  return await new Promise(res=>{const img=new Image(),u=URL.createObjectURL(blob);img.onload=()=>{URL.revokeObjectURL(u);const r=THUMB_MAX/Math.max(img.width,img.height);const c=document.createElement('canvas');c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(b=>res(b||blob),'image/webp',0.72);};img.onerror=()=>{URL.revokeObjectURL(u);res(blob);};img.src=u;});
+};
+const _compressImage = async file => {
+  if(file.type==='image/gif'||file.size<60*1024)return file;
+  return new Promise(res=>{const img=new Image(),objUrl=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(objUrl);const MAX=1400;let w=img.width,h=img.height;if(w>MAX||h>MAX){const r=MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);c.toBlob(b=>res(b&&b.size<file.size?b:file),'image/webp',0.82);};img.onerror=()=>{URL.revokeObjectURL(objUrl);res(file);};img.src=objUrl;});
+};
+const uploadImage = async file => {
+  const c=await _compressImage(file); const k='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  await idbPut(k,c); try{const tb=await _makeThumbBlob(c);await idbPut('thumb_'+k,tb);_thumbCache[k]=URL.createObjectURL(tb);}catch{} return 'idb://'+k;
+};
+const uploadImages = async (files,onP) => { const r=[]; for(let i=0;i<files.length;i++){r.push(await uploadImage(files[i]));if(onP)onP(i+1,files.length);} return r; };
+const _thumbCache = {};
+const getThumbUrl = async k => { if(_thumbCache[k])return _thumbCache[k]; try{const tb=await idbGet('thumb_'+k);if(tb){_thumbCache[k]=URL.createObjectURL(tb);return _thumbCache[k];}const full=await idbGet(k);if(!full)return'';const nb=await _makeThumbBlob(full);await idbPut('thumb_'+k,nb).catch(()=>{});_thumbCache[k]=URL.createObjectURL(nb);return _thumbCache[k];}catch{return'';} };
 
-      let undoStack = [];
-      let redoStack = [];
-      const MAX_HISTORY = 50;
-      let canvas;
-      const GRID_FLAG = 'isGridLine';
-      let isDrawingShape = false; // flag to suppress object:added during shape creation
+const useInView = (enabled) => {
+  const hasIO = typeof IntersectionObserver !== 'undefined';
+  const [inView, setInView] = useState(!enabled || !hasIO);
+  const obsRef = useRef(null);
+  const setRef = useCallback(node => {
+    if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
+    if(inView || !enabled || !hasIO || !node) return;
+    obsRef.current = new IntersectionObserver(entries=>{ if(entries.some(e=>e.isIntersecting)){setInView(true);obsRef.current?.disconnect();obsRef.current=null;} }, {rootMargin:'600px'});
+    obsRef.current.observe(node);
+  }, [inView, enabled, hasIO]);
+  useEffect(()=>()=>{obsRef.current?.disconnect();},[]);
+  return [setRef, inView];
+};
+const useDisplayUrl = (src, thumb=true) => {
+  const [url,setUrl]=useState(''); const gate = typeof src==='string'&&src.startsWith('idb://');
+  const [ref, inView] = useInView(gate);
+  useEffect(()=>{
+    if(!src||typeof src!=='string'){setUrl('');return;}
+    if(!src.startsWith('idb://')){setUrl(src);return;}
+    if(!inView) return;
+    let cancelled=false;
+    const key=src.slice(6);
+    getThumbUrl(key).then(u=>{if(!cancelled)setUrl(u||'');});
+    return()=>{cancelled=true;};
+  },[src,thumb,inView]);
+  return [url||src, ref];
+};
+const Img = ({src, ...props}) => { const [url,ref]=useDisplayUrl(src,true); return url ? <img ref={ref} src={url} {...props}/> : <div ref={ref} style={{background:'var(--glass-border)',...props.style}}/>; };
+const BgImg = ({src, style, children, ...props}) => { const [url,ref]=useDisplayUrl(src,true); return <div ref={ref} style={{backgroundImage:url?`url(${url})`:'none',backgroundSize:'cover',backgroundPosition:'center',...style}} {...props}>{children}</div>; };
+const isVideoSrc = src => /\.(mp4|webm|mov|avi|mkv|m4v|ogv)(\?|$|#)/i.test(src);
+const Vid = ({src, ...props}) => { const [url]=useDisplayUrl(src,false); return url?<video src={url} {...props}/>:null; };
+const imgKey = (src,i,list) => String(src)+(list.indexOf(src)===i?'':'#'+i);
 
-      // ==================== AUDIO ====================
-      let audioCtx = null;
-      function initAudio() {
-        if (audioCtx) return;
-        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { console.warn('Web Audio not supported'); }
+// HTML Sanitizer
+const _BAD_PROTO = /^\s*(?:javascript:|vbscript:|data:text\/html)/i;
+const sanitizeHTML = html => {
+  if(!html||typeof html!=='string')return html||'';
+  try{const t=document.createElement('template');t.innerHTML=html;t.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form,base').forEach(el=>el.remove());t.content.querySelectorAll('*').forEach(el=>{[...el.attributes].forEach(a=>{const n=a.name.toLowerCase();if(n.startsWith('on')||n==='srcdoc'||n==='formaction')el.removeAttribute(a.name);else if((n==='href'||n==='src'||n==='xlink:href'||n==='action')&&_BAD_PROTO.test(a.value))el.removeAttribute(a.name);});});return t.innerHTML;}catch{return html;}
+};
+
+// ══════════════════════════════════════════════════════════════
+// CONTEXT
+// ══════════════════════════════════════════════════════════════
+const AppContext = createContext(null);
+
+// ══════════════════════════════════════════════════════════════
+// POMODORO TIMER (Full)
+// ══════════════════════════════════════════════════════════════
+let _sharedAudioCtx = null;
+const _getAudioCtx = () => { try{ if(!_sharedAudioCtx||_sharedAudioCtx.state==='closed') _sharedAudioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(_sharedAudioCtx.state==='suspended')_sharedAudioCtx.resume(); return _sharedAudioCtx; }catch{return null;} };
+const _playNote = (ctx, freq, startT, vol, decay, type='triangle', detune=0) => { const osc=ctx.createOscillator(), gain=ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.type=type; osc.frequency.setValueAtTime(freq,startT); if(detune)osc.detune.setValueAtTime(detune,startT); gain.gain.setValueAtTime(0,startT); gain.gain.linearRampToValueAtTime(vol,startT+0.018); gain.gain.exponentialRampToValueAtTime(0.001,startT+decay); osc.start(startT); osc.stop(startT+decay+0.05); };
+const playPomoSound = type => { const ctx=_getAudioCtx(); if(!ctx)return; const T=ctx.currentTime; if(type==='work_end'){[493.88,392.00,329.63,261.63,196.00].forEach((f,i)=>{_playNote(ctx,f,T+i*0.3,0.24,2.8,'triangle');_playNote(ctx,f,T+i*0.3,0.04,2.0,'sine',3);});} else if(type==='break_end'){_playNote(ctx,880,T,0.22,3.0,'triangle');_playNote(ctx,880,T,0.09,2.2,'sine',2.5);} else if(type==='pause'){_playNote(ctx,392,T,0.16,1.4,'triangle');_playNote(ctx,293.66,T+0.22,0.14,1.3,'triangle');} else if(type==='start'){_playNote(ctx,523.25,T,0.18,1.5,'triangle');_playNote(ctx,659.25,T+0.2,0.18,1.5,'triangle');_playNote(ctx,783.99,T+0.4,0.2,1.7,'triangle');} };
+
+const PomodoroTimer = () => {
+  const { pomoData, setPomoData } = useContext(AppContext);
+  const [fm, setFm] = useState(() => { try { return JSON.parse(localStorage.getItem('boardhub_pomo_timer_v1'))?.focusMins||25; } catch { return 25; } });
+  const [tl, setTl] = useState(fm*60); const [on, setOn] = useState(false); const [mode, setMode] = useState('focus');
+  const [showStats, setShowStats] = useState(false); const [tick, setTick] = useState(true);
+  const [dragging, setDragging] = useState(false); const [monthView, setMonthView] = useState(false);
+  const circleRef = useRef(null); const endRef = useRef(null); const unsavedRef = useRef(0);
+  const MAX=60, BRK=300;
+  useEffect(() => { const d = { isActive:on, mode, timeLeft:tl, focusMins:fm, endTimestamp:endRef.current }; try { localStorage.setItem('boardhub_pomo_timer_v1', JSON.stringify(d)); } catch {} }, [on,mode,tl,fm]);
+  useEffect(() => {
+    if(!on) { endRef.current = null; return; }
+    if(!endRef.current) endRef.current = Date.now() + tl*1000;
+    const id = setInterval(() => {
+      const remaining = Math.max(0, Math.round((endRef.current - Date.now())/1000));
+      setTl(remaining);
+      if(mode==='focus'){
+        const delta = Math.max(0, tl-remaining);
+        unsavedRef.current += delta;
+        if(unsavedRef.current >= 30) flushFocus();
       }
-      function resumeAudio() {
-        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-      }
-      function playTone(freq, dur, type='sine', vol=0.12) {
-        if (!state.soundEnabled || !audioCtx) return;
-        resumeAudio();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + dur);
-      }
-      function playTick() { playTone(800, 0.05, 'sine', 0.05); }
-      function playWorkEnd() {
-        playTone(523, 0.15, 'sine', 0.2);
-        setTimeout(() => playTone(659, 0.15, 'sine', 0.2), 150);
-        setTimeout(() => playTone(784, 0.25, 'sine', 0.2), 300);
-      }
-      function playBreakEnd() {
-        playTone(440, 0.15, 'triangle', 0.2);
-        setTimeout(() => playTone(554, 0.2, 'triangle', 0.2), 200);
-      }
-      function playClick() { playTone(1000, 0.03, 'sine', 0.08); }
-
-      // ==================== CANVAS & GRID ====================
-      function isGridObject(obj) { return obj && obj[GRID_FLAG] === true; }
-
-      function removeAllGridLines() {
-        const objects = canvas.getObjects();
-        for (let i = objects.length - 1; i >= 0; i--) {
-          if (isGridObject(objects[i])) canvas.remove(objects[i]);
-        }
-      }
-
-      function redrawGrid() {
-        if (!canvas) return;
-        removeAllGridLines();
-        if (!state.gridVisible) {
-          canvas.requestRenderAll();
-          return;
-        }
-        const gridSize = 30;
-        const w = canvas.width, h = canvas.height;
-        const stroke = state.darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
-        for (let i = 0; i < (w / gridSize); i++) {
-          canvas.add(new fabric.Line([i * gridSize, 0, i * gridSize, h], {
-            stroke, selectable: false, evented: false,
-            [GRID_FLAG]: true, excludeFromExport: true
-          }));
-        }
-        for (let j = 0; j < (h / gridSize); j++) {
-          canvas.add(new fabric.Line([0, j * gridSize, w, j * gridSize], {
-            stroke, selectable: false, evented: false,
-            [GRID_FLAG]: true, excludeFromExport: true
-          }));
-        }
-        canvas.requestRenderAll();
-      }
-
-      function getSerializableJSON() {
-        const objects = canvas.getObjects().filter(obj => !isGridObject(obj));
-        const json = canvas.toJSON(['excludeFromExport', GRID_FLAG]);
-        json.objects = json.objects.filter(o => !o[GRID_FLAG]);
-        return JSON.stringify(json);
-      }
-
-      function loadCanvasFromJSON(jsonStr) {
-        canvas.loadFromJSON(JSON.parse(jsonStr), () => {
-          canvas.renderAll();
-          redrawGrid();
-          renderLayers();
-        });
-      }
-
-      function saveState() {
-        undoStack.push(getSerializableJSON());
-        if (undoStack.length > MAX_HISTORY) undoStack.shift();
-        redoStack = [];
-        updateUndoRedoButtons();
-      }
-
-      function initCanvas() {
-        const container = document.getElementById('canvas-container');
-        canvas = new fabric.Canvas('boardCanvas', {
-          width: container.clientWidth,
-          height: container.clientHeight,
-          backgroundColor: 'transparent',
-          preserveObjectStacking: true,
-          selection: true,
-        });
-
-        redrawGrid();
-
-        window.addEventListener('resize', () => {
-          canvas.setWidth(container.clientWidth);
-          canvas.setHeight(container.clientHeight);
-          redrawGrid();
-        });
-
-        // Attach auto-save and undo listeners after canvas is created
-        canvas.on('object:modified', (e) => {
-          if (!isGridObject(e.target)) saveState();
-          saveToStorage();
-        });
-        canvas.on('object:added', (e) => {
-          if (!isDrawingShape && !isGridObject(e.target)) {
-            saveState();
-            saveToStorage();
-          }
-        });
-        canvas.on('object:removed', (e) => {
-          if (!isGridObject(e.target)) {
-            saveState();
-            saveToStorage();
-          }
-        });
-
-        document.addEventListener('keydown', (e) => {
-          if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('input,textarea')) {
-            const active = canvas.getActiveObject();
-            if (active && !isGridObject(active)) {
-              canvas.remove(active);
-              canvas.discardActiveObject();
-              // saveState called by object:removed listener
-            }
-          }
-        });
-
-        loadFromStorage();
-      }
-
-      // ==================== TOOLS ====================
-      function setTool(tool) {
-        state.tool = tool;
-        document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
-        const map = {
-          select: 'selectTool', pen: 'penTool', eraser: 'eraserTool',
-          rect: 'rectTool', circle: 'circleTool', line: 'lineTool',
-          text: 'textTool', sticky: 'stickyTool', image: 'imageTool', pan: 'panTool'
-        };
-        document.getElementById(map[tool])?.classList.add('active');
-
-        canvas.isDrawingMode = false;
-        canvas.selection = (tool === 'select');
-        canvas.off('mouse:down'); canvas.off('mouse:move'); canvas.off('mouse:up');
-
-        if (tool === 'pen') {
-          canvas.isDrawingMode = true;
-          canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-          canvas.freeDrawingBrush.color = state.color;
-          canvas.freeDrawingBrush.width = state.brushSize;
-        } else if (tool === 'eraser') {
-          canvas.isDrawingMode = true;
-          canvas.freeDrawingBrush = new fabric.EraserBrush(canvas);
-          canvas.freeDrawingBrush.width = state.brushSize * 2;
-        } else if (['rect','circle','line'].includes(tool)) {
-          enableShapeDrawing(tool);
-        } else if (tool === 'text') {
-          canvas.on('mouse:down', addText);
-        } else if (tool === 'sticky') {
-          canvas.on('mouse:down', addSticky);
-        } else if (tool === 'pan') {
-          enablePan();
-        }
-      }
-
-      function enableShapeDrawing(shape) {
-        let isDown = false, origX, origY, shapeObj;
-        canvas.on('mouse:down', (opt) => {
-          isDown = true;
-          isDrawingShape = true; // suppress auto-save for initial zero-sized object
-          const p = canvas.getPointer(opt.e);
-          origX = p.x; origY = p.y;
-          const common = { left: origX, top: origY, fill: 'transparent', stroke: state.color, strokeWidth: state.brushSize };
-          if (shape === 'rect') shapeObj = new fabric.Rect({ ...common, width:0, height:0 });
-          else if (shape === 'circle') shapeObj = new fabric.Ellipse({ ...common, rx:0, ry:0 });
-          else shapeObj = new fabric.Line([origX, origY, origX, origY], { stroke: state.color, strokeWidth: state.brushSize });
-          canvas.add(shapeObj);
-        });
-        canvas.on('mouse:move', (opt) => {
-          if (!isDown) return;
-          const p = canvas.getPointer(opt.e);
-          if (shape === 'rect') {
-            shapeObj.set({ width: Math.abs(p.x - origX), height: Math.abs(p.y - origY) });
-            shapeObj.set({ left: Math.min(origX, p.x), top: Math.min(origY, p.y) });
-          } else if (shape === 'circle') {
-            const rx = Math.abs(p.x - origX)/2, ry = Math.abs(p.y - origY)/2;
-            shapeObj.set({ rx, ry, left: Math.min(origX, p.x) + rx, top: Math.min(origY, p.y) + ry });
-          } else {
-            shapeObj.set({ x2: p.x, y2: p.y });
-          }
-          canvas.renderAll();
-        });
-        canvas.on('mouse:up', () => {
-          if (isDown) {
-            isDown = false;
-            isDrawingShape = false;
-            if (shapeObj && (shapeObj.width === 0 || shapeObj.rx === 0) && shape !== 'line') {
-              canvas.remove(shapeObj);
-            } else {
-              saveState();
-              saveToStorage();
-            }
-            shapeObj = null;
-          }
-        });
-      }
-
-      function addText(opt) {
-        const p = canvas.getPointer(opt.e);
-        const text = new fabric.IText('Type here', {
-          left: p.x, top: p.y, fontFamily: 'Inter', fill: state.color, fontSize: 20, editable: true
-        });
-        canvas.add(text);
-        canvas.setActiveObject(text);
-        text.enterEditing();
-        // saveState called by object:added listener
-        setTool('select');
-      }
-
-      function addSticky(opt) {
-        const p = canvas.getPointer(opt.e);
-        const note = new fabric.Textbox('Sticky note', {
-          left: p.x, top: p.y,
-          fontFamily: 'Inter', fontSize: 15, fill: '#2C1E16',
-          backgroundColor: '#F9E79F', padding: 12, borderRadius: 10,
-          width: 150, editable: true, splitByGrapheme: true,
-        });
-        canvas.add(note);
-        canvas.setActiveObject(note);
-        canvas.requestRenderAll();
-        // saveState called by listener
-        setTool('select');
-      }
-
-      function enablePan() {
-        let panning = false;
-        canvas.on('mouse:down', (opt) => { if (opt.e.button === 0) { panning = true; canvas.selection = false; } });
-        canvas.on('mouse:move', (opt) => {
-          if (panning && opt.e) canvas.relativePan(new fabric.Point(opt.e.movementX, opt.e.movementY));
-        });
-        canvas.on('mouse:up', () => { panning = false; });
-      }
-
-      // ==================== UNDO/REDO ====================
-      function undo() {
-        if (undoStack.length === 0) return;
-        redoStack.push(getSerializableJSON());
-        loadCanvasFromJSON(undoStack.pop());
-        updateUndoRedoButtons();
-      }
-      function redo() {
-        if (redoStack.length === 0) return;
-        undoStack.push(getSerializableJSON());
-        loadCanvasFromJSON(redoStack.pop());
-        updateUndoRedoButtons();
-      }
-      function updateUndoRedoButtons() {
-        document.getElementById('undoBtn').style.opacity = undoStack.length ? 1 : 0.5;
-        document.getElementById('redoBtn').style.opacity = redoStack.length ? 1 : 0.5;
-      }
-
-      // ==================== LAYERS ====================
-      function renderLayers() {
-        const list = document.getElementById('layers-list');
-        list.innerHTML = '';
-        const objects = canvas.getObjects().filter(obj => !isGridObject(obj)).reverse();
-        objects.forEach(obj => {
-          const idx = canvas.getObjects().indexOf(obj);
-          const item = document.createElement('div');
-          item.className = 'layer-item' + (obj === canvas.getActiveObject() ? ' selected' : '');
-          const visBtn = document.createElement('button');
-          visBtn.textContent = obj.visible ? '👁️' : '👁️‍🗨️';
-          visBtn.onclick = (e) => { e.stopPropagation(); obj.visible = !obj.visible; canvas.renderAll(); renderLayers(); };
-          const nameInput = document.createElement('input');
-          nameInput.value = obj.name || obj.type || 'Object';
-          nameInput.onchange = () => { obj.name = nameInput.value; renderLayers(); };
-          const upBtn = document.createElement('button'); upBtn.textContent = '↑';
-          upBtn.onclick = (e) => { e.stopPropagation(); if (idx < canvas.getObjects().length-1) { canvas.moveTo(obj, idx+1); canvas.renderAll(); renderLayers(); saveState(); } };
-          const downBtn = document.createElement('button'); downBtn.textContent = '↓';
-          downBtn.onclick = (e) => { e.stopPropagation(); if (idx > 0) { canvas.moveTo(obj, idx-1); canvas.renderAll(); renderLayers(); saveState(); } };
-          const delBtn = document.createElement('button'); delBtn.textContent = '🗑️';
-          delBtn.onclick = (e) => { e.stopPropagation(); canvas.remove(obj); saveState(); renderLayers(); };
-          item.append(visBtn, nameInput, upBtn, downBtn, delBtn);
-          item.onclick = () => { canvas.setActiveObject(obj); canvas.renderAll(); renderLayers(); };
-          list.appendChild(item);
-        });
-      }
-
-      // ==================== POMODORO ENGINE ====================
-      let timerInterval = null;
-
-      function updatePomodoroDisplay() {
-        const total = pomodoro.totalDuration;
-        let elapsed;
-        if (pomodoro.status === 'running') {
-          elapsed = pomodoro.elapsedBeforePause + (Date.now() - pomodoro.startTime) / 1000;
-          if (elapsed >= total) { elapsed = total; completeSession(); }
+      if(remaining <= 0){
+        clearInterval(id);
+        if(mode==='focus'){
+          flushFocus(true);
+          playPomoSound('work_end');
+          setMode('break'); setTl(BRK); endRef.current = Date.now() + BRK*1000;
         } else {
-          elapsed = pomodoro.elapsedBeforePause;
-        }
-        const remaining = Math.max(0, total - elapsed);
-        const mins = Math.floor(remaining / 60);
-        const secs = Math.floor(remaining % 60);
-        document.getElementById('timer-display').textContent = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
-        const progress = document.getElementById('progressPath');
-        progress.style.strokeDashoffset = 100 - (elapsed / total) * 100;
-
-        if (pomodoro.tickEnabled && state.soundEnabled && pomodoro.status === 'running') {
-          const curSec = Math.floor(remaining);
-          if (curSec !== pomodoro.lastDisplayedSecond && remaining > 0) {
-            pomodoro.lastDisplayedSecond = curSec;
-            playTick();
-          }
-        }
-        document.getElementById('focusMinutes').textContent = Math.round(pomodoro.totalFocusMinutes);
-      }
-
-      function completeSession() {
-        if (pomodoro.mode === 'work') {
-          pomodoro.totalFocusMinutes += WORK_MINUTES;
-          playWorkEnd();
-          pomodoro.mode = 'break';
-          pomodoro.totalDuration = BREAK_SECONDS;
-        } else {
-          playBreakEnd();
-          pomodoro.mode = 'work';
-          pomodoro.totalDuration = WORK_SECONDS;
-        }
-        pomodoro.status = 'idle';
-        pomodoro.elapsedBeforePause = 0;
-        pomodoro.startTime = null;
-        stopTimerInterval();
-        updatePomodoroDisplay();
-        savePomodoroToStorage();
-        updateTimerButtons();
-      }
-
-      function startTimer() {
-        initAudio();
-        if (pomodoro.status === 'idle') {
-          pomodoro.status = 'running';
-          pomodoro.startTime = Date.now();
-          pomodoro.elapsedBeforePause = 0;
-        } else if (pomodoro.status === 'paused') {
-          pomodoro.status = 'running';
-          pomodoro.startTime = Date.now();
-        }
-        startTimerInterval();
-        updateTimerButtons();
-        playClick();
-      }
-
-      function pauseTimer() {
-        if (pomodoro.status === 'running') {
-          pomodoro.elapsedBeforePause += (Date.now() - pomodoro.startTime) / 1000;
-          pomodoro.status = 'paused';
-          stopTimerInterval();
-          updatePomodoroDisplay();
-          updateTimerButtons();
-          playClick();
+          playPomoSound('break_end');
+          setMode('focus'); setTl(fm*60); setOn(false); endRef.current = null;
         }
       }
+    }, 200);
+    return () => clearInterval(id);
+  }, [on, mode]);
+  const flushFocus = (force) => {
+    if(unsavedRef.current > 0 || force){
+      setPomoData(p => ({ days: { ...p.days, [localDateISO()]: (p.days[localDateISO()]||0) + unsavedRef.current } }));
+      unsavedRef.current = 0;
+    }
+  };
+  const getAngleMins = e => {
+    if(!circleRef.current) return null;
+    const r = circleRef.current.getBoundingClientRect();
+    let angle = Math.atan2(e.clientX - r.left - 38, -(e.clientY - r.top - 38));
+    if(angle<0) angle += 2*Math.PI;
+    return Math.max(1, Math.min(MAX, Math.round((angle/(2*Math.PI))*MAX)));
+  };
+  const handlePointerDown = e => { if(on||mode!=='focus')return; e.preventDefault(); circleRef.current?.setPointerCapture(e.pointerId); setDragging(true); const mins = getAngleMins(e); if(mins){ setFm(mins); setTl(mins*60); } };
+  const handlePointerMove = e => { if(!dragging)return; const mins = getAngleMins(e); if(mins){ setFm(mins); setTl(mins*60); } };
+  const handlePointerUp = e => { if(!dragging)return; setDragging(false); const mins = getAngleMins(e); if(mins){ setFm(mins); setTl(mins*60); } };
 
-      function resetTimer() {
-        stopTimerInterval();
-        pomodoro.status = 'idle';
-        pomodoro.elapsedBeforePause = 0;
-        pomodoro.totalDuration = pomodoro.mode === 'work' ? WORK_SECONDS : BREAK_SECONDS;
-        updatePomodoroDisplay();
-        updateTimerButtons();
-        playClick();
-      }
+  const todaySecs = (pomoData.days||{})[localDateISO()]||0;
+  const DAY_TIERS = [{level:'none',icon:'⭐',name:'Iniciante',floor:0},{level:'bronze',icon:'🥉',name:'Bronze',floor:7200},{level:'silver',icon:'🥈',name:'Prata',floor:14400},{level:'golden',icon:'🏆',name:'Ouro',floor:21600},{level:'diamond',icon:'💎',name:'Diamante',floor:28800}];
+  const star = (s) => { for(let i=DAY_TIERS.length-1;i>=0;i--) if(s>=DAY_TIERS[i].floor) return DAY_TIERS[i]; return DAY_TIERS[0]; };
+  const currentStar = star(todaySecs); const next = DAY_TIERS.find(t=>t.floor>currentStar.floor)||null;
+  const progress = next ? Math.min(100,((todaySecs-currentStar.floor)/(next.floor-currentStar.floor))*100) : 100;
+  const dayEntries = useMemo(()=>Object.entries(pomoData.days||{}).filter(([k])=>k.length===10).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,60),[pomoData]);
+  const monthEntries = useMemo(()=>{ const m={}; dayEntries.forEach(([d,s])=>{ const mk=d.slice(0,7); m[mk]=(m[mk]||0)+s; }); return Object.entries(m).sort((a,b)=>b[0].localeCompare(a[0])); },[dayEntries]);
+  const totalAll = dayEntries.reduce((s,[,sec])=>s+sec,0);
+  const m=Math.floor(tl/60), s=tl%60;
+  const pct = mode==='focus' ? (on?tl/(fm*60):fm/MAX) : tl/BRK;
+  const knobAngle = on ? (1-(tl/(mode==='focus'?fm*60:BRK)))*2*Math.PI : (fm/MAX)*2*Math.PI;
+  const R=34, CX=38, CY=38;
+  const kx = CX + R*Math.sin(knobAngle), ky = CY - R*Math.cos(knobAngle);
 
-      function skipTimer() {
-        stopTimerInterval();
-        pomodoro.mode = pomodoro.mode === 'work' ? 'break' : 'work';
-        pomodoro.totalDuration = pomodoro.mode === 'work' ? WORK_SECONDS : BREAK_SECONDS;
-        pomodoro.status = 'idle';
-        pomodoro.elapsedBeforePause = 0;
-        updatePomodoroDisplay();
-        updateTimerButtons();
-        playClick();
-      }
+  return <div style={{marginBottom:20}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+      <span className="label">Pomodoro</span>
+      <div style={{display:'flex',gap:8}}>
+        <span className={`tag ${mode==='focus'?'tag-yellow':'tag-green'}`}>{mode==='focus'?'🧠 Foco':'☕ Pausa'}</span>
+        <button className="btn btn-ghost" onClick={()=>setShowStats(s=>!s)}>📊</button>
+      </div>
+    </div>
+    {!showStats ? (
+      <div className="card" style={{padding:12,display:'flex',alignItems:'center',gap:14}}>
+        <div ref={circleRef} style={{position:'relative',width:76,height:76,flexShrink:0,cursor:(!on&&mode==='focus')?'pointer':'default',touchAction:'none'}}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
+          <svg width="76" height="76" style={{transform:'rotate(-90deg)'}}>
+            <circle cx="38" cy="38" r={R} fill="none" stroke="var(--glass-border)" strokeWidth="4"/>
+            <circle cx="38" cy="38" r={R} fill="none" stroke={mode==='focus'?'var(--accent)':'#48BB78'} strokeWidth="4" strokeDasharray={2*Math.PI*R} strokeDashoffset={2*Math.PI*R*(1-pct)} strokeLinecap="round" style={{transition:dragging?'none':'stroke-dashoffset .5s'}}/>
+          </svg>
+          {!on && mode==='focus' && <svg width="76" height="76" style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}><circle cx={kx} cy={ky} r={dragging?6:4} fill="var(--accent)" stroke="var(--surface)" strokeWidth="2" style={{transition:dragging?'none':'r .15s'}}/></svg>}
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            {dragging ? <span style={{fontFamily:'var(--font-heading)',fontSize:'1.1rem'}}>{fm}<span style={{fontSize:'.6rem',color:'var(--text-secondary)'}}>min</span></span> : <span style={{fontFamily:'var(--font-heading)',fontSize:'1.2rem',fontWeight:700}}>{String(m).padStart(2,'0')}:{String(s).padStart(2,'0')}</span>}
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',gap:6,marginBottom:6}}>
+            <button className="btn btn-dark" onClick={()=>{if(!on){playPomoSound('start');setOn(true);}else{playPomoSound('pause');flushFocus();setOn(false);}}}>{on?'⏸ Pausar':'▶ Iniciar'}</button>
+            <button className="btn btn-outline" onClick={()=>{setOn(false);setMode('focus');setTl(fm*60);endRef.current=null;}}>↺</button>
+          </div>
+          <div style={{fontSize:'.7rem',color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:8}}>
+            <span>🍅 {Math.floor(todaySecs/60)}min</span>
+            <span style={{padding:'2px 8px',borderRadius:12,background:currentStar.level==='none'?'var(--bg)':`${currentStar.floor===7200?'#CD7F32':currentStar.floor===14400?'#94A3B8':currentStar.floor===21600?'#FBBF24':'#60A5FA'}20`,border:`1px solid ${currentStar.level==='none'?'var(--glass-border)':'currentColor'}`}}>{currentStar.icon} {currentStar.name}</span>
+            {next && <div style={{flex:1,height:3,background:'var(--bg)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${progress}%`,background:currentStar.floor===7200?'#CD7F32':currentStar.floor===14400?'#94A3B8':currentStar.floor===21600?'#FBBF24':'#60A5FA',borderRadius:2}}/></div>}
+          </div>
+          <label style={{display:'flex',alignItems:'center',gap:4,fontSize:'.7rem',marginTop:6,color:'var(--text-secondary)',cursor:'pointer'}}><input type="checkbox" checked={tick} onChange={()=>setTick(!tick)}/> Tick</label>
+        </div>
+      </div>
+    ) : (
+      <div className="card" style={{padding:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}><span className="label">Histórico</span><button className="btn btn-ghost" onClick={()=>setShowStats(false)}>✕</button></div>
+        <div style={{display:'flex',gap:16,marginBottom:12}}><div>Hoje: {Math.floor(todaySecs/60)}min</div><div>{currentStar.icon} {currentStar.name}</div><div>Total: {Math.floor(totalAll/3600)}h {Math.floor((totalAll%3600)/60)}m</div></div>
+        <div style={{display:'flex',gap:8,marginBottom:12}}><button className={`btn btn-ghost ${!monthView?'active':''}`} onClick={()=>setMonthView(false)}>Dias</button><button className={`btn btn-ghost ${monthView?'active':''}`} onClick={()=>setMonthView(true)}>Meses</button></div>
+        {!monthView ? dayEntries.map(([day,secs])=> <div key={day} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--glass-border)'}}><span>{new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})}</span><span>{Math.floor(secs/60)}min</span></div>)
+        : monthEntries.map(([mk,secs])=> <div key={mk} style={{display:'flex',justifyContent:'space-between',padding:'4px 0'}}><span>{new Date(mk+'-01').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</span><span>{Math.floor(secs/3600)}h {Math.floor((secs%3600)/60)}m</span></div>)}
+      </div>
+    )}
+  </div>;
+};
 
-      function startTimerInterval() {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(updatePomodoroDisplay, 100);
-      }
-      function stopTimerInterval() {
-        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-      }
-      function updateTimerButtons() {
-        document.getElementById('timerStartBtn').style.display = pomodoro.status === 'running' ? 'none' : 'inline-block';
-        document.getElementById('timerPauseBtn').style.display = pomodoro.status === 'running' ? 'inline-block' : 'none';
-      }
-      function savePomodoroToStorage() {
-        localStorage.setItem('boardhub_pomodoro', JSON.stringify({
-          totalFocusMinutes: pomodoro.totalFocusMinutes,
-          mode: pomodoro.mode,
-          totalDuration: pomodoro.totalDuration,
-          tickEnabled: pomodoro.tickEnabled,
-        }));
-      }
-      function loadPomodoroFromStorage() {
-        const saved = localStorage.getItem('boardhub_pomodoro');
-        if (saved) {
-          const data = JSON.parse(saved);
-          pomodoro.totalFocusMinutes = data.totalFocusMinutes || 0;
-          pomodoro.mode = data.mode || 'work';
-          pomodoro.totalDuration = data.totalDuration || WORK_SECONDS;
-          pomodoro.tickEnabled = data.tickEnabled !== undefined ? data.tickEnabled : true;
-        }
-        updatePomodoroDisplay();
-      }
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════════
+const Dashboard = () => {
+  const { projects, notes, mentors, tasks, setTasks, setView, setNotes, pomoData, setPomoData, setSelectedProject } = useContext(AppContext);
+  const active = projects.filter(p=>!p.deleted&&p.status==='Em Andamento');
+  const h=new Date().getHours(); const greeting = h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
+  const [newTask, setNewTask] = useState(''); const [expanded, setExpanded] = useState(null);
+  const streak = useMemo(()=>{const days=pomoData?.days||{};let s=0;const d=new Date();for(let i=0;i<30;i++){if((days[localDateISO(d)]||0)>0)s++;else if(i>0)break;d.setDate(d.getDate()-1);}return s;},[pomoData]);
+  const stats = [{label:'Projetos Ativos',value:active.length,icon:'📁',view:'projects'},{label:'Tarefas Abertas',value:active.reduce((s,p)=>s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length,0),icon:'✅',view:'projects'},{label:'Atividades',value:tasks.filter(t=>!t.done).length,icon:'📋',view:'dashboard'}];
+  const addTask = () => { if(!newTask.trim())return; setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]); setNewTask(''); };
+  const toggleTask = id => setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const removeTask = id => setTasks(p=>p.filter(t=>t.id!==id));
+  const taskToNote = t => { const n={id:Date.now(),title:t.text,content:'',date:'Agora',deleted:false}; setNotes(p=>[n,...p]); setTasks(p=>p.map(x=>x.id===t.id?{...x,noteId:n.id}:x)); };
 
-      // ==================== EXPORT/IMPORT ====================
-      function exportPNG() {
-        const stats = `🍅 ${Math.round(pomodoro.totalFocusMinutes)} min focus`;
-        const dataURL = canvas.toDataURL({ format: 'png', multiplier: 2 });
-        const img = new Image();
-        img.onload = () => {
-          const tmp = document.createElement('canvas');
-          tmp.width = img.width; tmp.height = img.height;
-          const ctx = tmp.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          ctx.font = 'bold 28px Inter'; ctx.fillStyle = 'rgba(0,0,0,0.7)';
-          ctx.textAlign = 'right';
-          ctx.fillText(stats, tmp.width - 30, tmp.height - 20);
-          const a = document.createElement('a');
-          a.download = `boardhub-${Date.now()}.png`;
-          a.href = tmp.toDataURL('image/png');
-          a.click();
-        };
-        img.src = dataURL;
-      }
+  const activeWithTasks = active.filter(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
+  const PTASK_STATUS_ORDER = ['Fazendo','Atrasado','Pendente'];
+  const statusColor = {'Fazendo':'#92700b','Atrasado':'#9B1C1C','Pendente':'var(--text-secondary)'};
+  const statusBg = {'Fazendo':'#FEF9E7','Atrasado':'#FDEDED','Pendente':'#F0EDE9'};
 
-      function exportSVG() {
-        const stats = `🍅 ${Math.round(pomodoro.totalFocusMinutes)} min focus`;
-        let svg = canvas.toSVG();
-        const textEl = `<text x="98%" y="98%" text-anchor="end" font-family="Inter" font-size="20" fill="rgba(0,0,0,0.7)">${stats}</text>`;
-        svg = svg.replace(/<\/svg>/i, textEl + '</svg>');
-        const blob = new Blob([svg], {type: 'image/svg+xml'});
-        const a = document.createElement('a');
-        a.download = `boardhub-${Date.now()}.svg`;
-        a.href = URL.createObjectURL(blob);
-        a.click();
-      }
+  return <div className="fade-up" style={{maxWidth:960,margin:'0 auto'}}>
+    <div style={{marginBottom:20}}>
+      <h1 style={{fontFamily:'var(--font-heading)',fontSize:'2.2rem',fontWeight:300}}>{greeting}{streak>2?<>, <em style={{color:'var(--accent)'}}>dia {streak} de foco.</em></>:<>, <em>Artista.</em></>}</h1>
+      <p style={{color:'var(--text-secondary)',fontSize:'.85rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+      {stats.map(s=><div key={s.label} className="card stat-card" onClick={()=>setView(s.view)} style={{cursor:'pointer'}}><div style={{width:32,height:32,borderRadius:8,background:'var(--accent-glow)',display:'flex',alignItems:'center',justifyContent:'center'}}>{s.icon}</div><div><div style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem'}}>{s.value}</div><div className="label">{s.label}</div></div></div>)}
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+      <div>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}><span className="label">Em andamento</span><button className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos →</button></div>
+        {active.map(p=>{const pt=p.projectTasks||[],total=pt.length,done=pt.filter(t=>t.status==='Concluído').length;const pct=total?Math.round((done/total)*100):0;const isExp=expanded===p.id;return <div key={p.id} className="card" style={{overflow:'hidden',marginBottom:8}}><div className="project-card" onClick={()=>setExpanded(isExp?null:p.id)}><BgImg src={p.cover} style={{width:28,height:28,borderRadius:6}}/><div style={{flex:1}}><div style={{fontWeight:600}}>{p.title}</div><div style={{fontSize:'.7rem',color:'var(--text-secondary)',display:'flex',gap:8}}><span>{p.client}</span>{total>0&&<span>{done}/{total}</span>}{deadlineInfo(p.deadline)&&<span style={{fontWeight:700,color:deadlineInfo(p.deadline).color,background:deadlineInfo(p.deadline).bg,padding:'1px 5px',borderRadius:4}}>{deadlineInfo(p.deadline).label}</span>}</div></div>{total>0&&<svg width="26" height="26" className="progress-ring"><circle cx="13" cy="13" r="10" fill="none" stroke="var(--glass-border)" strokeWidth="2.5"/><circle cx="13" cy="13" r="10" fill="none" stroke={pct===100?'#48BB78':'var(--text)'} strokeWidth="2.5" strokeDasharray={2*Math.PI*10} strokeDashoffset={2*Math.PI*10*(1-pct/100)}/></svg>}<span style={{transition:'transform .2s',transform:isExp?'rotate(180deg)':''}}>▼</span></div>{isExp&&<div style={{padding:'10px 14px',borderTop:'1px solid var(--glass-border)',background:'var(--bg)'}}>{pt.map(t=><div key={t.id} style={{display:'flex',gap:6,padding:'2px 0'}}><span style={{width:6,height:6,borderRadius:'50%',background:t.status==='Concluído'?'#48BB78':'#F59E0B'}}/>{t.text}</div>)}<button className="btn btn-outline" style={{marginTop:8}} onClick={e=>{e.stopPropagation();setSelectedProject(p);setView('project-detail');}}>Abrir projeto →</button></div>}</div>;})}
 
-      function exportJSON() {
-        const data = {
-          canvas: JSON.parse(getSerializableJSON()),
-          pomodoro: { totalFocusMinutes: pomodoro.totalFocusMinutes, mode: pomodoro.mode, totalDuration: pomodoro.totalDuration },
-          settings: { darkMode: state.darkMode, soundEnabled: state.soundEnabled, color: state.color, brushSize: state.brushSize, gridVisible: state.gridVisible }
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-        const a = document.createElement('a');
-        a.download = `boardhub-${Date.now()}.json`;
-        a.href = URL.createObjectURL(blob);
-        a.click();
-      }
+        {activeWithTasks.length>0 && <div style={{marginTop:16}}>
+          <span className="label">Tarefas Abertas dos Projetos</span>
+          <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:8}}>
+            {activeWithTasks.map(p=>{const openTasks=(p.projectTasks||[]).filter(t=>t.status!=='Concluído').sort((a,b)=>PTASK_STATUS_ORDER.indexOf(a.status)-PTASK_STATUS_ORDER.indexOf(b.status));return <div key={p.id} className="card" style={{padding:'8px 12px'}}><div onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{display:'flex',alignItems:'center',gap:7,marginBottom:6,paddingBottom:4,borderBottom:'1px solid var(--glass-border)',cursor:'pointer'}}><BgImg src={p.cover} style={{width:16,height:16,borderRadius:3}}/><span style={{fontWeight:600,fontSize:'.72rem',flex:1}}>{p.title}</span><span style={{fontSize:'.6rem',color:'var(--text-secondary)'}}>{openTasks.length}</span></div>{openTasks.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}><span style={{display:'inline-block',fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',padding:'2px 6px',borderRadius:3,background:statusBg[t.status]||'#F0EDE9',color:statusColor[t.status]||'var(--text-secondary)'}}>{t.status}</span><span style={{fontSize:'.78rem'}}>{t.text}</span></div>)}</div>;})}
+          </div>
+        </div>}
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        <PomodoroTimer/>
+        <div className="card" style={{padding:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span className="label">Lista de Atividades</span><button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:'.7rem'}} onClick={()=>setTasks(p=>p.filter(t=>!t.done))}>Limpar feitas</button></div>
+          <div style={{display:'flex',gap:6,marginBottom:10}}><input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()} placeholder="Nova atividade..." className="input-box"/><button className="btn btn-dark" onClick={addTask}>+</button></div>
+          <div style={{maxHeight:200,overflowY:'auto'}}>{tasks.map(t=><div key={t.id} className="task-row"><div className={`task-check ${t.done?'done':''}`} onClick={()=>toggleTask(t.id)}/><span style={{flex:1,textDecoration:t.done?'line-through':'none'}}>{t.text}</span>{!t.noteId&&<button className="btn btn-ghost" onClick={()=>taskToNote(t)}>📄</button>}<button className="btn btn-ghost" onClick={()=>removeTask(t.id)}>✕</button></div>)}</div>
+        </div>
+        <div><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><span className="label">Notas Recentes</span><button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('ideas')}>Ver todas →</button></div>{(notes||[]).filter(n=>!n.deleted).slice(0,3).map(n=><div key={n.id} className="card" style={{padding:'8px 12px',marginBottom:6,cursor:'pointer'}} onClick={()=>setView('ideas')}><div style={{fontWeight:600}}>{n.title}</div><div style={{fontSize:'.7rem',color:'var(--text-secondary)'}}>{n.content}</div></div>)}</div>
+      </div>
+    </div>
+    {(mentors||[]).filter(m=>!m.deleted&&m.main).length>0 && <div style={{marginTop:24}}><div className="label">Mentores Principais</div><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:8}}>{(mentors||[]).filter(m=>!m.deleted&&m.main).slice(0,3).map(m=><div key={m.id} className="card" style={{overflow:'hidden'}}><div style={{height:72,background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)',fontSize:'2rem',color:'var(--text-secondary)'}}>{(m.name||'?').charAt(0)}</div><div style={{padding:'8px 12px'}}><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:'.65rem',color:'var(--text-secondary)'}}>{m.area}{m.medium?' — '+m.medium:''}</div></div></div>)}</div></div>}
+  </div>;
+};
 
-      function importJSON(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const data = JSON.parse(e.target.result);
-            if (data.canvas) {
-              canvas.loadFromJSON(data.canvas, () => {
-                canvas.renderAll();
-                redrawGrid();
-                renderLayers();
-                undoStack = []; redoStack = [];
-                saveState(); // initial state after import
-              });
-            }
-            if (data.pomodoro) {
-              pomodoro.totalFocusMinutes = data.pomodoro.totalFocusMinutes || 0;
-              pomodoro.mode = data.pomodoro.mode || 'work';
-              pomodoro.totalDuration = data.pomodoro.totalDuration || WORK_SECONDS;
-              pomodoro.status = 'idle';
-              pomodoro.elapsedBeforePause = 0;
-              updatePomodoroDisplay();
-              savePomodoroToStorage();
-            }
-            if (data.settings) {
-              state.darkMode = data.settings.darkMode;
-              state.soundEnabled = data.settings.soundEnabled;
-              state.color = data.settings.color || '#D4A843';
-              state.brushSize = data.settings.brushSize || 4;
-              state.gridVisible = data.settings.gridVisible !== false;
-              applySettings();
-            }
-          } catch(err) { alert('Invalid JSON file.'); }
-        };
-        reader.readAsText(file);
-      }
+// ══════════════════════════════════════════════════════════════
+// PROJECTS MODULE
+// ══════════════════════════════════════════════════════════════
+const NewProjectModal = ({ onClose }) => {
+  const { setProjects, setView, setSelectedProject } = useContext(AppContext);
+  const [form, setForm] = useState({title:'',client:'',type:'work',status:'Em Andamento',startDate:'',deadline:'',notes:'',cover:'',budget:'',paid:false,shotsDone:0,shotsTotal:0,mentors:[],researchNotes:[],projectTasks:[],timelineEvents:[],deleted:false});
+  const set = (k,v) => setForm(f=>({...f,[k]:v})); const coverRef = useRef();
+  const handleCover = async e => { const f=e.target.files[0]; if(!f)return; set('cover',await uploadImage(f)); };
+  const save = () => { if(!form.title.trim())return; const p={...form,id:Date.now(),cover:form.cover||'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1200'}; setProjects(prev=>[p,...prev]); setSelectedProject(p); setView('project-detail'); onClose(); };
+  return ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="card" style={{width:'100%',maxWidth:520,padding:28,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><h2 style={{fontFamily:'var(--font-heading)'}}>Novo Projeto</h2><button className="btn btn-ghost" onClick={onClose}>✕</button></div><div style={{display:'flex',flexDirection:'column',gap:16}}><div onClick={()=>coverRef.current.click()} style={{height:120,borderRadius:10,overflow:'hidden',cursor:'pointer',position:'relative',backgroundColor:'var(--bg)',border:'2px dashed var(--glass-border)',display:'flex',alignItems:'center',justifyContent:'center'}}>{form.cover?<Img src={form.cover} style={{position:'absolute',inset:0,objectFit:'cover'}}/>:<span>Clique para capa</span>}<input ref={coverRef} type="file" accept="image/*" hidden onChange={handleCover}/></div><div><span className="label">Título *</span><input className="input-box" value={form.title} onChange={e=>set('title',e.target.value)}/></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><span className="label">Cliente</span><input className="input-box" value={form.client} onChange={e=>set('client',e.target.value)}/></div><div><span className="label">Tipo</span><select className="input-box" value={form.type} onChange={e=>set('type',e.target.value)}><option value="work">Trabalho</option><option value="personal">Pessoal</option></select></div></div><div><span className="label">Valor (R$)</span><input className="input-box" type="number" min="0" value={form.budget} onChange={e=>set('budget',e.target.value)}/></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><span className="label">Início</span><input type="date" className="input-box" value={form.startDate} onChange={e=>set('startDate',e.target.value)}/></div><div><span className="label">Deadline</span><input type="date" className="input-box" value={form.deadline} onChange={e=>set('deadline',e.target.value)}/></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><span className="label">Status</span><select className="input-box" value={form.status} onChange={e=>set('status',e.target.value)}><option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option></select></div><div><span className="label">Shots Total</span><input className="input-box" type="number" min="0" value={form.shotsTotal||''} onChange={e=>set('shotsTotal',Number(e.target.value))}/></div></div><div><span className="label">Notas iniciais</span><textarea className="input-box" rows={3} value={form.notes} onChange={e=>set('notes',e.target.value)}/></div><div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-outline" onClick={onClose}>Cancelar</button><button className="btn btn-dark" onClick={save}>Criar Projeto</button></div></div></div></div>,document.body);
+};
 
-      // ==================== LOCAL STORAGE ====================
-      function saveToStorage() {
-        const data = {
-          canvas: JSON.parse(getSerializableJSON()),
-          pomodoro: { totalFocusMinutes: pomodoro.totalFocusMinutes, mode: pomodoro.mode, totalDuration: pomodoro.totalDuration },
-          settings: { darkMode: state.darkMode, soundEnabled: state.soundEnabled, color: state.color, brushSize: state.brushSize, gridVisible: state.gridVisible }
-        };
-        localStorage.setItem('boardhub_data', JSON.stringify(data));
-        savePomodoroToStorage();
-      }
-      function loadFromStorage() {
-        const saved = localStorage.getItem('boardhub_data');
-        if (saved) {
-          try {
-            const data = JSON.parse(saved);
-            if (data.canvas) {
-              canvas.loadFromJSON(data.canvas, () => {
-                canvas.renderAll();
-                redrawGrid();
-                renderLayers();
-              });
-            }
-            if (data.pomodoro) {
-              pomodoro.totalFocusMinutes = data.pomodoro.totalFocusMinutes || 0;
-              pomodoro.mode = data.pomodoro.mode || 'work';
-              pomodoro.totalDuration = data.pomodoro.totalDuration || WORK_SECONDS;
-            }
-            if (data.settings) {
-              state.darkMode = data.settings.darkMode;
-              state.soundEnabled = data.settings.soundEnabled !== false;
-              state.color = data.settings.color || '#D4A843';
-              state.brushSize = data.settings.brushSize || 4;
-              state.gridVisible = data.settings.gridVisible !== false;
-              applySettings();
-            }
-            updatePomodoroDisplay();
-          } catch(e) { console.warn('Could not load saved data'); }
-        } else {
-          applySettings();
-        }
-      }
+const GANTT_COLORS = {'Pendente':{bar:'#EDE8E1',text:'#6B6460',border:'#C8BEB4',dot:'#B5ABA0'},'Fazendo':{bar:'#FEF3C7',text:'#92700B',border:'#FCD34D',dot:'#F59E0B'},'Concluído':{bar:'#D1FAE5',text:'#065F46',border:'#6EE7B7',dot:'#10B981'},'Atrasado':{bar:'#FEE2E2',text:'#991B1B',border:'#FCA5A5',dot:'#EF4444'}};
+const PTASK_STATUSES = ['Pendente','Fazendo','Concluído','Atrasado'];
+const PTASK_NEXT = {'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
+const applyAutoLate = tasks => { const today=new Date();today.setHours(0,0,0,0); return tasks.map(t=>{if(t.status==='Concluído'||!t.dueDate)return t;const due=new Date(t.dueDate);due.setHours(0,0,0,0);if(due<today&&t.status!=='Atrasado')return{...t,status:'Atrasado'};return t;}); };
 
-      // ==================== THEME & UI ====================
-      function applySettings() {
-        document.body.classList.toggle('dark', state.darkMode);
-        document.getElementById('colorPicker').value = state.color;
-        document.getElementById('brushSize').value = state.brushSize;
-        document.getElementById('soundToggleBtn').textContent = state.soundEnabled ? '🔊' : '🔇';
-        document.getElementById('gridToggle').textContent = state.gridVisible ? '📐' : '📐⁣';
-        document.getElementById('tickToggleBtn').textContent = pomodoro.tickEnabled ? 'On' : 'Off';
-        updateUndoRedoButtons();
-        redrawGrid();
-      }
-      function toggleTheme() { state.darkMode = !state.darkMode; applySettings(); saveToStorage(); }
-      function toggleGrid() { state.gridVisible = !state.gridVisible; applySettings(); saveToStorage(); }
-      function toggleSound() { state.soundEnabled = !state.soundEnabled; applySettings(); saveToStorage(); }
-      function toggleTick() {
-        pomodoro.tickEnabled = !pomodoro.tickEnabled;
-        document.getElementById('tickToggleBtn').textContent = pomodoro.tickEnabled ? 'On' : 'Off';
-        savePomodoroToStorage();
-      }
+const GanttTimeline = ({ tasks, onUpdateTasks, projectStart, projectEnd }) => {
+  const today = useMemo(()=>todayISO(),[]);
+  const [thisWeek,setThisWeek]=useState(false); const [expanded,setExpanded]=useState(false);
+  const [selectedId,setSelectedId]=useState(null); const [editDraft,setEditDraft]=useState(null);
+  const [newTaskName,setNewTaskName]=useState(''); const scrollRef=useRef(null); const dragRef=useRef(null);
+  let chartStart=projectStart||today,chartEnd=projectEnd||addDays(today,45);
+  tasks.forEach(t=>{if(t.startDate&&t.startDate<chartStart)chartStart=t.startDate;if(t.dueDate&&t.dueDate>chartEnd)chartEnd=t.dueDate;});
+  if(thisWeek){const d=new Date(today+'T12:00:00');const mon=new Date(d);mon.setDate(d.getDate()-(d.getDay()===0?6:d.getDay()-1));chartStart=localDateISO(mon);chartEnd=localDateISO(new Date(mon.getTime()+6*86400000));}
+  else{chartStart=addDays(chartStart,-5);chartEnd=addDays(chartEnd,12);}
+  const totalDays=Math.max(1,daysBetween(chartStart,chartEnd)); const DAY_W=36,ROW_H=38,HEADER_H=44,LEFT_W=200;
+  const todayOffset=daysBetween(chartStart,today)*DAY_W; const gridW=Math.max(totalDays*DAY_W,100);
+  const months=useMemo(()=>{const m=[];let cur=new Date(chartStart+'T12:00:00');const end=new Date(chartEnd+'T12:00:00');while(cur<=end){const mStart=localDateISO(cur);const label=cur.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.',' ');const next=new Date(cur.getFullYear(),cur.getMonth()+1,1);const mEnd=next>end?chartEnd:localDateISO(next);m.push({label,days:daysBetween(mStart,mEnd)});cur=next;}return m;},[chartStart,chartEnd]);
+  const weekMarkers=useMemo(()=>{const w=[];for(let i=0;i<=totalDays;i+=7){const d=addDays(chartStart,i);const dt=new Date(d+'T12:00:00');w.push({offset:i*DAY_W,label:dt.getDate()+'/'+(dt.getMonth()+1)});}return w;},[chartStart,totalDays,DAY_W]);
+  const weekendCols=useMemo(()=>{const w=[];for(let i=0;i<=totalDays;i++){const dt=new Date(chartStart+'T12:00:00');dt.setDate(dt.getDate()+i);if(dt.getDay()===0||dt.getDay()===6)w.push(i);}return w;},[chartStart,totalDays]);
+  const barGeom=t=>{const s=t.startDate||(projectStart||today),e=t.dueDate||(projectEnd||addDays(today,7));return{left:Math.max(0,daysBetween(chartStart,s))*DAY_W,width:Math.max(DAY_W,(daysBetween(s<chartStart?chartStart:s,e)+1)*DAY_W)};};
+  const startDrag=(e,id,type)=>{e.preventDefault();const t=tasks.find(x=>x.id===id);if(!t)return;const oS=t.startDate||(projectStart||today),oE=t.dueDate||(projectEnd||addDays(today,7));dragRef.current={id,type,sX:e.clientX,oS,oE};const onMove=me=>{if(!dragRef.current)return;const dx=me.clientX-dragRef.current.sX,delta=Math.round(dx/DAY_W);let ns,ne;if(type==='move'){ns=addDays(oS,delta);ne=addDays(oE,delta);}else if(type==='left'){ns=addDays(oS,delta);ne=oE;if(ns>=ne)ns=addDays(ne,-1);}else{ns=oS;ne=addDays(oE,delta);if(ne<=ns)ne=addDays(ns,1);}onUpdateTasks(tasks.map(x=>x.id===id?{...x,startDate:ns,dueDate:ne}:x));};const onUp=()=>{dragRef.current=null;window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);};window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);};
+  const selectTask=t=>{setSelectedId(t.id);setEditDraft({...t,startDate:t.startDate||(projectStart||today),dueDate:t.dueDate||(projectEnd||addDays(today,7)),notes:t.notes||''});};
+  const saveEdit=()=>{if(!editDraft)return;onUpdateTasks(tasks.map(t=>t.id===editDraft.id?{...editDraft}:t));setSelectedId(null);setEditDraft(null);};
+  const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));setSelectedId(null);setEditDraft(null);};
+  const cycleStatus=id=>{const upd=tasks.map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);onUpdateTasks(upd);if(editDraft&&editDraft.id===id)setEditDraft(d=>({...d,status:PTASK_NEXT[d.status]||'Pendente'}));};
+  const addTask=()=>{if(!newTaskName.trim())return;const id=Date.now();onUpdateTasks([...tasks,{id,text:newTaskName.trim(),status:'Pendente',startDate:thisWeek?today:(projectStart||today),dueDate:thisWeek?addDays(today,7):(projectEnd||addDays(today,7)),notes:''}]);setNewTaskName('');};
+  return <div className="card" style={{padding:0,overflow:'hidden',marginBottom:12}}>
+    <div style={{display:'flex',justifyContent:'space-between',padding:'10px 16px',borderBottom:'1px solid var(--glass-border)',background:'var(--surface)'}}><div style={{display:'flex',alignItems:'center',gap:10}}><span className="label">Timeline</span><button onClick={()=>setThisWeek(w=>!w)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem',background:thisWeek?'var(--accent)':'transparent',color:thisWeek?'white':'var(--text-secondary)'}}>Esta semana</button></div><div style={{display:'flex',gap:8}}><input value={newTaskName} onChange={e=>setNewTaskName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()} placeholder="Nova tarefa..." className="input-box" style={{width:160}}/><button className="btn btn-dark" onClick={addTask} style={{padding:'5px 12px'}}>+</button></div></div>
+    <div style={{display:'flex',maxHeight:expanded?2000:180,overflow:'hidden'}}>
+      <div style={{width:LEFT_W,flexShrink:0,borderRight:'1px solid var(--glass-border)',background:'var(--surface)'}}><div style={{height:HEADER_H,background:'var(--bg)',display:'flex',alignItems:'flex-end',padding:'0 14px 8px'}}><span className="label">Tarefa</span></div>{tasks.map(t=>{const col=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];const sel=selectedId===t.id;return <div key={t.id} onClick={()=>selectTask(t)} style={{height:ROW_H,display:'flex',alignItems:'center',gap:6,padding:'0 8px',borderBottom:'1px solid var(--glass-border)',cursor:'pointer',background:sel?'rgba(28,25,23,.05)':'transparent'}}><button onClick={e=>{e.stopPropagation();cycleStatus(t.id);}} style={{width:12,height:12,borderRadius:'50%',background:col.dot,border:'none',cursor:'pointer'}}/><span style={{fontSize:'.83rem',textDecoration:t.status==='Concluído'?'line-through':'none',color:t.status==='Concluído'?'var(--text-secondary)':'var(--text)'}}>{t.text}</span></div>;})}</div>
+      <div ref={scrollRef} style={{flex:1,overflowX:'auto',position:'relative'}}>
+        <div style={{width:gridW,position:'relative',minWidth:'100%'}}>
+          <div style={{height:HEADER_H/2,display:'flex',borderBottom:'1px solid var(--glass-border)',background:'var(--bg)'}}>{months.map((m,i)=><div key={i} style={{width:m.days*DAY_W,flexShrink:0,borderRight:'1px solid var(--glass-border)',display:'flex',alignItems:'center',padding:'0 10px',fontSize:'.68rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--text-secondary)'}}>{m.label}</div>)}</div>
+          <div style={{height:HEADER_H/2,background:'var(--bg)',borderBottom:'2px solid var(--glass-border)',position:'relative'}}>{weekMarkers.map((mk,i)=><div key={i} style={{position:'absolute',left:mk.offset,height:'100%',display:'flex',alignItems:'center',paddingLeft:5,fontSize:'.62rem',color:'var(--text-secondary)',borderLeft:'1px solid var(--glass-border)'}}>{mk.label}</div>)}</div>
+          {todayOffset>=0&&<div style={{position:'absolute',left:todayOffset,top:0,bottom:0,width:2,background:'#EF4444',pointerEvents:'none',zIndex:10}}><div style={{position:'absolute',top:HEADER_H-18,left:'50%',transform:'translateX(-50%)',background:'#EF4444',color:'white',fontSize:'.52rem',fontWeight:800,padding:'2px 5px',borderRadius:3}}>HOJE</div></div>}
+          {tasks.map(t=>{const{left,width}=barGeom(t);const col=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];const sel=selectedId===t.id;return <div key={t.id} style={{height:ROW_H,position:'relative',borderBottom:'1px solid var(--glass-border)'}}><div onMouseDown={e=>startDrag(e,t.id,'move')} className="gantt-bar" style={{position:'absolute',left,width,height:28,top:(ROW_H-28)/2,background:col.bar,border:`1.5px solid ${sel?'var(--text)':col.border}`,borderRadius:7,cursor:'grab',display:'flex',alignItems:'center',boxShadow:sel?'0 0 0 2px var(--text)':'0 1px 4px rgba(0,0,0,.1)'}}><div onMouseDown={e=>startDrag(e,t.id,'left')} style={{width:8,height:'100%',cursor:'ew-resize',flexShrink:0}}/><div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'.68rem',fontWeight:600,color:col.text}}>{width>60?t.text:''}</div><div onMouseDown={e=>startDrag(e,t.id,'right')} style={{width:8,height:'100%',cursor:'ew-resize',flexShrink:0}}/></div></div>;})}
+        </div>
+      </div>
+    </div>
+    {tasks.length>0&&<div onClick={()=>setExpanded(x=>!x)} style={{display:'flex',justifyContent:'center',padding:'4px 0',cursor:'pointer',borderTop:'1px solid var(--glass-border)',background:'var(--surface)'}}><span style={{transform:expanded?'rotate(180deg)':'',transition:'transform .2s'}}>▼</span></div>}
+    {editDraft&&<div style={{borderTop:'2px solid var(--text)',padding:'14px 18px',background:'var(--surface)',display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}><div style={{flex:2,minWidth:160}}><label className="label">Tarefa</label><input value={editDraft.text} onChange={e=>setEditDraft({...editDraft,text:e.target.value})} className="input-box" autoFocus onKeyDown={e=>e.key==='Enter'&&saveEdit()}/></div><div style={{minWidth:130}}><label className="label">Início</label><input type="date" value={editDraft.startDate||''} onChange={e=>setEditDraft({...editDraft,startDate:e.target.value})} className="input-box"/></div><div style={{minWidth:130}}><label className="label">Prazo</label><input type="date" value={editDraft.dueDate||''} onChange={e=>setEditDraft({...editDraft,dueDate:e.target.value})} className="input-box"/></div><div style={{minWidth:130}}><label className="label">Status</label><select value={editDraft.status} onChange={e=>setEditDraft({...editDraft,status:e.target.value})} className="input-box">{PTASK_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div><div style={{display:'flex',gap:8}}><button onClick={deleteTask} className="btn btn-danger">🗑️</button><button onClick={()=>{setSelectedId(null);setEditDraft(null);}} className="btn btn-outline">Cancelar</button><button onClick={saveEdit} className="btn btn-dark">Salvar</button></div></div>}
+  </div>;
+};
 
-      // Draggable Pomodoro widget
-      function makeDraggable(el) {
-        let offX, offY, down = false;
-        el.addEventListener('mousedown', (e) => {
-          if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-          down = true; offX = e.clientX - el.getBoundingClientRect().left; offY = e.clientY - el.getBoundingClientRect().top;
-          el.style.cursor = 'grabbing';
-        });
-        document.addEventListener('mousemove', (e) => {
-          if (!down) return;
-          el.style.left = (e.clientX - offX) + 'px';
-          el.style.top = (e.clientY - offY) + 'px';
-          el.style.right = 'auto'; el.style.bottom = 'auto';
-        });
-        document.addEventListener('mouseup', () => { down = false; el.style.cursor = 'grab'; });
-      }
-      makeDraggable(document.getElementById('pomodoro-widget'));
-      document.getElementById('pomodoro-widget').addEventListener('dblclick', function(e) {
-        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-        this.classList.toggle('minimized');
+const ProjectsList = () => {
+  const { projects, setProjects, setSelectedProject, setView } = useContext(AppContext);
+  const [filterType, setFilterType] = useState('all'); const [onlyActive, setOnlyActive] = useState(false);
+  const [trash, setTrash] = useState(false);
+  const visible = projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
+  const softDelete = id => setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore = id => setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
+  const hardDelete = id => { if(confirm('Excluir permanentemente?')) setProjects(p=>p.filter(x=>x.id!==id)); };
+  const duplicateProject = p0 => { const id=Date.now(); const np={...p0,id,title:p0.title+' (cópia)',status:'Em Andamento',deleted:false,startDate:'',deadline:'',paid:false,shotsDone:0,projectTasks:(p0.projectTasks||[]).map((t,i)=>({...t,id:id+i+1,status:'Pendente',startDate:'',dueDate:''}))}; setProjects(prev=>[np,...prev]); };
+  const projDragRef = useRef(null);
+  const reorder = (from,to) => { if(from===to)return; setProjects(prev=>{const arr=[...prev];const [item]=arr.splice(from,1);arr.splice(to,0,item);return arr;}); };
+  const isMobile = window.innerWidth<768;
+  const addProject = () => setView('new-project');
+
+  const activeProjsWithTasks = projects.filter(p=>!p.deleted&&(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
+  const PTASK_STATUS_ORDER = ['Fazendo','Atrasado','Pendente'];
+  const statusColor = {'Fazendo':'#92700b','Atrasado':'#9B1C1C','Pendente':'var(--text-secondary)'};
+  const statusBg = {'Fazendo':'#FEF9E7','Atrasado':'#FDEDED','Pendente':'#F0EDE9'};
+
+  return <div className="fade-up" style={{maxWidth:'100%'}}>
+    <div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Projetos</h2><div style={{display:'flex',gap:8}}><button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>🗑️ {trash?'Sair':'Lixeira'}{!trash&&projects.filter(p=>p.deleted).length>0&&` (${projects.filter(p=>p.deleted).length})`}</button>{!trash && <button className="btn btn-dark" onClick={addProject}>+ Novo</button>}</div></div>
+    {trash&&<div style={{background:'#FEF2F2',border:'1px solid #FECACA',padding:10,borderRadius:10,marginBottom:14,color:'#991B1B'}}>Lixeira</div>}
+    {!trash&&<div style={{display:'flex',gap:4,marginBottom:16}}>{[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=><button key={v} onClick={()=>setFilterType(v)} className="btn btn-outline" style={{background:filterType===v?'var(--text)':'transparent',color:filterType===v?'var(--bg)':'var(--text-secondary)'}}>{l}</button>)}<label style={{display:'flex',alignItems:'center',gap:8,marginLeft:'auto',fontSize:'.82rem',color:'var(--text-secondary)',cursor:'pointer'}}>Apenas ativos<input type="checkbox" checked={onlyActive} onChange={e=>setOnlyActive(e.target.checked)}/></label></div>}
+    <div style={{display:'flex',gap:16}}>
+      <div style={{flex:1}}>
+        {isMobile ? <div className="card" style={{overflow:'hidden',borderRadius:12}}>{visible.map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid var(--glass-border)',cursor:'pointer'}} onClick={()=>{if(!trash){setSelectedProject(p);setView('project-detail');}}}><BgImg src={p.cover} style={{width:44,height:44,borderRadius:8}}/><div style={{flex:1}}><div style={{fontWeight:600}}>{p.title}</div><div style={{fontSize:'.72rem',color:'var(--text-secondary)'}}>{p.client} · <span className={`tag ${statusTag(p.status)}`}>{p.status}</span></div></div></div>)}</div>
+        : <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:16}}>{visible.map((p,idx)=> <div key={p.id} className="card" draggable={!trash} style={{overflow:'hidden',cursor:trash?'default':'pointer',opacity:trash?.85:1}} onClick={()=>{if(!trash){setSelectedProject(p);setView('project-detail');}}} onDragStart={e=>{if(trash)return;projDragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorder(projDragRef.current,idx);}}><div style={{height:140,position:'relative',backgroundColor:'#E8E3DC'}}><BgImg src={p.cover} style={{position:'absolute',inset:0}}/><div style={{position:'absolute',top:10,right:10,background:'rgba(252,251,249,.92)',borderRadius:5,padding:'3px 8px'}}><span style={{fontSize:'.65rem',fontWeight:600}}>{p.type==='work'?'Trabalho':'Pessoal'}</span></div></div><div style={{padding:'16px 18px'}}><div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div><div style={{fontSize:'.75rem',color:'var(--text-secondary)'}}>{p.client}{fmtBRL(p.budget)&&<span> · {fmtBRL(p.budget)}</span>}</div>{!trash?<div style={{display:'flex',justifyContent:'space-between',marginTop:14,paddingTop:12,borderTop:'1px solid var(--glass-border)'}}><span className={`tag ${statusTag(p.status)}`}>{p.status}</span>{deadlineInfo(p.deadline)&&<span style={{fontSize:'.7rem',color:deadlineInfo(p.deadline).color}}>📅 {deadlineInfo(p.deadline).date}</span>}</div>:<div style={{display:'flex',gap:6,marginTop:14}}><button className="btn btn-outline" onClick={e=>{e.stopPropagation();restore(p.id);}}>Restaurar</button><button className="btn btn-danger" onClick={e=>{e.stopPropagation();hardDelete(p.id);}}>Excluir</button></div>}</div></div>)}</div>}
+        {visible.length===0&&<div style={{textAlign:'center',padding:40,color:'var(--text-secondary)'}}>Nenhum projeto.</div>}
+      </div>
+      {!trash && !isMobile && (
+        <div style={{width:280,flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}><span className="label">Tarefas Pendentes</span><span style={{fontSize:'.7rem',color:'var(--text-secondary)',background:'var(--bg)',border:'1px solid var(--glass-border)',borderRadius:20,padding:'1px 8px'}}>{activeProjsWithTasks.reduce((s,p)=>s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length,0)}</span></div>
+          {activeProjsWithTasks.length===0?<div className="card" style={{padding:24,textAlign:'center'}}>Nenhuma tarefa pendente.</div>
+          :<div style={{display:'flex',flexDirection:'column',gap:10}}>{activeProjsWithTasks.map(p=>{const pending=(p.projectTasks||[]).filter(t=>t.status!=='Concluído').sort((a,b)=>PTASK_STATUS_ORDER.indexOf(a.status)-PTASK_STATUS_ORDER.indexOf(b.status));return <div key={p.id} className="card" style={{padding:'14px 16px'}}><div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,paddingBottom:10,borderBottom:'1px solid var(--glass-border)'}}><BgImg src={p.cover} style={{width:20,height:20,borderRadius:5}}/><span style={{fontWeight:600,fontSize:'.78rem',flex:1}}>{p.title}</span></div>{pending.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',gap:7,padding:'3px 0'}}><span style={{display:'inline-block',fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',padding:'2px 6px',borderRadius:3,background:statusBg[t.status]||'#F0EDE9',color:statusColor[t.status]||'var(--text-secondary)'}}>{t.status}</span><span style={{fontSize:'.78rem'}}>{t.text}</span></div>)}</div>;})}</div>}
+        </div>
+      )}
+    </div>
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// PROJECT DETAIL (Full, with drag-reorder in Tasks tab)
+// ══════════════════════════════════════════════════════════════
+const ProjectDetail = () => {
+  const { selectedProject, setView, projects, setProjects, mentors, setMentors, galleryPosts, galleryFolders } = useContext(AppContext);
+  const [local, setLocal] = useState(()=>({...selectedProject,projectTasks:applyAutoLate(selectedProject.projectTasks||[])}));
+  const [tab, setTab] = useState('Visão Geral'); const [galleryPopup, setGalleryPopup] = useState(null);
+  const [showResearchId, setShowResearchId] = useState(()=>(selectedProject.researchNotes||[])[0]?.id||null);
+  const [activeMiniId, setActiveMiniId] = useState(()=>(selectedProject.miniProjects||[])[0]?.id||null);
+  const [activeInnerNoteId, setActiveInnerNoteId] = useState(null);
+  const coverRef = useRef(null); const researchImgRef = useRef(null); const miniImgRef = useRef(null);
+  const dragMiniRef = useRef(null); const dragOverMiniRef = useRef(null);
+  const dragNoteRef = useRef(null); const dragOverNoteRef = useRef(null);
+  const isMobile = window.innerWidth<768;
+  useEffect(()=>{setLocal({...selectedProject,projectTasks:applyAutoLate(selectedProject.projectTasks||[])});},[selectedProject]);
+  const upd = (f,v) => { const n={...local,[f]:v}; setLocal(n); setProjects(prev=>prev.map(p=>p.id===n.id?n:p)); };
+  const handleCover = async e => { const f=e.target.files[0]; if(!f)return; upd('cover',await uploadImage(f)); };
+  const onBack = () => setView('projects');
+  const softDel = () => { setProjects(p=>p.map(x=>x.id===selectedProject.id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x)); setView('projects'); };
+  const autoLate = useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
+  const folders = (galleryFolders||[]).filter(f=>!f.deleted);
+  const folderPosts = local.galleryFolder ? (galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))) : [];
+  const toggleMentor = id => { const m=local.mentors||[]; upd('mentors',m.includes(id)?m.filter(x=>x!==id):[...m,id]); };
+  const addGlobalMentor = mentor => { setMentors(prev=>[...prev,mentor]); toggleMentor(mentor.id); };
+  const linked = mentors.filter(m=>!m.deleted&&(local.mentors||[]).includes(m.id));
+
+  // Research
+  const researchNotes = local.researchNotes || [];
+  const activeResearch = researchNotes.find(n=>n.id===showResearchId)||null;
+  const addResearchNote = () => { const n={id:Date.now(),title:'Nova Pesquisa',content:'',url:'',images:[],date:new Date().toLocaleDateString('pt-BR')}; upd('researchNotes',[...researchNotes,n]); setShowResearchId(n.id); };
+  const updateResearch = (field,val) => { upd('researchNotes', researchNotes.map(n=>n.id===showResearchId?{...n,[field]:val}:n)); };
+  const deleteResearch = id => { upd('researchNotes', researchNotes.filter(n=>n.id!==id)); setShowResearchId(researchNotes.find(n=>n.id!==id)?.id||null); };
+  const handleResearchImgUpload = async (noteId, e) => { const files=Array.from(e.target.files); const urls=await uploadImages(files); upd('researchNotes', researchNotes.map(n=>n.id===noteId?{...n,images:[...(n.images||[]),...urls]}:n)); e.target.value=''; };
+  const removeResearchImg = (noteId, idx) => { upd('researchNotes', researchNotes.map(n=>n.id===noteId?{...n,images:(n.images||[]).filter((_,i)=>i!==idx)}:n)); };
+
+  // Mini-projects (tasks) with drag-reorder
+  const miniProjects = local.miniProjects || [];
+  const activeMini = miniProjects.find(m=>m.id===activeMiniId)||null;
+  const miniStatusToPTask = s=>({'Em Andamento':'Fazendo','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
+  const ptaskStatusToMini = s=>({'Fazendo':'Em Andamento','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
+  const addMini = () => { const id=Date.now(); const n={id,title:'Nova Tarefa',status:'Pendente',notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')}; const pt={id,text:'Nova Tarefa',status:'Pendente',startDate:local.startDate||todayISO(),dueDate:local.deadline||addDays(todayISO(),7),notes:''}; setLocal(prev=>{const u={...prev,miniProjects:[...(prev.miniProjects||[]),n],projectTasks:[...(prev.projectTasks||[]),pt]};return u;}); setActiveMiniId(id); };
+  const updateMini = (field,val) => {
+    const newMinis = miniProjects.map(m=>m.id===activeMiniId?{...m,[field]:val}:m);
+    const newPTasks = autoLate.map(t=>{ if(t.id!==activeMiniId)return t; if(field==='title')return{...t,text:val}; if(field==='status')return{...t,status:miniStatusToPTask(val)}; return t; });
+    setLocal(prev=>({...prev,miniProjects:newMinis,projectTasks:newPTasks}));
+  };
+  const deleteMini = id => { const newMinis = miniProjects.filter(m=>m.id!==id); const newPTasks = autoLate.filter(t=>t.id!==id); upd('miniProjects',newMinis); upd('projectTasks',newPTasks); setActiveMiniId(miniProjects.find(m=>m.id!==id)?.id||null); };
+  const reorderMinis = (from,to) => { if(from===to)return; const m=[...miniProjects];const[mv]=m.splice(from,1);m.splice(to,0,mv);upd('miniProjects',m); };
+  const addInnerNote = () => { const n={id:Date.now(),title:'Nova nota',content:'',createdAt:new Date().toLocaleDateString('pt-BR')}; updateMini('innerNotes',[...(activeMini?.innerNotes||[]),n]); setActiveInnerNoteId(n.id); };
+  const updateInnerNote = (field,val) => { const notes = (activeMini?.innerNotes||[]).map(n=>n.id===activeInnerNoteId?{...n,[field]:val}:n); updateMini('innerNotes',notes); };
+  const deleteInnerNote = id => { const notes = (activeMini?.innerNotes||[]).filter(n=>n.id!==id); updateMini('innerNotes',notes); if(activeInnerNoteId===id)setActiveInnerNoteId(null); };
+  const reorderInnerNotes = (from,to) => { if(from===to)return; const notes=[...(activeMini?.innerNotes||[])];const[n]=notes.splice(from,1);notes.splice(to,0,n);updateMini('innerNotes',notes); };
+  const handleMiniImgs = async e => { const files=Array.from(e.target.files); const urls=await uploadImages(files); updateMini('frames',[...(activeMini?.frames||[]),...urls]); e.target.value=''; };
+
+  return <div className="fade-up" style={{height:'calc(100vh - 80px)',overflowY:'auto'}}>
+    <input ref={coverRef} type="file" accept="image/*" hidden onChange={handleCover}/>
+    <input ref={researchImgRef} type="file" accept="image/*" multiple hidden onChange={e=>handleResearchImgUpload(showResearchId,e)}/>
+    <input ref={miniImgRef} type="file" accept="image/*" multiple hidden onChange={handleMiniImgs}/>
+    <div className="cover-wrap" style={{height:220,borderRadius:16,overflow:'hidden',marginBottom:24,position:'relative'}}><BgImg src={local.cover} full style={{position:'absolute',inset:0}}/><div style={{position:'absolute',inset:0,background:'linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,.2) 60%, transparent 100%)'}}/><div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}><span style={{color:'white'}}>📷 Trocar capa</span></div><div style={{position:'absolute',inset:0,padding:24,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}><div style={{display:'flex',justifyContent:'space-between'}}><button onClick={e=>{e.stopPropagation();onBack();}} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>← Voltar</button><button onClick={e=>{e.stopPropagation();softDel();}} style={{background:'rgba(180,30,30,.3)',border:'1px solid rgba(255,100,100,.3)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>🗑️ Excluir</button></div><div><h1 style={{fontFamily:'var(--font-heading)',fontSize:'2.4rem',fontWeight:400,color:'white'}}>{local.title}</h1><p style={{color:'rgba(255,255,255,.7)'}}>{local.client}</p></div></div></div>
+    <GanttTimeline tasks={autoLate} onUpdateTasks={tasks=>upd('projectTasks',tasks)} projectStart={local.startDate} projectEnd={local.deadline}/>
+    <div style={{display:'flex',borderBottom:'1px solid var(--glass-border)',marginBottom:20}}>{['Visão Geral','Tarefas','Pesquisa','Mentores'].map(t=><button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--accent)':'var(--text-secondary)',borderBottom:tab===t?'2px solid var(--accent)':'2px solid transparent'}}>{t}</button>)}</div>
+    {tab==='Visão Geral'&&<div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 220px',gap:20}}><div style={{display:'flex',flexDirection:'column',gap:16}}><div className="card" style={{padding:24}}><span className="label">Notas</span><textarea value={local.notes} onChange={e=>upd('notes',e.target.value)} style={{width:'100%',minHeight:120,background:'transparent',border:'none',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',resize:'vertical',marginTop:8}}/></div><div className="card" style={{padding:24}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span className="label">Galeria</span><select value={local.galleryFolder||''} onChange={e=>upd('galleryFolder',e.target.value)} className="input-box" style={{width:'auto'}}><option value="">Nenhuma</option>{folders.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select></div>{local.galleryFolder&&(folderPosts.length===0?<div style={{textAlign:'center',padding:16,color:'var(--text-secondary)'}}>Nenhum post nesta pasta.</div>:<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>{folderPosts.map(post=>{const src=post.bannerImage||post.images?.[0];return <div key={post.id} className="card" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}><div style={{aspectRatio:'16/9',background:'var(--bg)'}}>{src?<Img src={src} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span>🖼️</span>}</div><div style={{padding:'7px 9px'}}>{post.title}</div></div>;})}</div>)}</div></div><div style={{display:'flex',flexDirection:'column',gap:12}}><div className="card" style={{padding:24}}><span className="label">Datas</span><div style={{marginTop:12}}><div className="label">Início</div><input type="date" value={local.startDate||''} onChange={e=>upd('startDate',e.target.value)} className="input-box"/></div><div style={{marginTop:12}}><div className="label">Deadline</div><input type="date" value={local.deadline||''} onChange={e=>upd('deadline',e.target.value)} className="input-box"/></div>{deadlineInfo(local.deadline)&&local.status==='Em Andamento'&&<div style={{marginTop:8,fontSize:'.75rem',fontWeight:700,padding:'5px 8px',borderRadius:8,background:deadlineInfo(local.deadline).bg,color:deadlineInfo(local.deadline).color}}>Entrega {deadlineInfo(local.deadline).label}</div>}</div><div className="card" style={{padding:24}}><span className="label">Financeiro</span><input type="number" min="0" value={local.budget||''} onChange={e=>upd('budget',e.target.value)} className="input-box" style={{marginTop:12}}/>{Number(local.budget)>0&&<label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,cursor:'pointer',fontSize:'.85rem'}}>{local.paid?'✓ Recebido':'A receber'}<input type="checkbox" checked={local.paid} onChange={e=>upd('paid',e.target.checked)}/></label>}</div><div className="card" style={{padding:24}}><span className="label">Shots</span><div style={{display:'flex',alignItems:'center',gap:8,marginTop:12}}><button className="btn btn-outline" onClick={()=>upd('shotsDone',Math.max(0,(local.shotsDone||0)-1))}>−</button><span>{local.shotsDone||0} / {local.shotsTotal||0}</span><button className="btn btn-dark" onClick={()=>upd('shotsDone',Math.min(local.shotsTotal||0,(local.shotsDone||0)+1))}>+</button></div><input type="number" min="0" value={local.shotsTotal||''} onChange={e=>upd('shotsTotal',Number(e.target.value))} className="input-box" style={{marginTop:8}}/></div></div></div>}
+    {tab==='Tarefas'&&<div style={{display:'flex',gap:16}}>
+      <div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
+        <button className="btn btn-dark" style={{marginBottom:8}} onClick={addMini}>+ Nova Tarefa</button>
+        {miniProjects.map((m,mIdx)=><div key={m.id} draggable onDragStart={e=>{dragMiniRef.current=mIdx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorderMinis(dragMiniRef.current,dragOverMiniRef.current);}} onDragEnter={()=>{dragOverMiniRef.current=mIdx;}} onClick={()=>{setActiveMiniId(m.id);setActiveInnerNoteId(null);}} style={{padding:'8px 12px',borderRadius:8,cursor:'pointer',border:activeMiniId===m.id?'1px solid var(--accent)':'1px solid transparent',background:activeMiniId===m.id?'var(--accent-glow)':'transparent',display:'flex',alignItems:'center',gap:6}}><span style={{cursor:'grab',color:'var(--text-secondary)'}}>⠿</span>{m.title}</div>)}
+      </div>
+      <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minHeight:320}}>
+        {activeMini?<>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
+            <input value={activeMini.title} onChange={e=>updateMini('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.5rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',flex:1}}/>
+            <select value={activeMini.status} onChange={e=>updateMini('status',e.target.value)} className="input-box" style={{width:'auto'}}>{['Pendente','Em Andamento','Concluído','Atrasado'].map(s=><option key={s}>{s}</option>)}</select>
+            <button className="btn btn-ghost" onClick={()=>deleteMini(activeMini.id)}>🗑️</button>
+          </div>
+          <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)} placeholder="Notas..." style={{resize:'vertical',minHeight:80,marginBottom:16,background:'transparent',border:'1px solid var(--glass-border)',borderRadius:8,padding:12}}/>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8,marginBottom:14}}>{(activeMini.frames||[]).map((img,i,list)=><div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}><Img src={img} style={{width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={()=>{const f=[...(activeMini.frames||[])];f.splice(i,1);updateMini('frames',f);}} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.6)',border:'none',borderRadius:'50%',width:20,height:20,color:'white'}}>✕</button></div>)}</div>
+          <button className="btn btn-outline" onClick={()=>miniImgRef.current.click()}>+ Adicionar frames</button>
+          <div style={{marginTop:20}}>
+            <span className="label">Notas Internas</span>
+            <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>{(activeMini.innerNotes||[]).map((n,nIdx)=><div key={n.id} draggable onDragStart={e=>{dragNoteRef.current=nIdx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorderInnerNotes(dragNoteRef.current,dragOverNoteRef.current);}} onDragEnter={()=>{dragOverNoteRef.current=nIdx;}} onClick={()=>setActiveInnerNoteId(n.id)} style={{padding:'8px 12px',borderRadius:6,cursor:'pointer',border:activeInnerNoteId===n.id?'1px solid var(--accent)':'1px solid var(--glass-border)',background:activeInnerNoteId===n.id?'var(--accent-glow)':'transparent',display:'flex',alignItems:'center',gap:6}}><span style={{cursor:'grab',color:'var(--text-secondary)'}}>⠿</span>{n.title}</div>)}<button className="btn btn-ghost" onClick={addInnerNote}>+ Nova nota</button></div>
+          </div>
+          {activeInnerNoteId&&(()=>{const note=(activeMini.innerNotes||[]).find(n=>n.id===activeInnerNoteId);if(!note)return null;return <div className="card" style={{padding:16,marginTop:16}}><input value={note.title} onChange={e=>updateInnerNote('title',e.target.value)} style={{fontWeight:600,background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',width:'100%',marginBottom:8}}/><textarea value={note.content||''} onChange={e=>updateInnerNote('content',e.target.value)} placeholder="Conteúdo..." style={{resize:'vertical',minHeight:80,width:'100%',background:'transparent',border:'1px solid var(--glass-border)',borderRadius:8,padding:12}}/><button className="btn btn-ghost text-link-danger" onClick={()=>deleteInnerNote(note.id)}>Excluir nota</button></div>;})()}
+        </>:<div style={{margin:'auto',textAlign:'center',color:'var(--text-secondary)'}}>Selecione ou crie uma tarefa</div>}
+      </div>
+    </div>}
+    {tab==='Pesquisa'&&<div style={{display:'flex',gap:16}}><div style={{width:200,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}><button className="btn btn-dark" style={{marginBottom:8}} onClick={addResearchNote}>+ Nova Pesquisa</button>{researchNotes.map(n=><div key={n.id} onClick={()=>setShowResearchId(n.id)} style={{padding:'8px 12px',borderRadius:8,cursor:'pointer',border:showResearchId===n.id?'1px solid var(--accent)':'1px solid transparent',background:showResearchId===n.id?'var(--accent-glow)':'transparent'}}>{n.title||'Sem título'}</div>)}</div><div className="card" style={{flex:1,padding:24}}>{activeResearch?<><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><input value={activeResearch.title} onChange={e=>updateResearch('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.5rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',flex:1}}/><button className="btn btn-ghost" onClick={()=>deleteResearch(activeResearch.id)}>🗑️</button></div><div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><span>🔗</span><input className="input-box" value={activeResearch.url||''} onChange={e=>updateResearch('url',e.target.value)} placeholder="Link"/></div><textarea className="input-box" rows={6} value={activeResearch.content||''} onChange={e=>updateResearch('content',e.target.value)} placeholder="Notas..." style={{resize:'vertical',marginBottom:16}}/><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>{(activeResearch.images||[]).map((img,i,list)=><div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}><Img src={img} style={{width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:4,right:4,background:'rgba(0,0,0,.6)',border:'none',borderRadius:'50%',width:20,height:20,color:'white'}}>✕</button></div>)}</div><button className="btn btn-outline" onClick={()=>researchImgRef.current.click()}>+ Adicionar imagens</button></>:<div style={{textAlign:'center',color:'var(--text-secondary)',marginTop:'30%'}}>Selecione ou crie uma pesquisa</div>}</div></div>}
+    {tab==='Mentores'&&<div><div className="card" style={{padding:24,marginBottom:16}}><span className="label">Vincular Mentores</span><div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:12}}>{mentors.filter(m=>!m.deleted).map(m=>{const on=(local.mentors||[]).includes(m.id);return <button key={m.id} onClick={()=>toggleMentor(m.id)} style={{padding:'6px 12px',borderRadius:20,border:`1.5px solid ${on?'var(--accent)':'var(--glass-border)'}`,background:on?'var(--accent)':'transparent',color:on?'white':'var(--text-secondary)',cursor:'pointer'}}>{m.name} {on?'✓':''}</button>;})}<button onClick={()=>addGlobalMentor({id:Date.now(),name:'Novo Mentor',area:'',medium:'',notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false})} className="btn btn-ghost">+ Adicionar</button></div></div>{linked.map(m=><div key={m.id} className="card" style={{padding:16,display:'flex',gap:14,marginBottom:8}}><div style={{width:40,height:40,borderRadius:'50%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)',fontSize:'1.2rem'}}>{m.name.charAt(0)}</div><div><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:'.8rem',color:'var(--text-secondary)'}}>{m.area}{m.medium?' — '+m.medium:''}</div></div></div>)}</div>}
+    {galleryPopup&&ReactDOM.createPortal(<div onClick={()=>setGalleryPopup(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}}><div onClick={e=>e.stopPropagation()} className="card" style={{maxWidth:680,width:'90%',maxHeight:'80vh',overflowY:'auto',padding:24}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h3 style={{fontFamily:'var(--font-heading)'}}>{galleryPopup.title}</h3><button onClick={()=>setGalleryPopup(null)} className="btn btn-ghost">✕</button></div>{galleryPopup.content&&<p style={{whiteSpace:'pre-wrap'}}>{galleryPopup.content}</p>}{(galleryPopup.images||[]).map((img,i)=><Img key={i} full src={img} style={{width:'100%',borderRadius:10,marginBottom:8}}/>)}</div></div>,document.body)}
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// GALLERY (Full)
+// ══════════════════════════════════════════════════════════════
+const Gallery = () => {
+  const { galleryPosts, setGalleryPosts, galleryFolders, setGalleryFolders } = useContext(AppContext);
+  const [activeFolder, setActiveFolder] = useState(galleryFolders[0]?.id);
+  const [selected, setSelected] = useState(null); const [lightbox, setLightbox] = useState(null);
+  const [trash, setTrash] = useState(false); const [uploading, setUploading] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState(null); const [editingLabel, setEditingLabel] = useState('');
+  const addImgRef = useRef(null);
+  const liveFolders = galleryFolders.filter(f=>!f.deleted&&!f.archived);
+  const archivedFolders = galleryFolders.filter(f=>f.archived);
+  const trashedFolders = galleryFolders.filter(f=>f.deleted);
+  const [folderTrash, setFolderTrash] = useState(false); const [folderArchive, setFolderArchive] = useState(false);
+  const active = useMemo(()=>galleryPosts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[galleryPosts,trash,activeFolder]);
+  const grouped = useMemo(()=>{const s=[...active].sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10)));return s.reduce((acc,p)=>{const k=new Date((p.date||'').slice(0,10)+'T12:00:00').toLocaleString('pt-BR',{month:'long',year:'numeric'});if(!acc[k])acc[k]=[];acc[k].push(p);return acc;},{});},[active]);
+  const upd = (f,v) => { const u={...selected,[f]:v}; setSelected(u); setGalleryPosts(p=>p.map(x=>x.id===u.id?u:x)); };
+  const handleAddImages = async e => { const files=Array.from(e.target.files);setUploading(true);const urls=await uploadImages(files,(d,t)=>setUploading({done:d,total:t}));setUploading(false);upd('images',[...(selected.images||[]),...urls]);e.target.value=''; };
+  const removeImg = i => { const imgs=[...selected.images];imgs.splice(i,1);upd('images',imgs); };
+  const softDel = id => setGalleryPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore = id => setGalleryPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
+  const hardDel = id => { if(confirm('Excluir permanentemente?'))setGalleryPosts(p=>p.filter(x=>x.id!==id)); };
+  const addFolder = () => { const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false};setGalleryFolders(p=>[...p,n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label); };
+  const renameFolder = (id,label) => { if(label.trim()) setGalleryFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f)); };
+  const trashFolder = id => { setGalleryFolders(p=>p.map(f=>f.id===id?{...f,deleted:true,deletedAt:new Date().toISOString()}:f)); if(activeFolder===id) setActiveFolder(liveFolders.find(f=>f.id!==id)?.id||''); };
+  const restoreFolder = id => setGalleryFolders(p=>p.map(f=>f.id===id?{...f,deleted:false,deletedAt:null}:f));
+  const hardDeleteFolder = id => { if(confirm('Excluir pasta permanentemente?')) setGalleryFolders(p=>p.filter(f=>f.id!==id)); };
+  const archiveFolder = id => { setGalleryFolders(p=>p.map(f=>f.id===id?{...f,archived:true}:f)); if(activeFolder===id) setActiveFolder(liveFolders.find(f=>f.id!==id)?.id||''); };
+  const unarchiveFolder = id => setGalleryFolders(p=>p.map(f=>f.id===id?{...f,archived:false}:f));
+  const reorderFolders = (from,to) => { if(from===to)return; setGalleryFolders(prev=>{const live=prev.filter(f=>!f.deleted&&!f.archived);const rest=prev.filter(f=>f.deleted||f.archived);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...rest];}); };
+  const folderDragRef = useRef(null);
+  const handleUpload = async e => { const files=Array.from(e.target.files);setUploading(true);const urls=await uploadImages(files);setUploading(false);const newPosts=urls.map(url=>({id:Date.now()+Math.random(),folder:activeFolder,title:'Novo Estudo',date:localDateISO(),content:'',images:[url],deleted:false}));setGalleryPosts(p=>[...newPosts,...p]);e.target.value=''; };
+  if(lightbox) return <div className="lightbox" onClick={()=>setLightbox(null)}><Img src={lightbox} full style={{maxWidth:'90vw',maxHeight:'90vh',objectFit:'contain'}}/><button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,color:'white',cursor:'pointer'}}>✕</button></div>;
+  if(selected&&!trash) return <div className="fade-up"><input ref={addImgRef} type="file" accept="image/*,video/*,.gif" multiple hidden onChange={handleAddImages}/><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><button className="btn btn-outline" onClick={()=>setSelected(null)}>← Voltar</button><button className="btn btn-danger" onClick={()=>{softDel(selected.id);setSelected(null);}}>🗑️ Lixeira</button></div><div className="card" style={{padding:24}}><input value={selected.title} onChange={e=>upd('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',width:'100%',marginBottom:16}}/><div style={{display:'flex',gap:8,marginBottom:20}}><span className="label">Pasta</span>{liveFolders.map(f=><button key={f.id} onClick={()=>upd('folder',f.id)} style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--accent)':'var(--glass-border)'}`,background:selected.folder===f.id?'var(--accent)':'transparent',color:selected.folder===f.id?'white':'var(--text-secondary)'}}>{f.label}</button>)}</div><textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise..." style={{width:'100%',border:'1px solid var(--glass-border)',borderRadius:10,padding:16,minHeight:120,resize:'vertical',marginBottom:24}}/><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{selected.images.map((img,i,list)=><div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>{isVideoSrc(img)?<Vid src={img} controls/>:<Img src={img} onClick={()=>setLightbox(img)} style={{cursor:'zoom-in',width:'100%',height:'100%',objectFit:'cover'}}/>}<button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.6)',border:'none',borderRadius:'50%',width:24,height:24,color:'white'}}>✕</button></div>)}<div className="upload-zone" style={{aspectRatio:'16/9',border:'2px dashed var(--glass-border)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer'}} onClick={()=>addImgRef.current.click()}>+</div></div></div></div>;
+  return <div className="fade-up" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 80px)'}}>
+    <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><h2 style={{fontFamily:'var(--font-heading)'}}>Galeria</h2><div style={{display:'flex',gap:8}}><button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>🗑️ {trash?'Sair':'Lixeira'}</button>{!trash&&<><button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:localDateISO(),content:"",images:[],deleted:false};setGalleryPosts(p=>[n,...p]);setSelected(n);}}>+ Criar</button><label className="btn btn-outline" style={{cursor:'pointer'}}>⬆️ Upload<input type="file" accept="image/*,video/*,.gif" multiple hidden onChange={handleUpload}/></label></>}</div></div>
+    {!trash&&<div style={{display:'flex',alignItems:'center',borderBottom:'1px solid var(--glass-border)',marginBottom:14,gap:4,overflowX:'auto'}}>
+      {liveFolders.map((f,idx)=><div key={f.id} className="drag-item" draggable onDragStart={e=>{folderDragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorderFolders(folderDragRef.current,idx);}} style={{display:'flex',alignItems:'center'}}>
+        {editingFolderId===f.id?<><input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)} onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}} onKeyDown={e=>{if(e.key==='Enter'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}} style={{background:'transparent',border:'none',outline:'none',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}/><button onMouseDown={e=>{e.preventDefault();archiveFolder(f.id);setEditingFolderId(null);}}>📦</button><button onMouseDown={e=>{e.preventDefault();trashFolder(f.id);setEditingFolderId(null);}}>🗑️</button></>:<button className="tab-btn" onClick={()=>setActiveFolder(f.id)} onDoubleClick={()=>{setEditingFolderId(f.id);setEditingLabel(f.label);}} style={{color:activeFolder===f.id?'var(--accent)':'var(--text-secondary)',borderBottom:'none',margin:0,padding:'10px 6px'}}>{f.label}</button>}
+      </div>)}
+      <button onClick={addFolder} className="tab-btn" style={{color:'var(--text-secondary)',opacity:.6}}>+</button>
+      {archivedFolders.length>0&&<button onClick={()=>setFolderArchive(!folderArchive)} className="tab-btn" style={{color:folderArchive?'var(--accent)':'var(--text-secondary)',marginLeft:'auto'}}>📦 {archivedFolders.length}</button>}
+      {trashedFolders.length>0&&<button onClick={()=>setFolderTrash(!folderTrash)} className="tab-btn" style={{color:folderTrash?'var(--accent)':'var(--text-secondary)'}}>🗑️ {trashedFolders.length}</button>}
+    </div>}
+    {folderTrash&&<div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16}}><span className="label">Pastas na lixeira</span>{trashedFolders.map(f=><div key={f.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'}}><span>{f.label}</span><div><button className="btn btn-ghost" onClick={()=>restoreFolder(f.id)}>Restaurar</button><button className="btn btn-ghost text-link-danger" onClick={()=>hardDeleteFolder(f.id)}>Excluir</button></div></div>)}</div>}
+    {folderArchive&&<div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16}}><span className="label">Pastas arquivadas</span>{archivedFolders.map(f=><div key={f.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'}}><span>{f.label}</span><button className="btn btn-ghost" onClick={()=>unarchiveFolder(f.id)}>Desarquivar</button></div>)}</div>}
+    {Object.keys(grouped).length===0?<div style={{textAlign:'center',padding:40,color:'var(--text-secondary)'}}>Pasta vazia.</div>:Object.entries(grouped).map(([month,posts])=><div key={month} style={{marginBottom:24}}><div className="label" style={{marginBottom:10}}>{month}</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(220px,1fr))',gap:14}}>{posts.map(post=><div key={post.id} className="card" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>!trash&&setSelected(post)}><div style={{aspectRatio:'16/9',background:'var(--bg)'}}>{post.images[0]&&<Img src={post.images[0]} style={{width:'100%',height:'100%',objectFit:'cover'}}/>}</div><div style={{padding:'12px 14px'}}><div style={{fontWeight:600}}>{post.title}</div></div></div>)}</div></div>)}
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// IDEAS LAB (Full with Rich Editor, Groups)
+// ══════════════════════════════════════════════════════════════
+const RichEditor = ({ noteId, initialHTML, onSave }) => {
+  const ref = useRef(null); const saveTimer = useRef(null); const lastId = useRef(null); const imgInputRef = useRef(null);
+  useEffect(()=>{if(!ref.current)return;if(lastId.current!==noteId){ref.current.innerHTML=sanitizeHTML(initialHTML||'');lastId.current=noteId;}});
+  const emit = useCallback(()=>{clearTimeout(saveTimer.current);saveTimer.current=setTimeout(()=>{if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));},800);},[onSave]);
+  const flushSave = useCallback(()=>{clearTimeout(saveTimer.current);if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));},[onSave]);
+  const exec = (cmd,val) => { ref.current?.focus(); document.execCommand(cmd,false,val||null); emit(); };
+  const insertImageFile = useCallback(async file => { const c=await _compressImage(file); const url=await uploadImage(c); ref.current?.focus(); document.execCommand('insertHTML',false,`<img src="${url}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;"/>`); emit(); },[emit]);
+  const handlePaste = e => { const items=e.clipboardData?.items||[]; const img=[...items].find(i=>i.type.startsWith('image/')); if(img){e.preventDefault();insertImageFile(img.getAsFile());} };
+  return <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}><div style={{display:'flex',gap:4,padding:'4px 0 8px',borderBottom:'1px solid var(--glass-border)',marginBottom:12,flexWrap:'wrap'}}>{[{cmd:'bold',icon:'B'},{cmd:'italic',icon:'I'},{cmd:'underline',icon:'U'}].map(b=><button key={b.cmd} className="rich-toolbar-btn" onMouseDown={e=>{e.preventDefault();exec(b.cmd);}} style={{fontWeight:b.cmd==='bold'?700:400,fontStyle:b.cmd==='italic'?'italic':'normal'}}>{b.icon}</button>)}<span style={{width:1,background:'var(--glass-border)',margin:'0 4px'}}/><button className="rich-toolbar-btn" onMouseDown={e=>{e.preventDefault();exec('insertUnorderedList');}}>•</button><button className="rich-toolbar-btn" onMouseDown={e=>{e.preventDefault();exec('insertOrderedList');}}>1.</button><span style={{width:1,background:'var(--glass-border)',margin:'0 4px'}}/><button className="rich-toolbar-btn" onMouseDown={e=>{e.preventDefault();exec('formatBlock','h1');}}>H1</button><button className="rich-toolbar-btn" onMouseDown={e=>{e.preventDefault();exec('formatBlock','h2');}}>H2</button><span style={{width:1,background:'var(--glass-border)',margin:'0 4px'}}/><label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>🖼️<input ref={imgInputRef} type="file" accept="image/*" hidden onChange={async e=>{const f=e.target.files[0];if(!f)return;await insertImageFile(f);e.target.value='';}}/></label></div><div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning data-placeholder="Comece a escrever..." onInput={emit} onBlur={flushSave} onPaste={handlePaste} style={{flex:1,fontSize:'.95rem',lineHeight:1.9}}/></div>;
+};
+
+const IdeasLab = () => {
+  const { notes, setNotes } = useContext(AppContext);
+  const [sid,setSid]=useState(null); const [showTrash,setShowTrash]=useState(false);
+  const [entryId,setEntryId]=useState(null);
+  const all = notes.filter(n=>!n.deleted); const trashed = notes.filter(n=>n.deleted);
+  const item = notes.find(n=>n.id===sid);
+  const isGroup = item?.type==='project';
+  const entries = isGroup ? (item.entries||[]) : [];
+  const activeEntry = entryId ? entries.find(e=>e.id===entryId)||null : null;
+  const newNote = () => { const n={id:Date.now(),type:'note',title:'Nova Anotação',content:'',date:new Date().toLocaleDateString('pt-BR'),deleted:false}; setNotes(p=>[n,...p]); setSid(n.id); setEntryId(null); };
+  const newGroup = () => { const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]}; setNotes(p=>[p,...p]); setSid(p.id); setEntryId(null); };
+  const trashItem = id => { setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n)); if(sid===id)setSid(null); };
+  const restore = id => setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false,deletedAt:null}:n));
+  const hardDel = id => { if(confirm('Excluir?')){setNotes(p=>p.filter(n=>n.id!==id));if(sid===id)setSid(null);} };
+  const updItem = (field,val) => setNotes(p=>p.map(n=>n.id===sid?{...n,[field]:val}:n));
+  const addEntry = () => { const e={id:Date.now(),title:'Nova Entrada',content:'',date:new Date().toLocaleDateString('pt-BR')}; updItem('entries',[...entries,e]); setEntryId(e.id); };
+  const updEntry = (field,val) => updItem('entries',entries.map(e=>e.id===entryId?{...e,[field]:val}:e));
+  const deleteEntry = id => { updItem('entries',entries.filter(e=>e.id!==id)); if(entryId===id) setEntryId(null); };
+
+  return <div className="fade-up" style={{display:'flex',gap:16,height:'calc(100vh - 80px)'}}>
+    <div style={{width:200,overflowY:'auto',paddingRight:8}}>
+      <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:8}}><button className="btn btn-dark" style={{width:'100%'}} onClick={newNote}>📄 Nova Nota</button><button className="btn btn-dark" style={{width:'100%'}} onClick={newGroup}>📁 Novo Grupo</button></div>
+      <button className="btn btn-outline" style={{width:'100%',marginBottom:8}} onClick={()=>setShowTrash(t=>!t)}>🗑️ {showTrash?'Sair':'Lixeira'}{trashed.length>0&&` (${trashed.length})`}</button>
+      {(showTrash?trashed:all).map(n=><div key={n.id} onClick={()=>{setSid(n.id);setEntryId(null);}} style={{padding:'10px 12px',cursor:'pointer',borderRadius:8,background:sid===n.id?'var(--accent-glow)':'transparent',marginBottom:4}}><div style={{display:'flex',alignItems:'center',gap:6}}><span>{n.type==='project'?'📁':'📄'}</span><span style={{fontWeight:600}}>{n.title}</span></div></div>)}
+    </div>
+    <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+      {item && !isGroup && <div className="card" style={{padding:28,display:'flex',flexDirection:'column',flex:1}}><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}><input value={item.title} onChange={e=>updItem('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',flex:1}}/><button className="btn btn-ghost" onClick={()=>trashItem(item.id)}>🗑️</button></div><RichEditor key={item.id} noteId={item.id} initialHTML={item.content||''} onSave={html=>updItem('content',html)}/></div>}
+      {item && isGroup && <div style={{display:'flex',gap:12,flex:1,minHeight:0}}><div className="card" style={{width:190,padding:16,display:'flex',flexDirection:'column',gap:8}}><input value={item.title} onChange={e=>updItem('title',e.target.value)} style={{fontWeight:700,fontSize:'.88rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',paddingBottom:6}}/><div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>{entries.map(e=><div key={e.id} onClick={()=>setEntryId(e.id)} style={{padding:'8px 10px',borderRadius:7,cursor:'pointer',border:entryId===e.id?'1px solid var(--accent)':'1px solid transparent',background:entryId===e.id?'var(--accent-glow)':'transparent'}}>{e.title}</div>)}</div><button className="btn btn-dark" onClick={addEntry}>+ Entrada</button><button className="btn btn-ghost text-link-danger" onClick={()=>trashItem(item.id)}>🗑️ Grupo</button></div><div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>{activeEntry?<><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}><input value={activeEntry.title} onChange={e=>updEntry('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.5rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',flex:1}}/><button className="btn btn-ghost" onClick={()=>deleteEntry(activeEntry.id)}>🗑️</button></div><RichEditor key={activeEntry.id} noteId={activeEntry.id} initialHTML={activeEntry.content||''} onSave={html=>updEntry('content',html)}/></>:<div style={{margin:'auto',textAlign:'center',color:'var(--text-secondary)'}}>Selecione uma entrada</div>}</div></div>}
+      {!item && <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)'}}>Selecione ou crie uma anotação</div>}
+    </div>
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// MENTORS HUB
+// ══════════════════════════════════════════════════════════════
+const MentorModal = ({ mentor, onClose, onSave, onDelete }) => {
+  const [form,setForm]=useState({...mentor}); const photoRef=useRef(); const refs=[useRef(),useRef(),useRef(),useRef()];
+  const handlePhoto = async e => { const f=e.target.files[0]; if(!f)return; setForm(fm=>({...fm,photo:await uploadImage(f)})); };
+  const handleRef = async (idx,e) => { const f=e.target.files[0]; if(!f)return; const imgs=[...(form.photos||[null,null,null,null])]; imgs[idx]=await uploadImage(f); setForm(fm=>({...fm,photos:imgs})); };
+  const removeRef = idx => { const imgs=[...(form.photos||[null,null,null,null])]; imgs[idx]=null; setForm(fm=>({...fm,photos:imgs})); };
+  const photos = form.photos||[null,null,null,null];
+  return ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="card" style={{width:'100%',maxWidth:580,padding:28,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><h2 style={{fontFamily:'var(--font-heading)'}}>{form.name||'Mentor'}</h2><button className="btn btn-ghost" onClick={onClose}>✕</button></div><div style={{display:'flex',gap:16,marginBottom:14}}><input ref={photoRef} type="file" accept="image/*" hidden onChange={handlePhoto}/><div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',overflow:'hidden',border:'2px dashed var(--glass-border)',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>{form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem'}}>{form.name.charAt(0)}</span>}</div><div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div><span className="label">Nome</span><input className="input-box" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div><div><span className="label">Área</span><input className="input-box" value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))}/></div><div><span className="label">Meio</span><input className="input-box" value={form.medium} onChange={e=>setForm(f=>({...f,medium:e.target.value}))}/></div><div><span className="label">Status</span><select className="input-box" value={form.active?'Ativo':'Inativo'} onChange={e=>setForm(f=>({...f,active:e.target.value==='Ativo'}))}><option>Ativo</option><option>Inativo</option></select></div></div></div><button onClick={()=>setForm(f=>({...f,main:!f.main}))} style={{padding:'6px 14px',borderRadius:10,border:`1.5px solid ${form.main?'#92700b':'var(--glass-border)'}`,background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--text-secondary)',cursor:'pointer',marginBottom:12}}>★ {form.main?'Principal':'Marcar como Principal'}</button><div style={{marginBottom:14}}><span className="label">Notas</span><textarea className="input-box" rows={3} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical',marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Links</span><input className="input-box" value={form.links} onChange={e=>setForm(f=>({...f,links:e.target.value}))} style={{marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Imagens de Referência</span><div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:4}}>{[0,1,2,3].map(idx=><div key={idx} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--glass-border)',cursor:'pointer'}} onClick={()=>!photos[idx]&&refs[idx].current.click()}><input ref={refs[idx]} type="file" accept="image/*" hidden onChange={e=>handleRef(idx,e)}/>{photos[idx]?<><Img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={e=>{e.stopPropagation();removeRef(idx);}} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,.55)',border:'none',color:'white',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button></>:<div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',fontSize:'.65rem'}}>+</div>}</div>)}</div></div><div style={{display:'flex',justifyContent:'space-between'}}><button className="btn btn-danger" onClick={onDelete}>🗑️ Excluir</button><div style={{display:'flex',gap:8}}><button className="btn btn-outline" onClick={onClose}>Cancelar</button><button className="btn btn-dark" onClick={()=>onSave(form)}>Salvar</button></div></div></div></div>,document.body);
+};
+const MentorsHub = () => {
+  const { mentors, setMentors } = useContext(AppContext);
+  const [sel,setSel]=useState(null); const [search,setSearch]=useState(''); const [year,setYear]=useState('all');
+  const years = useMemo(()=>{const ys=[...new Set(mentors.filter(m=>!m.deleted&&m.year).map(m=>Number(m.year)))];ys.sort((a,b)=>b-a);return ys;},[mentors]);
+  const vis = mentors.filter(m=>!m.deleted&&(year==='all'||String(m.year)===String(year))&&(!search||m.name.toLowerCase().includes(search.toLowerCase())));
+  const add = () => { const n={id:Date.now(),name:'Novo Mentor',area:'',medium:'',year:new Date().getFullYear(),notes:'',links:'',active:true,main:false,photo:'',photos:[null,null,null,null],deleted:false};setMentors(p=>[n,...p]);setSel(n); };
+  const save = f => { if(f.main&&mentors.filter(m=>!m.deleted&&m.main&&m.id!==f.id).length>=3){alert('Máx 3 principais');return;}setMentors(p=>p.map(m=>m.id===f.id?f:m));setSel(null); };
+  const del = () => { if(confirm('Excluir?')){setMentors(p=>p.filter(m=>m.id!==sel.id));setSel(null);} };
+  const dragRef = useRef(null);
+  const reorder = (from,to) => { if(from===to)return; setMentors(prev=>{const live=prev.filter(m=>!m.deleted);const[mv]=live.splice(from,1);live.splice(to,0,mv);return[...live,...prev.filter(m=>m.deleted)];}); };
+  return <div className="fade-up">{sel&&<MentorModal mentor={sel} onClose={()=>setSel(null)} onSave={save} onDelete={del}/>}<div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Mentores</h2><button className="btn btn-dark" onClick={add}>+ Adicionar</button></div>{mentors.filter(m=>!m.deleted).length>0&&<input className="input-box" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{marginBottom:16}}/>}{years.length>0&&<div style={{display:'flex',borderBottom:'1px solid var(--glass-border)',marginBottom:20,gap:0,overflowX:'auto'}}><button onClick={()=>setYear('all')} className="tab-btn" style={{color:year==='all'?'var(--accent)':'var(--text-secondary)'}}>Todos</button>{years.map(y=><button key={y} onClick={()=>setYear(String(y))} className="tab-btn" style={{color:String(year)===String(y)?'var(--accent)':'var(--text-secondary)'}}>{y}</button>)}</div>}<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{vis.map((m,idx)=>{const ph=(m.photos||[]).filter(Boolean);return <div key={m.id} className="card" draggable onDragStart={e=>{dragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorder(dragRef.current,idx);}} style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSel(m)}>{ph.length>0?<div style={{height:90,display:'grid',gridTemplateColumns:`repeat(${Math.min(ph.length,4)},1fr)`,gap:1}}>{ph.slice(0,4).map((img,i,list)=><Img key={imgKey(img,i,list)} src={img} style={{height:90,objectFit:'cover'}}/>)}</div>:<div style={{height:90,background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)',fontSize:'2.8rem',color:'var(--text-secondary)'}}>{m.name.charAt(0)}</div>}<div style={{padding:'14px 16px'}}><div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>{m.photo?<Img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}}/>:<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)'}}>{m.name.charAt(0)}</div>}<div><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:'.73rem',color:'var(--text-secondary)'}}>{m.area}{m.medium?' - '+m.medium:''}</div></div></div><div style={{display:'flex',gap:5}}><span className="tag" style={{background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--text-secondary)'}}>{m.active?'Ativo':'Inativo'}</span>{m.main&&<span className="tag" style={{background:'#FEF9E7',color:'#92700b'}}>★ Principal</span>}</div></div></div>;})}</div></div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// SOCIAL
+// ══════════════════════════════════════════════════════════════
+const SOCIAL_PLATFORMS = ['Instagram','LinkedIn','Twitter/X','TikTok','YouTube','Behance'];
+const socialTemplates = [{label:"Bastidores",text:" Bastidores do projeto de hoje.\n\n#storyboard #bastidores"},{label:"Novo Job",text:" Novo projeto saindo do forno!\n\n#storyboard #directiondesign"}];
+const Social = () => {
+  const { socialPosts, setSocialPosts } = useContext(AppContext);
+  const [text,setText]=useState(''); const [platform,setPlatform]=useState('Instagram');
+  const [editId,setEditId]=useState(null); const [trash,setTrash]=useState(false);
+  const [templates,setTemplates]=useState(()=>{try{return JSON.parse(localStorage.getItem('boardhub_social_templates'))||socialTemplates;}catch{return socialTemplates;}});
+  const [editingTpl,setEditingTpl]=useState(null);
+  const displayed = trash?socialPosts.filter(p=>p.deleted):socialPosts.filter(p=>!p.deleted);
+  const savePost = () => { if(!text.trim())return; if(editId){setSocialPosts(p=>p.map(x=>x.id===editId?{...x,text,platform}:x));setEditId(null);} else setSocialPosts(p=>[{id:Date.now(),text,date:new Date().toLocaleDateString('pt-BR'),platform,deleted:false},...p]); setText(''); };
+  const startEdit = p => { setText(p.text); setPlatform(p.platform||'Instagram'); setEditId(p.id); };
+  const softDel = id => setSocialPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
+  const restore = id => setSocialPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
+  const hardDel = id => { if(confirm('Excluir?'))setSocialPosts(p=>p.filter(x=>x.id!==id)); };
+  const platformColor = pl => ({Instagram:'#833AB4',LinkedIn:'#0A66C2','Twitter/X':'#000000',TikTok:'#010101',YouTube:'#FF0000',Behance:'#053EFF'}[pl]||'var(--text)');
+  const saveTpl = () => { if(!editingTpl.label.trim())return; const next=[...templates]; if(editingTpl.index===-1)next.push({label:editingTpl.label,text:editingTpl.text}); else next[editingTpl.index]={label:editingTpl.label,text:editingTpl.text}; setTemplates(next); localStorage.setItem('boardhub_social_templates',JSON.stringify(next)); setEditingTpl(null); };
+  const deleteTpl = i => { const next=templates.filter((_,idx)=>idx!==i); setTemplates(next); localStorage.setItem('boardhub_social_templates',JSON.stringify(next)); };
+  return <div className="fade-up">
+    {editingTpl&&ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)setEditingTpl(null);}}><div className="card" style={{width:480,padding:28}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}><h2 style={{fontFamily:'var(--font-heading)'}}>{editingTpl.index===-1?'Novo Template':'Editar'}</h2><button className="btn btn-ghost" onClick={()=>setEditingTpl(null)}>✕</button></div><div style={{display:'flex',flexDirection:'column',gap:14}}><div><span className="label">Nome</span><input className="input-box" value={editingTpl.label} onChange={e=>setEditingTpl(t=>({...t,label:e.target.value}))}/></div><div><span className="label">Texto</span><textarea className="input-box" rows={6} value={editingTpl.text} onChange={e=>setEditingTpl(t=>({...t,text:e.target.value}))}/></div><div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-outline" onClick={()=>setEditingTpl(null)}>Cancelar</button><button className="btn btn-dark" onClick={saveTpl}>Salvar</button></div></div></div></div>,document.body)}
+    <div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Social</h2><button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>🗑️ {trash?'Sair':'Lixeira'}{!trash&&socialPosts.filter(p=>p.deleted).length>0&&` (${socialPosts.filter(p=>p.deleted).length})`}</button></div>
+    {!trash&&<div style={{display:'grid',gridTemplateColumns:'1fr 260px',gap:20,marginBottom:20}}><div className="card" style={{padding:24}}><textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva..." style={{width:'100%',minHeight:180,resize:'none',background:'transparent',border:'none',fontSize:'.95rem',lineHeight:1.8,color:'var(--text)'}}/><div style={{borderTop:'1px solid var(--glass-border)',paddingTop:12,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}><span className="label">Plataforma</span>{SOCIAL_PLATFORMS.map(pl=><button key={pl} onClick={()=>setPlatform(pl)} style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--glass-border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--text-secondary)',fontSize:'.74rem',cursor:'pointer'}}>{pl}</button>)}<button className="btn btn-dark" style={{marginLeft:'auto'}} onClick={savePost}>{editId?'Atualizar':'Salvar'}</button></div></div><div><div style={{display:'flex',justifyContent:'space-between',marginBottom:12}}><span className="label">Templates</span><button className="btn btn-ghost" onClick={()=>setEditingTpl({index:-1,label:'',text:''})}>+ Novo</button></div><div style={{display:'flex',flexDirection:'column',gap:8}}>{templates.map((t,i)=><div key={i} className="card" style={{padding:'10px 14px'}}><div style={{display:'flex',justifyContent:'space-between'}}><button onClick={()=>setText(t.text)} style={{fontWeight:600,background:'none',border:'none',color:'var(--text)',cursor:'pointer'}}>{t.label}</button><div><button className="btn btn-ghost" onClick={()=>setEditingTpl({index:i,...t})}>✏️</button><button className="btn btn-ghost" onClick={()=>deleteTpl(i)}>✕</button></div></div></div>)}</div></div></div>}
+    {displayed.length>0&&<div><span className="label">{trash?'Lixeira':'Posts'}</span><div style={{display:'flex',flexDirection:'column',gap:10,marginTop:12}}>{displayed.map(p=><div key={p.id} className="card" style={{padding:'18px 22px',display:'flex',gap:16}}><div style={{flex:1}}><p style={{whiteSpace:'pre-wrap'}}>{p.text}</p><div style={{marginTop:10}}><span style={{padding:'2px 9px',borderRadius:20,background:'var(--bg)',border:'1px solid var(--glass-border)',fontSize:'.75rem'}}>{p.platform}</span><span style={{marginLeft:8,fontSize:'.72rem',color:'var(--text-secondary)'}}>{p.date}</span></div></div><div style={{display:'flex',gap:4}}>{!trash?<><button className="btn btn-ghost" onClick={()=>startEdit(p)}>✏️</button><button className="btn btn-ghost" onClick={()=>softDel(p.id)}>🗑️</button></>:<><button className="btn btn-outline" onClick={()=>restore(p.id)}>Restaurar</button><button className="btn btn-danger" onClick={()=>hardDel(p.id)}>Excluir</button></>}</div></div>)}</div></div>}
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// CLIENTS
+// ══════════════════════════════════════════════════════════════
+const ClientDetail = ({ client, onBack, onSave, onDelete }) => {
+  const [form,setForm]=useState({...client}); const photoRef=useRef();
+  const handlePhoto = async e => { const f=e.target.files[0]; if(!f)return; setForm(fm=>({...fm,photo:await uploadImage(f)})); };
+  return <div className="fade-up" style={{maxWidth:680}}><input ref={photoRef} type="file" accept="image/*" hidden onChange={handlePhoto}/><button className="btn btn-outline" onClick={onBack} style={{marginBottom:28}}>← Voltar</button><div className="card" style={{padding:32,marginBottom:20}}><div style={{display:'flex',gap:20,marginBottom:24}}><div onClick={()=>photoRef.current.click()} style={{width:72,height:72,borderRadius:'50%',cursor:'pointer',overflow:'hidden',border:'2px dashed var(--glass-border)',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>{form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem'}}>{form.name.charAt(0)}</span>}</div><div style={{flex:1}}><div className="label">Nome</div><input className="input-box" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={{fontWeight:600,marginBottom:12}}/><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><div className="label">Empresa</div><input className="input-box" value={form.company} onChange={e=>setForm(f=>({...f,company:e.target.value}))}/></div><div><div className="label">Cargo</div><input className="input-box" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}/></div></div></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}><div><div className="label">Email</div><input className="input-box" type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/></div><div><div className="label">Status</div><select className="input-box" value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}><option>Ativo</option><option>Lead</option><option>Inativo</option><option>Arquivado</option></select></div></div><div className="label">Notas</div><textarea className="input-box" rows={4} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical',minHeight:100}}/></div><div style={{display:'flex',justifyContent:'space-between'}}><button className="btn btn-danger" onClick={onDelete}>🗑️ Lixeira</button><button className="btn btn-dark" onClick={()=>onSave(form)}>Salvar</button></div></div>;
+};
+const Clients = () => {
+  const { clients, setClients } = useContext(AppContext);
+  const [sel,setSel]=useState(null); const [trash,setTrash]=useState(false);
+  const tagColor = s => ({'Ativo':'tag-green','Lead':'tag-yellow','Inativo':'tag-gray','Arquivado':'tag-gray'}[s]||'tag-gray');
+  const save = f => { setClients(p=>p.map(c=>c.id===f.id?f:c)); setSel(null); };
+  const softDel = () => { setClients(p=>p.map(c=>c.id===sel.id?{...c,deleted:true,deletedAt:new Date().toISOString()}:c)); setSel(null); };
+  const restore = id => setClients(p=>p.map(c=>c.id===id?{...c,deleted:false,deletedAt:null}:c));
+  const hardDel = id => { if(confirm('Excluir?'))setClients(p=>p.filter(c=>c.id!==id)); };
+  const add = () => { const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSel(n); };
+  const vis = clients.filter(c=>trash?c.deleted:!c.deleted);
+  const dragRef = useRef(null);
+  const reorder = (from,to) => { if(from===to)return; setClients(prev=>{const live=prev.filter(c=>!c.deleted);const[m]=live.splice(from,1);live.splice(to,0,m);return[...live,...prev.filter(c=>c.deleted)];}); };
+  if(sel&&!trash)return <ClientDetail client={sel} onBack={()=>setSel(null)} onSave={save} onDelete={softDel}/>;
+  return <div className="fade-up"><div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Clientes</h2><div style={{display:'flex',gap:8}}><button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>🗑️ {trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}</button>{!trash&&<button className="btn btn-dark" onClick={add}>+ Adicionar</button>}</div></div>{trash&&<div style={{background:'#FEF2F2',padding:10,borderRadius:10,marginBottom:14}}>Lixeira</div>}<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{vis.map((c,idx)=><div key={c.id} className="card" draggable={!trash} onDragStart={e=>{if(trash)return;dragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorder(dragRef.current,idx);}} style={{padding:22,cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSel(c)}><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>{c.photo?<Img src={c.photo} style={{width:40,height:40,borderRadius:'50%',objectFit:'cover'}}/>:<div style={{width:40,height:40,borderRadius:'50%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)'}}>{c.name.charAt(0)}</div>}<div><div style={{fontWeight:600}}>{c.name}</div><div style={{fontSize:'.75rem',color:'var(--text-secondary)'}}>{c.role}{c.role&&c.company?' · ':''}{c.company}</div></div></div>{!trash?<span className={`tag ${tagColor(c.status)}`}>{c.status}</span>:<div style={{display:'flex',gap:5}}><button className="btn btn-outline" onClick={e=>{e.stopPropagation();restore(c.id);}}>Restaurar</button><button className="btn btn-danger" onClick={e=>{e.stopPropagation();hardDel(c.id);}}>Excluir</button></div>}</div>)}</div></div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// SYNC HUB
+// ══════════════════════════════════════════════════════════════
+const SyncHub = () => {
+  const appState = useContext(AppContext);
+  const [hist,setHist]=useState(()=>bhHistoryLoad()); const impRef=useRef(null);
+  const refresh=()=>setHist(bhHistoryLoad());
+  const exportData = async () => {
+    const resolveRefs = async obj => { if(Array.isArray(obj))return Promise.all(obj.map(resolveRefs)); if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await resolveRefs(obj[k]);return out;} if(typeof obj==='string'&&obj.startsWith('idb://')){try{const blob=await idbGet(obj.slice(6));if(blob)return await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});}catch{}}return obj; };
+    const full = await resolveRefs(appState);
+    const blob = new Blob([JSON.stringify({...full,_exported:new Date().toISOString()})],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`boardhub-backup-${localDateISO()}.json`;a.click();
+  };
+  const handleImport = e => { const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>{try{const data=JSON.parse(ev.target.result);const ingest=async obj=>{if(Array.isArray(obj))return Promise.all(obj.map(ingest));if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingest(obj[k]);return out;}if(typeof obj==='string'&&obj.startsWith('data:image')){try{const[header,b64]=obj.split(',');const mime=(header.match(/:(.*?);/)||[])[1]||'image/jpeg';const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);const blob=new Blob([arr],{type:mime});const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2);await idbPut(key,blob);return'idb://'+key;}catch{return'';}}return obj;};const ingested=await ingest(data);if(ingested.projects)appState.setProjects(ingested.projects);if(ingested.clients)appState.setClients(ingested.clients);if(ingested.mentors)appState.setMentors(ingested.mentors);if(ingested.notes)appState.setNotes(ingested.notes);if(ingested.tasks)appState.setTasks(ingested.tasks);if(ingested.socialPosts)appState.setSocialPosts(ingested.socialPosts);if(ingested.galleryPosts)appState.setGalleryPosts(ingested.galleryPosts);if(ingested.galleryFolders)appState.setGalleryFolders(ingested.galleryFolders);if(ingested.noteGroups)appState.setNoteGroups(ingested.noteGroups);if(ingested.pomoData)appState.setPomoData(ingested.pomoData);alert('Importado!');refresh();}catch{alert('Arquivo inválido');}};r.readAsText(f);e.target.value=''; };
+  const restore = e => { if(!confirm('Restaurar backup?'))return;const s=e.state;if(s.projects)appState.setProjects(s.projects);if(s.clients)appState.setClients(s.clients);if(s.mentors)appState.setMentors(s.mentors);if(s.notes)appState.setNotes(s.notes);if(s.tasks)appState.setTasks(s.tasks);if(s.socialPosts)appState.setSocialPosts(s.socialPosts);if(s.galleryPosts)appState.setGalleryPosts(s.galleryPosts);if(s.galleryFolders)appState.setGalleryFolders(s.galleryFolders);if(s.noteGroups)appState.setNoteGroups(s.noteGroups);if(s.pomoData)appState.setPomoData(s.pomoData);refresh(); };
+  const clearAll = () => { if(!confirm('Resetar TODOS os dados?'))return;appState.setProjects(SEED.projects);appState.setClients(SEED.clients);appState.setMentors(SEED.mentors);appState.setNotes(SEED.notes);appState.setTasks(SEED.tasks);appState.setSocialPosts(SEED.socialPosts);appState.setGalleryPosts(SEED.galleryPosts);appState.setGalleryFolders(SEED.galleryFolders);appState.setNoteGroups(SEED.noteGroups);appState.setPomoData({days:{}}); };
+  return <div className="fade-up" style={{maxWidth:640,margin:'0 auto'}}><h2 style={{fontFamily:'var(--font-heading)'}}>Sincronizar</h2><div style={{display:'flex',gap:12,marginTop:16}}><button className="btn btn-outline" onClick={exportData}>📥 Exportar JSON</button><label className="btn btn-outline" style={{cursor:'pointer'}}>📤 Importar JSON<input ref={impRef} type="file" accept=".json" hidden onChange={handleImport}/></label></div>{hist.length>0&&<div className="card" style={{padding:18,marginTop:16}}><span className="label">Histórico ({hist.length})</span><div style={{maxHeight:200,overflowY:'auto',marginTop:8}}>{hist.map((e,i)=><div key={i} style={{padding:'8px 12px',display:'flex',justifyContent:'space-between',borderBottom:'1px solid var(--glass-border)'}}><span>{new Date(e.at).toLocaleString('pt-BR')}</span><button className="btn btn-outline" onClick={()=>restore(e)}>Restaurar</button></div>)}</div></div>}<div style={{marginTop:24,borderTop:'1px solid var(--glass-border)',paddingTop:12}}><button className="btn btn-danger" onClick={clearAll}>⚠️ Resetar todos os dados</button></div></div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// COMMAND PALETTE, SHORTCUTS, QUICK CAPTURE
+// ══════════════════════════════════════════════════════════════
+const CommandPalette = ({ onClose }) => {
+  const { projects, notes, mentors, clients, setView, setSelectedProject } = useContext(AppContext);
+  const [q,setQ]=useState(''); const [idx,setIdx]=useState(0); const inpRef=useRef(null);
+  useEffect(()=>{inpRef.current?.focus();},[]); useEffect(()=>{setIdx(0);},[q]);
+  const navs = [{title:'Visão Geral',type:'Navegar',action:()=>{setView('dashboard');onClose();}},{title:'Projetos',type:'Navegar',action:()=>{setView('projects');onClose();}},{title:'Galeria',type:'Navegar',action:()=>{setView('gallery');onClose();}},{title:'Anotações',type:'Navegar',action:()=>{setView('ideas');onClose();}},{title:'Mentores',type:'Navegar',action:()=>{setView('mentors');onClose();}},{title:'Social',type:'Navegar',action:()=>{setView('social');onClose();}},{title:'Clientes',type:'Navegar',action:()=>{setView('clients');onClose();}},{title:'Sincronizar',type:'Navegar',action:()=>{setView('sync');onClose();}}];
+  const items = useMemo(()=>{const ql=q.toLowerCase().trim();const r=[];if(!ql){r.push(...navs.slice(0,4));(projects||[]).filter(p=>!p.deleted).slice(0,4).forEach(p=>r.push({title:p.title,meta:p.client,type:'Projeto',action:()=>{setSelectedProject(p);setView('project-detail');onClose();}}));return r;}navs.forEach(n=>{if(n.title.toLowerCase().includes(ql))r.push(n);});(projects||[]).filter(p=>!p.deleted).forEach(p=>{if((p.title||'').toLowerCase().includes(ql)||(p.client||'').toLowerCase().includes(ql))r.push({title:p.title,meta:p.client,type:'Projeto',action:()=>{setSelectedProject(p);setView('project-detail');onClose();}});});(notes||[]).filter(n=>!n.deleted).forEach(n=>{if((n.title||'').toLowerCase().includes(ql)||(n.content||'').toLowerCase().includes(ql))r.push({title:n.title,meta:(n.content||'').slice(0,60),type:'Nota',action:()=>{setView('ideas');onClose();}});});(mentors||[]).filter(m=>!m.deleted).forEach(m=>{if((m.name||'').toLowerCase().includes(ql)||(m.area||'').toLowerCase().includes(ql))r.push({title:m.name,meta:m.area,type:'Mentor',action:()=>{setView('mentors');onClose();}});});(clients||[]).filter(c=>!c.deleted).forEach(c=>{if((c.name||'').toLowerCase().includes(ql)||(c.company||'').toLowerCase().includes(ql))r.push({title:c.name,meta:c.company,type:'Cliente',action:()=>{setView('clients');onClose();}});});return r.slice(0,12);},[q]);
+  const run = i => { const it=items[i]; if(it)it.action(); };
+  return ReactDOM.createPortal(<div className="cmd-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="cmd-palette" onKeyDown={e=>{if(e.key==='ArrowDown'){e.preventDefault();setIdx(i=>Math.min(i+1,items.length-1));}else if(e.key==='ArrowUp'){e.preventDefault();setIdx(i=>Math.max(i-1,0));}else if(e.key==='Enter'){e.preventDefault();run(idx);}else if(e.key==='Escape')onClose();}}><div className="cmd-input-wrap"><span>🔍</span><input ref={inpRef} className="cmd-input" placeholder="Buscar..." value={q} onChange={e=>setQ(e.target.value)}/><span className="cmd-kbd">ESC</span></div><div className="cmd-results">{items.length===0&&<div style={{padding:32,textAlign:'center',color:'var(--text-secondary)'}}>Nenhum resultado</div>}{items.map((it,i)=><div key={i} className={`cmd-item${i===idx?' cmd-active':''}`} onClick={()=>run(i)} onMouseEnter={()=>setIdx(i)}><div style={{flex:1}}><div className="cmd-item-title">{it.title}</div>{it.meta&&<div style={{fontSize:'.72rem',color:'var(--text-secondary)'}}>{it.meta}</div>}</div><span style={{fontSize:'.66rem',color:'var(--text-secondary)',fontWeight:600}}>{it.type}</span></div>)}</div><div className="cmd-footer"><span><span className="cmd-kbd">↑↓</span> navegar</span><span><span className="cmd-kbd">↵</span> abrir</span></div></div></div>,document.body);
+};
+const ShortcutsModal = ({ onClose }) => {
+  const rows = [['Ctrl/⌘+K','Busca global'],['N','Nova nota'],['T','Nova atividade'],['?','Atalhos'],['Esc','Fechar']];
+  return ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="card" style={{width:400,padding:28}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}><h2 style={{fontFamily:'var(--font-heading)'}}>Atalhos</h2><button className="btn btn-ghost" onClick={onClose}>✕</button></div>{rows.map(([k,d])=><div key={k} style={{display:'flex',gap:12,padding:'4px 0'}}><kbd style={{fontWeight:600,background:'var(--bg)',border:'1px solid var(--glass-border)',borderRadius:6,padding:'3px 8px',minWidth:78,textAlign:'center'}}>{k}</kbd><span>{d}</span></div>)}</div></div>,document.body);
+};
+const QuickCapture = ({ type, onClose, onAddTask, onAddNote }) => {
+  const [v,setV]=useState('');const ref=useRef(null);useEffect(()=>{ref.current?.focus();},[]);
+  const submit = () => { if(!v.trim()){onClose();return;} if(type==='task')onAddTask({id:Date.now(),text:v.trim(),done:false,noteId:null}); else onAddNote({id:Date.now(),title:v.trim(),content:'',date:'Agora',deleted:false}); onClose(); };
+  return ReactDOM.createPortal(<div className="quick-capture"><span>{type==='task'?'✅':'📄'}</span><input ref={ref} value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();submit();}if(e.key==='Escape')onClose();}} placeholder={type==='task'?'Nova atividade...':'Nova nota...'}/><button className="btn btn-dark" onClick={submit}>+</button><button className="btn btn-ghost" onClick={onClose}>✕</button></div>,document.body);
+};
+
+// ══════════════════════════════════════════════════════════════
+// LAYOUT (Desktop + Mobile, theme, daily backup)
+// ══════════════════════════════════════════════════════════════
+const DesktopSidebar = ({ onOpenCmd, darkMode, setDarkMode }) => {
+  const { setView } = useContext(AppContext);
+  return <aside className="sidebar">
+    <div style={{cursor:'pointer',marginBottom:20}} onClick={()=>setView('dashboard')}><h1 style={{fontFamily:'var(--font-heading)',fontSize:'2rem',fontWeight:500,color:'var(--accent)'}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></h1></div>
+    <button onClick={onOpenCmd} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--glass-border)',background:'var(--bg)',cursor:'pointer',fontFamily:'var(--font-ui)',fontSize:'.78rem',color:'var(--text-secondary)',width:'100%',marginBottom:16}}>🔍 Buscar...<span className="cmd-kbd" style={{marginLeft:'auto'}}>Cmd+K</span></button>
+    <nav style={{display:'flex',flexDirection:'column',gap:4,flex:1}}>
+      {['dashboard','projects','gallery','ideas','mentors','social','clients','sync'].map(id=><button key={id} onClick={()=>setView(id)} style={{textAlign:'left',width:'100%',padding:'10px 12px',border:'none',background:'transparent',color:'var(--text-secondary)',fontFamily:'var(--font-ui)',fontSize:'.85rem',cursor:'pointer',borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background='rgba(212,168,67,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>{id.charAt(0).toUpperCase()+id.slice(1).replace('-',' ')}</button>)}
+    </nav>
+    <button className="btn btn-ghost" onClick={()=>{const next=!darkMode;setDarkMode(next);document.body.classList.toggle('dark',next);try{localStorage.setItem(THEME_KEY,next?'dark':'light');}catch{}}} style={{justifyContent:'center',marginTop:8}}>{darkMode?'☀️ Claro':'🌙 Escuro'}</button>
+  </aside>;
+};
+
+const MobileTabs = ({ activeView, setView, setMoreOpen }) => {
+  const items = [{id:'dashboard',label:'Início'},{id:'projects',label:'Projetos'},{id:'ideas',label:'Notas'},{id:'gallery',label:'Galeria'},{id:'sync',label:'Sync'}];
+  return <nav className="bottom-tab-bar">
+    {items.map(it=><button key={it.id} onClick={()=>setView(it.id)} className={`bottom-tab-item ${activeView===it.id||(it.id==='projects'&&activeView==='project-detail')?'active':''}`}><span style={{fontSize:'1.1rem'}}>{it.id==='dashboard'?'🏠':it.id==='projects'?'📁':it.id==='ideas'?'📝':it.id==='gallery'?'🖼️':'☁️'}</span>{it.label}</button>)}
+    <button className="bottom-tab-item" onClick={()=>setMoreOpen(true)}><span style={{fontSize:'1.1rem'}}>⋯</span>Mais</button>
+  </nav>;
+};
+
+const Layout = () => {
+  const { view, setView, setSelectedProject, tasks, setTasks, notes, setNotes } = useContext(AppContext);
+  const [showCmd,setShowCmd]=useState(false); const [showShort,setShowShort]=useState(false);
+  const [qc,setQc]=useState(null); const [moreOpen,setMoreOpen]=useState(false);
+  const [dark,setDark]=useState(()=>getTheme()==='dark');
+  const isMobile = window.innerWidth < 768;
+
+  useEffect(() => {
+    try {
+      const today = localDateISO();
+      const list = bhHistoryLoad();
+      if (list.some(e => e.reason === 'daily' && e.at.slice(0, 10) === today)) return;
+      const snap = lsLoad();
+      if (snap) bhCapture(snap, 'daily');
+    } catch {}
+  }, []);
+
+  useEffect(()=>{document.body.classList.toggle('dark',dark);try{localStorage.setItem(THEME_KEY,dark?'dark':'light');}catch{}},[dark]);
+  useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();setShowCmd(v=>!v);return;}if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable)return;if(e.key==='n'&&!e.metaKey&&!e.ctrlKey)setQc({type:'note'});if(e.key==='t'&&!e.metaKey&&!e.ctrlKey)setQc({type:'task'});if(e.key==='?'){e.preventDefault();setShowShort(v=>!v);}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[]);
+
+  const MORE_ITEMS = [{id:'mentors',label:'Mentores'},{id:'social',label:'Social Media'},{id:'clients',label:'Clientes'}];
+
+  return <div style={{display:'flex',height:'100vh'}}>
+    {!isMobile && <DesktopSidebar onOpenCmd={()=>setShowCmd(true)} darkMode={dark} setDarkMode={setDark}/>}
+    {isMobile && <div className="mobile-header"><span style={{fontFamily:'var(--font-heading)',fontSize:'1.2rem',fontWeight:500}}>Board<span style={{fontStyle:'italic',fontWeight:300}}>Hub</span></span><button className="btn btn-ghost" onClick={()=>{const n=!dark;setDark(n);document.body.classList.toggle('dark',n);}}>{dark?'☀️':'🌙'}</button></div>}
+    <main className="main-content">
+      {view==='dashboard'&&<Dashboard/>}
+      {view==='projects'&&<ProjectsList/>}
+      {view==='project-detail'&&<ProjectDetail/>}
+      {view==='new-project'&&<NewProjectModal onClose={()=>setView('projects')}/>}
+      {view==='gallery'&&<Gallery/>}
+      {view==='ideas'&&<IdeasLab/>}
+      {view==='mentors'&&<MentorsHub/>}
+      {view==='social'&&<Social/>}
+      {view==='clients'&&<Clients/>}
+      {view==='sync'&&<SyncHub/>}
+    </main>
+    {isMobile && <MobileTabs activeView={view} setView={setView} setMoreOpen={setMoreOpen}/>}
+    {isMobile && view==='projects' && <button className="fab" onClick={()=>setView('new-project')}>+</button>}
+    {moreOpen && isMobile && <>
+      <div className="more-sheet-overlay" onClick={()=>setMoreOpen(false)}/>
+      <div className="more-sheet">
+        <div className="more-sheet-handle"/>
+        {MORE_ITEMS.map(item=><button key={item.id} onClick={()=>{setView(item.id);setMoreOpen(false);}} className={`more-sheet-item ${view===item.id?'active-sheet':''}`}>{item.label}</button>)}
+        <button onClick={()=>{setShowCmd(true);setMoreOpen(false);}} className="more-sheet-item">🔍 Buscar</button>
+        <button onClick={()=>{setMoreOpen(false);}} className="more-sheet-item" style={{color:'var(--text-secondary)',fontSize:'.88rem'}}>✕ Fechar</button>
+      </div>
+    </>}
+    {showCmd && <CommandPalette onClose={()=>setShowCmd(false)}/>}
+    {showShort && <ShortcutsModal onClose={()=>setShowShort(false)}/>}
+    {qc && <QuickCapture type={qc.type} onClose={()=>setQc(null)} onAddTask={t=>setTasks(p=>[...p,t])} onAddNote={n=>setNotes(p=>[n,...p])}/>}
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// APP ROOT
+// ══════════════════════════════════════════════════════════════
+const App = () => {
+  const [projects,setProjects]=useState(lsLoad()?.projects||SEED.projects);
+  const [clients,setClients]=useState(lsLoad()?.clients||SEED.clients);
+  const [mentors,setMentors]=useState(lsLoad()?.mentors||SEED.mentors);
+  const [notes,setNotes]=useState(lsLoad()?.notes||SEED.notes);
+  const [tasks,setTasks]=useState(lsLoad()?.tasks||SEED.tasks);
+  const [socialPosts,setSocialPosts]=useState(lsLoad()?.socialPosts||SEED.socialPosts);
+  const [galleryPosts,setGalleryPosts]=useState(lsLoad()?.galleryPosts||SEED.galleryPosts);
+  const [galleryFolders,setGalleryFolders]=useState(lsLoad()?.galleryFolders||SEED.galleryFolders);
+  const [noteGroups,setNoteGroups]=useState(lsLoad()?.noteGroups||SEED.noteGroups);
+  const [pomoData,setPomoData]=useState(()=>{try{return JSON.parse(localStorage.getItem('boardhub_pomo_v3'))||{days:{}};}catch{return{days:{}};}});
+  const [view,setView]=useState('dashboard');
+  const [selectedProject,setSelectedProject]=useState(null);
+
+  useEffect(()=>{const s={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,noteGroups,pomoData};lsSave(s);bhCapture(s,'auto');},[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,noteGroups,pomoData]);
+  useEffect(()=>{localStorage.setItem('boardhub_pomo_v3',JSON.stringify(pomoData));},[pomoData]);
+
+  // Trash auto-purge (30 days)
+  useEffect(() => {
+    const purge = (s) => {
+      if (!s) return s;
+      const now = Date.now();
+      const prune = (arr) => Array.isArray(arr) ? arr.map(x => {
+        if (x && x.deleted && !x.deletedAt) return { ...x, deletedAt: new Date().toISOString() };
+        return x;
+      }).filter(x => {
+        if (!x || !x.deleted || !x.deletedAt) return true;
+        return now - new Date(x.deletedAt).getTime() < 30 * 24 * 3600 * 1000;
+      }) : arr;
+      ['projects', 'clients', 'mentors', 'notes', 'socialPosts', 'galleryPosts'].forEach(k => {
+        if (s[k]) s[k] = prune(s[k]);
       });
+      return s;
+    };
+    const cleaned = purge(lsLoad());
+    if (cleaned) {
+      setProjects(cleaned.projects || SEED.projects);
+      setClients(cleaned.clients || SEED.clients);
+      setMentors(cleaned.mentors || SEED.mentors);
+      setNotes(cleaned.notes || SEED.notes);
+      setTasks(cleaned.tasks || SEED.tasks);
+      setSocialPosts(cleaned.socialPosts || []);
+      setGalleryPosts(cleaned.galleryPosts || []);
+    }
+  }, []);
 
-      // ==================== INIT ====================
-      function init() {
-        initCanvas();
-        loadPomodoroFromStorage();
-        updateTimerButtons();
+  const ctx = useMemo(()=>({projects,setProjects,clients,setClients,mentors,setMentors,notes,setNotes,tasks,setTasks,socialPosts,setSocialPosts,galleryPosts,setGalleryPosts,galleryFolders,setGalleryFolders,noteGroups,setNoteGroups,pomoData,setPomoData,view,setView,selectedProject,setSelectedProject}),[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,noteGroups,pomoData,view,selectedProject]);
 
-        document.getElementById('selectTool').onclick = () => setTool('select');
-        document.getElementById('penTool').onclick = () => setTool('pen');
-        document.getElementById('eraserTool').onclick = () => setTool('eraser');
-        document.getElementById('rectTool').onclick = () => setTool('rect');
-        document.getElementById('circleTool').onclick = () => setTool('circle');
-        document.getElementById('lineTool').onclick = () => setTool('line');
-        document.getElementById('textTool').onclick = () => setTool('text');
-        document.getElementById('stickyTool').onclick = () => setTool('sticky');
-        document.getElementById('imageTool').onclick = () => document.getElementById('imageInput').click();
-        document.getElementById('imageInput').onchange = (e) => {
-          const file = e.target.files[0]; if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            fabric.Image.fromURL(ev.target.result, (img) => {
-              img.scaleToWidth(200); canvas.add(img); canvas.renderAll(); saveState();
-            });
-          };
-          reader.readAsDataURL(file); e.target.value = '';
-        };
-        document.getElementById('panTool').onclick = () => setTool('pan');
-        document.getElementById('undoBtn').onclick = undo;
-        document.getElementById('redoBtn').onclick = redo;
-        document.getElementById('gridToggle').onclick = toggleGrid;
-        document.getElementById('themeToggle').onclick = toggleTheme;
-        document.getElementById('soundToggleBtn').onclick = toggleSound;
-        document.getElementById('colorPicker').oninput = (e) => {
-          state.color = e.target.value;
-          if (state.tool === 'pen') canvas.freeDrawingBrush.color = state.color;
-          saveToStorage();
-        };
-        document.getElementById('brushSize').oninput = (e) => {
-          state.brushSize = parseInt(e.target.value);
-          if (state.tool === 'pen') canvas.freeDrawingBrush.width = state.brushSize;
-          if (state.tool === 'eraser') canvas.freeDrawingBrush.width = state.brushSize * 2;
-          saveToStorage();
-        };
-        document.getElementById('layersToggle').onclick = () => document.getElementById('layers-panel').classList.toggle('open');
-        document.getElementById('closeLayersBtn').onclick = () => document.getElementById('layers-panel').classList.remove('open');
+  return <AppContext.Provider value={ctx}><Layout/></AppContext.Provider>;
+};
 
-        document.getElementById('timerStartBtn').onclick = startTimer;
-        document.getElementById('timerPauseBtn').onclick = pauseTimer;
-        document.getElementById('timerResetBtn').onclick = resetTimer;
-        document.getElementById('timerSkipBtn').onclick = skipTimer;
-        document.getElementById('tickToggleBtn').onclick = toggleTick;
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 
-        document.getElementById('exportPNGBtn').onclick = exportPNG;
-        document.getElementById('exportSVGBtn').onclick = exportSVG;
-        document.getElementById('exportJSONBtn').onclick = exportJSON;
-        document.getElementById('importJSONBtn').onclick = () => document.getElementById('importFileInput').click();
-        document.getElementById('importFileInput').onchange = (e) => {
-          const file = e.target.files[0]; if (file) importJSON(file); e.target.value = '';
-        };
-
-        setTool('select');
-        window.addEventListener('beforeunload', saveToStorage);
-      }
-
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-      else init();
-    })();
-  </script>
+</script>
 </body>
 </html>
