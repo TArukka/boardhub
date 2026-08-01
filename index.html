@@ -63,6 +63,227 @@
      ser NEGADA.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.12 — F1: o histórico de backup muda de casa (ago/2026)
+  O histórico rotativo sai do localStorage e passa a morar no IndexedDB, em
+  BANCO PRÓPRIO (boardhub_backups), com dois stores: `snapshots` (entrada
+  inteira, com state) e `meta` (at/reason/sig/counts, sem state).
+  DIAGNÓSTICO QUE NÃO SOBREVIVEU À MEDIÇÃO — e isto vem primeiro de propósito:
+  o motivo declarado da F1 era "12 snapshots de 1MB contra ~5MB de cota, então o
+  histórico que anuncia ~19 guarda ~4". Medido nesta origem, a cota do
+  localStorage é ~50 MB, não 5 — o teto de design inteiro cabe 2,6× dentro dela.
+  A conta original também não era válida em nenhuma direção, porque o Chrome
+  COMPRIME o localStorage: com texto repetitivo, 30 snapshots "de 1MB" cabem
+  onde a medição ingênua previa 5. Duas das minhas próprias medições, antes
+  destas, pararam no teto do laço e não na cota — quase viraram "25 MB" e
+  "37,5 MB" no lugar da parede real. Registro isso porque é a quarta vez que um
+  número do plano v24 morre na medição.
+  O QUE SOBROU DE JUSTIFICATIVA, medido nesta origem (estado de ~0,95 MB por
+  snapshot, histórico de 12 = 11,4 MB):
+    custo por captura ....... 38,1 ms  →  5,3 ms   (stringify 12,0 + setItem 26,1)
+    lista da tela de Sync ... 11,4 MB  →  1,4 KB   (era o histórico INTEIRO
+                                                    em memória do React só para
+                                                    desenhar datas e contadores)
+    headroom .................. ~50 MB →  ~2,8 GB
+  Ou seja: o ganho real não era de cota, era de CUSTO POR ESCRITA e de memória.
+  Antes, toda captura re-serializava e regravava o histórico inteiro para
+  acrescentar uma entrada; agora é uma transação com um put e as remoções da
+  retenção. É o mesmo tipo de erro do P1-3 da v23.6 — pagar o preço da coleção
+  toda para mexer num item —, agora no lado da escrita.
+  POR QUE BANCO PRÓPRIO, e não um store a mais no banco de imagens: o gcIdb
+  varre o banco de imagens decidindo o que é blob órfão. Com os snapshots lá
+  dentro, a única coisa separando "backup" de "lixo a coletar" seria disciplina
+  de prefixo de chave — e esse GC já apagou arquivo do usuário uma vez (v23.3).
+  Bancos distintos tornam a confusão impossível por construção, não por
+  convenção. Há teste de fonte exigindo que os dois nomes continuem diferentes.
+  MIGRAÇÃO (protocolo #4 — escreve → VERIFICA → só então remove):
+  grava todas as entradas no IDB, relê o `meta`, confere que cada `at` da origem
+  chegou ao destino e SÓ ENTÃO apaga boardhub_backup_history. Se faltar uma, a
+  migração estoura, a chave legada FICA e a tentativa se repete no próximo boot.
+  Histórico ilegível (JSON quebrado) não é apagado nunca: é a única cópia.
+  A migração antiga de dois slots continua escrevendo na chave legada, de
+  propósito — ela é síncrona e roda no parse do bundle, antes de haver IDB
+  aberto; a nova leva dali para o banco em seguida. Duas migrações simples em
+  série, em vez de uma assíncrona reimplementando o formato de dois slots.
+  A ARMADILHA CENTRAL, e o motivo de bhHistoryLoad ter DEIXADO DE EXISTIR:
+  o gcIdb coleta as referências idb:// dos states do histórico. Se eu tivesse
+  mantido uma bhHistoryLoad síncrona devolvendo o `meta` — que não tem state —,
+  o gcIdb faria e.state → undefined, não coletaria referência nenhuma e apagaria
+  blobs VIVOS. É exatamente o P0-1 da v23.3, por outra porta. Por isso o par é
+  bhHistoryMeta() (síncrona, sem state) e bhHistoryFull() (assíncrona, com
+  state), e o nome antigo sumiu: qualquer consumidor esquecido vira erro.
+  Pelo mesmo motivo, bhHistoryFull() REJEITA em vez de devolver [] quando não
+  consegue ler — "não sei o que está referenciado" nunca pode virar "nada está
+  referenciado". O gcIdb aborta a varredura nesse caso, e também quando o
+  histórico ainda não abriu. Falha FECHADO em todos os caminhos.
+  • bhCapture virou assíncrona. Nenhum dos 7 call sites usa o retorno — todos
+    são fire-and-forget dentro de try/catch —, então nenhum deles mudou de
+    forma. A promessa nunca rejeita. As capturas são SERIALIZADAS numa fila:
+    duas concorrentes decidiriam a retenção sobre o mesmo espelho em memória e a
+    segunda ressuscitaria o que a primeira acabou de despejar.
+  • `at` é a chave primária do store. Duas capturas no mesmo milissegundo se
+    sobrescreveriam em silêncio; agora empurra 1ms até ser única.
+  • O fallback de cota do bhCapture continua existindo, agora contra a cota do
+    IDB, e continua usando stripInlineImages — que preserva idb://. Um backup
+    que perdesse as referências junto com o payload seria o P0-1 de novo.
+  • Restaurar lê o snapshot pela chave (bhHistoryGet) e ABORTA se vier vazio:
+    trocar dados bons por um backup que não carregou é pior que não restaurar.
+  CUSTO HONESTO: a cota do localStorage foi medida em http://localhost, e o app
+  roda em file:// — a cota do Chrome é derivada do disco livre e varia por
+  origem e por máquina, então o número de ~50 MB não é uma promessa sobre a sua.
+  O teto de retenção (~19) não mudou: o IndexedDB tem 2,8 GB e, sem teto, o
+  histórico cresceria para sempre — a cota do localStorage era o que segurava
+  isso por acidente. Há teste amarrando o limite. O rollback não é automático:
+  uma vez migrado e verificado, voltar para o localStorage exigiria código novo.
+  E os testes cobrem migração, dedup, retenção e leitura — não cobrem uma
+  restauração completa clicada na interface, que continua sendo verificação
+  manual.
+  ──────
+  BoardHub v23.11 — M2.1: o mostrador VIRA um metrônomo (ago/2026)
+  Correção de rota em cima do M2, a pedido: o clique audível saiu e o mostrador
+  deixou de ser um relógio redondo.
+  • REMOVIDO o clique do metrônomo. Batia ~2×/s a sessão inteira e distraía —
+    o oposto do que um app de foco deveria fazer. As cadências de mudança de
+    faixa FICAM: aquelas tocam 4× por dia, não 3.600.
+  • O pulso virou VISUAL: pirâmide truncada, haste articulada e peso, como no
+    metrônomo de madeira. Não há agendador — a haste é animação CSS com duração
+    var(--beat) vinda do BPM, então o tempo fica no compositor do navegador e não
+    há timer em JS para derrapar, vazar ou disputar a thread com o autosave.
+    Meia oscilação = uma semínima: a haste cruza o centro uma vez por batida.
+  • O ARRASTO virou vertical. O gesto angular existia porque o mostrador era um
+    círculo; sobre uma pirâmide não quer dizer nada. Agora se corre o peso na
+    haste — mais alto = sessão mais longa —, que é a mesma convenção do
+    instrumento real (peso em cima = mais lento) e a mesma direção do dedo.
+  • O progresso saiu do contorno e virou uma BARRA que esvazia, embaixo do corpo.
+    Traço percorrendo um polígono é difícil de ler de relance, e sobrepor leitura
+    ao desenho embola os dois. O trilho fica sempre visível: sem ele, "quase
+    acabando" e "não começou" são o mesmo vazio.
+  • Os números foram para dentro do compartimento da base, POSICIONADOS POR
+    MEDIÇÃO: em Cormorant 12px a caixa tem 15 de altura e ascendente 11; o
+    compartimento tem 19; centralizar deixa 2 de folga de cada lado. As duas
+    primeiras tentativas foram por estimativa e os números encostaram no
+    contorno — dá para medir getBBox() em vez de chutar.
+  SEM supressão por prefers-reduced-motion, e isso é deliberado: o pêndulo não é
+  enfeite que aparece sozinho, é opt-in que nasce desligado. Quem liga, ligou de
+  propósito; um @media por cima sequestraria a escolha explícita. O que a
+  preferência do sistema governa é o PADRÃO, e o padrão já é desligado.
+  ARMADILHA: o pivô da haste estava fixo no CSS e a geometria mudou embaixo dele
+  — a haste passou a girar em torno de um ponto que não existia mais. Agora o
+  CSS lê --pivot escrito pelo JSX a partir de MET_PIVOT_Y, uma fonte só.
+  ──────
+  BoardHub v23.10 — M2: o som passa a ser o andamento (ago/2026)
+  Segundo movimento. O M1 deu nome musical às faixas; aqui o som passa a
+  CUMPRIR o nome.
+  • As cadências de mudança de faixa não são mais quatro jingles arbitrários:
+    são a MESMA figura pentatônica tocada no BPM daquela faixa. O espaçamento
+    sai de 60/bpm, o número de graus cresce com a pressa (3/4/5/7) e o Vivace
+    corre em colcheias. Subir de faixa agora SOA como o nome da faixa — Vivace é
+    mais rápido que Andante porque é isso que a palavra significa.
+  • DAY_TIERS parou de repetir os BPM e passou a LER de TEMPO_BPM. Duas listas
+    com os mesmos números divergem calada, e o sintoma seria o app mostrar um
+    andamento e tocar outro. Uma fonte só, teste amarrando.
+  • NOVO: metrônomo opcional (botão ♪ ao lado do reiniciar, estado persistido em
+    boardhub_metronome), pulsando no BPM do andamento ATUAL, com acento na cabeça
+    de cada compasso. Cruzar de faixa no meio da sessão reinicia o agendador e o
+    pulso acelera junto — no máximo 4× por dia, e é o ponto inteiro de amarrar o
+    som ao andamento.
+  POR QUE NÃO É setInterval(60000/bpm): o callback de um timer atrasa dezenas de
+  ms sob carga e o erro ACUMULA — em poucos compassos o pulso sai do lugar de
+  forma audível. O agendador usa lookahead: um setInterval folgado (25ms) não
+  toca nada, só decide o que já pode ser AGENDADO na linha do tempo do
+  AudioContext, que é a única com precisão de amostra.
+  MEDIDO (espião em osc.start, Moderato/108 BPM, semínima esperada 0,5556s):
+    7 pulsos em 4s · intervalo médio 0,5556s · desvio máximo 0,04 ms
+    após pausar: 0 pulsos em 2,5s (o efeito limpa o próprio intervalo)
+  • O clique é triangle com decay de 30ms, direto no destination — sem o reverb
+    das cadências, porque cauda em pulso constante empapa tudo. Volume baixo e
+    sem brilho de propósito: toca centenas de vezes por sessão.
+  ARMADILHA QUE O TESTE PEGOU (no próprio teste): a suíte do M1 exigia os
+  literais `level === 'andante'`, que era a FORMA da implementação antiga (cadeia
+  de if/else), não o invariante. Trocar para tabela quebrou o teste sem nada ter
+  regredido. Reescrito para checar o que importa: cada andamento não-base tem BPM
+  e tem número de passos.
+  ──────
+  BoardHub v23.9 — M1: as faixas viraram andamento e dinâmica (ago/2026)
+  Primeiro movimento da reforma visual. O vocabulário do app passa a ser o
+  italiano da música — a mesma ideia das faixas do Kimi (Moderato, Allegretto,
+  Allegro, Vivace), que é de onde veio a referência.
+  DIAGNÓSTICO: as faixas de foco eram medalha de videogame (estrela, bronze,
+  prata, troféu, diamante) dentro de uma interface em Cormorant Garamond sobre
+  papel quente. Além de destoar, era a métrica errada: medalha mede prêmio,
+  e o contador mede RITMO. Andamento é a palavra exata para isso — e marcação de
+  andamento se escreve em serifada itálica desde a gravura de partitura, ou
+  seja, a forma tipográfica correta já estava carregada e sem uso (o link do
+  Cormorant já pedia ital,wght@1,300;1,400).
+  • Dia = ANDAMENTO (ritmo de hoje): Adagio 66 · Andante 76 · Moderato 108 ·
+    Allegro 132 · Vivace 160. Os BPM são as faixas convencionais de cada
+    marcação — viram valor real para o metrônomo opcional do M2, não enfeite.
+  • Mês = DINÂMICA (volume acumulado): pp · p · mf · f · ff. Repetir
+    Adagio…Vivace nas duas escalas confundiria as leituras; dinâmica é a palavra
+    italiana para volume, que é o que o mês mede.
+  • Adagio e Pianissimo são as faixas BASE, não conquistas: renderizam em
+    --muted, como o antigo 'none'.
+  PISOS INTOCADOS: dia 0/2/4/6/8h, mês 0/40/80/120/160h. Renomear é seguro;
+  renumerar reescreveria retroativamente a faixa de todo dia já registrado no
+  histórico do usuário. Há teste de regressão fixando os dez pisos.
+  • As 4 cores de medalha cravadas no JSX (#CD7F32/#94A3B8/#FBBF24/#60A5FA)
+    viraram --tempo-1..4 no :root: uma rampa de tinta esquentando até o próprio
+    --accent do app, reservado ao topo. Menos 4 literais para o tema escuro (M3)
+    ter de resolver.
+  • O tint do badge saía de `cor+'20'` — concatenar alpha em hex. Com cor vindo
+    de token isso viraria "var(--tempo-2)20", CSS inválido. Agora é color-mix
+    sobre transparent, que ainda por cima já funciona no tema escuro.
+  ARMADILHA QUE O TESTE PEGOU: renomear os níveis sem renomear o despacho de
+  playMedalSound deixaria a subida de faixa MUDA — nenhum 'bronze' casaria mais.
+  Virou playTempoSound, com teste que exige uma cadência para cada andamento
+  não-base. As cadências em si continuam as de antes; reescrevê-las no BPM de
+  cada andamento é o M2.
+  TAMBÉM (fora do escopo do M1, pedido em separado): a CONFIGURAÇÃO INICIAL só
+  aparece depois de entrar com o Google. O gate era só `!identity`, que é a
+  situação de todo perfil de browser novo — abrir o index.html local pedia nome
+  de hub antes de mostrar qualquer coisa. Pular a tela não deixa nada indefinido:
+  splitHubName e o osName da barra lateral já embutem 'BoardHub'/'Storyboard OS',
+  exatamente os padrões que o modal produziria. O gate ainda espera
+  syncStatus!=='syncing' para não piscar a tela cheia em quem já tem identity na
+  nuvem — nesse caso o listener aplica data.identity e o modal nunca aparece; só
+  conta realmente nova chega em 'synced' sem identity.
+  ──────
+  BoardHub v23.8 — Pomodoro perdia tempo de foco (ago/2026)
+  DIAGNÓSTICO: o laço do timer credita no total do dia a DIFERENÇA entre um tick
+  e o seguinte (delta = timeLeft anterior − restante). O padrão funciona enquanto
+  só o próprio laço mexe no ponteiro, e perde tempo silenciosamente em todo lugar
+  que adianta o relógio sem creditar o intervalo. Dois pontos faziam exatamente
+  isso:
+  • O fim da sessão. timeLeft desce 1800 → 1799 → … → 2 → 1, somando 1799 deltas
+    de 1s; no tick seguinte "restante" chega a 0 e o ramo de conclusão chama
+    flushPomoSecs() direto, sem creditar o trecho de 1 → 0. O último segundo de
+    TODA sessão de foco era descartado, em qualquer duração.
+  • onVisible. Ao voltar para a aba ele reposicionava timeLeft para o restante
+    real sem creditar o que passou. Com a aba apenas oculta isso é inofensivo (o
+    setInterval continua rodando ~1×/s e credita normalmente), mas quando o
+    navegador CONGELA a aba — mobile em segundo plano, ou Chrome depois de ~5min
+    oculta — o intervalo para de disparar e o trecho inteiro sumia: o tick
+    seguinte comparava com o ponteiro já adiantado e via delta 0.
+  MEDIDO (simulação do laço, tick a tick, com a mesma aritmética do código):
+                                        antes        depois
+    sessão de 30min, aba ativa ....... 29m59s   →   30m00s
+    oculta 5s de 30min ............... 29m54s   →   30m00s
+    congelada 10min de 30min ......... 19m59s   →   30m00s
+    congelada até depois do fim ......  9m59s   →   30m00s
+    congelada quase a corrida toda ...  0m09s   →   30m00s
+  FIX: creditar o resto antes de zerar o ponteiro, nos dois pontos. A guarda
+  (timeLeftRef.current > 0) no ramo de conclusão impede contagem dupla no caso em
+  que onVisible já creditou o resíduo e deixou o ponteiro em 0 — os dois fecham
+  em 1800s exatos, independente de qual dispara primeiro.
+  • Efeito colateral bem-vindo: as faixas de DAY_TIERS agora fecham redondas. 8h
+    de foco em sessões de 30min registravam 7h59m52s — um segundo a menos por
+    sessão —, então 💎 Diamante pedia uma sessão extra para acender.
+  CUSTO HONESTO: verificado por simulação da aritmética dos ticks, não por uma
+  sessão real de 30min cronometrada. A simulação reproduz o 29m59s relatado antes
+  do fix, o que é bom indício de fidelidade, mas não substitui rodar o timer de
+  ponta a ponta — entra na suíte de regressão da F0. O som e a notificação de fim
+  continuam sem disparar com a aba congelada: dependem do tick, e aba congelada
+  não tem timer. Só um Service Worker resolveria — fora de escopo.
+  ──────
   BoardHub v23.7 — P3: ergonomia de teclado (jul/2026)
   Último item do backlog da auditoria. Não é conformidade WCAG — é velocidade de
   uso para quem passa o dia no app e não quer tirar a mão do teclado.
@@ -425,7 +646,13 @@
 <!-- Firebase loaded LAZILY after first paint — see _lazyFirebase() below -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(28,25,23,.18);}
+:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(28,25,23,.18);
+/* M1 — rampa de andamento. Substitui as 4 cores de medalha que estavam cravadas
+   no JSX (#CD7F32/#94A3B8/#FBBF24/#60A5FA). Não é arco-íris de gamificação: é
+   tinta esquentando e adensando até chegar no próprio --accent do app, que fica
+   reservado para o topo (Vivace). Adagio não tem cor — usa --muted, porque ser
+   a faixa base não é conquista. */
+--tempo-1:#8A7A5E;--tempo-2:#A9761F;--tempo-3:#9A5B2A;--tempo-4:#4A3728;}
 *,*::before,*::after{box-sizing:border-box;}
 /* Selection color */
 ::selection{background:rgba(28,25,23,.12);color:var(--text);}
@@ -608,6 +835,27 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 }
 
 /* === REDESIGN v2 === */
+/* M2.1 — pêndulo do metrônomo. A duração vem do BPM por --beat (inline), e meia
+   oscilação = uma semínima, então a haste cruza o centro uma vez por batida,
+   como num metrônomo mecânico. O easing imita a física: rápido no meio, quase
+   parado nos extremos — linear denunciaria na hora que é um retângulo girando.
+   O pivô fica embaixo (transform-origin), que é onde fica o de verdade. */
+@keyframes bhPendulum{from{transform:rotate(-26deg);}to{transform:rotate(26deg);}}
+/* transform-box:view-box para que o pivô seja em COORDENADA DO SVG (38,70 = a
+   base do mostrador). Sem isso, porcentagem em <g> resolve contra a bounding box
+   do próprio grupo e a haste gira em volta de si mesma. */
+/* O pivô vem de --pivot, escrito pelo JSX a partir de MET_PIVOT_Y. Deixar o
+   número fixo aqui já quebrou uma vez: a geometria mudou, o CSS ficou para trás
+   e a haste passou a girar em volta de um ponto que não existia mais. */
+.bh-pendulum{transform-box:view-box;transform-origin:38px var(--pivot,34px);animation:bhPendulum var(--beat,.5s) cubic-bezier(.42,0,.58,1) infinite alternate;}
+/* NÃO há supressão por prefers-reduced-motion aqui, e isso é deliberado. A
+   primeira versão tinha, e transformava a funcionalidade em graveto morto: o
+   pêndulo não é enfeite que aparece sozinho, é um controle OPT-IN que nasce
+   desligado (metronomeLoad devolve false sem chave salva). Quem liga, ligou de
+   propósito, e o tooltip diz o que é. O opt-in É o controle de acessibilidade;
+   um @media por cima só sequestraria a escolha explícita do usuário.
+   O que a preferência do sistema deve governar é o PADRÃO, e o padrão já é
+   desligado para todo mundo. */
 @keyframes viewEnter{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .view-enter{animation:viewEnter .28s cubic-bezier(.4,0,.2,1) both;}
 @keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
@@ -767,7 +1015,13 @@ if(!persisted){try{localStorage.setItem(SEEDED_KEY,'1');}catch{}}
 //   • dedup by content signature (no more "two identical backups 1 minute apart")
 //   • NEVER capture an empty/seed state — a backup of nothing is not a backup
 //   • quota-safe: drops oldest entries (and strips base64) before giving up
+// F1: o histórico mora no IndexedDB, em BANCO PRÓPRIO. A chave abaixo é só a
+// ORIGEM da migração — depois de migrada e verificada, ela deixa de existir.
 const BH_HISTORY_KEY='boardhub_backup_history';
+const BH_DB_NAME='boardhub_backups';
+const BH_STORE='snapshots';   // entrada inteira, com state
+const BH_META='meta';         // at/reason/sig/counts, sem state
+const BH_DB_V=1;
 const BH_KEEP_RECENT=6;   // most recent N rotating snapshots always kept
 const BH_MAX_TOTAL=12;    // cap on the ROTATING tier only — the weekly tier adds
                           // up to 7 more (one per weekday), so the effective
@@ -790,7 +1044,124 @@ const bhCounts=s=>({
   notes:(s.notes||[]).filter(n=>!n.deleted).length,
   tasks:(s.tasks||[]).length,
 });
-const bhHistoryLoad=()=>{try{const r=localStorage.getItem(BH_HISTORY_KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch{return [];}};
+// ── F1: armazenamento do histórico ──────────────────────────────────────────
+// BANCO PRÓPRIO, não um store a mais no banco de imagens. O gcIdb varre o banco
+// de imagens decidindo o que é blob órfão; se os snapshots morassem lá, a única
+// coisa separando "backup" de "lixo a coletar" seria disciplina de prefixo de
+// chave — e esse GC já apagou arquivo do usuário uma vez (v23.3). Bancos
+// distintos tornam a confusão impossível por construção, não por convenção.
+//
+// Dois stores: `snapshots` guarda a entrada inteira (com state), `meta` guarda
+// só at/reason/sig/counts. Decisão de dedup, retenção e a LISTA da tela de Sync
+// leem `meta` — que é minúsculo — em vez de arrastar o acervo inteiro para a
+// memória. O state só é lido por quem realmente precisa dele: o gcIdb e a
+// restauração. Os dois stores são escritos na MESMA transação, então não existe
+// meta sem snapshot.
+let _bhDb=null,_bhDbP=null;
+const _bhResetDb=()=>{_bhDb=null;_bhDbP=null;};
+const bhIdbOpen=()=>{
+  if(_bhDb)return Promise.resolve(_bhDb);
+  if(_bhDbP)return _bhDbP;
+  _bhDbP=new Promise((res,rej)=>{
+    let req;
+    try{req=indexedDB.open(BH_DB_NAME,BH_DB_V);}catch(e){_bhResetDb();rej(e);return;}
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains(BH_STORE))db.createObjectStore(BH_STORE,{keyPath:'at'});
+      if(!db.objectStoreNames.contains(BH_META))db.createObjectStore(BH_META,{keyPath:'at'});
+    };
+    req.onsuccess=e=>{
+      _bhDb=e.target.result;_bhDbP=null;
+      _bhDb.onclose=_bhResetDb;
+      _bhDb.onversionchange=()=>{try{_bhDb.close();}catch{}_bhResetDb();};
+      res(_bhDb);
+    };
+    req.onerror=e=>{_bhResetDb();rej(e.target.error);};
+  });
+  return _bhDbP;
+};
+// Grava entradas e remove as despejadas numa transação só: o histórico nunca
+// fica num estado em que a retenção já apagou mas o novo snapshot não entrou.
+const bhIdbWrite=(puts,dels)=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
+  let tx;
+  try{tx=db.transaction([BH_STORE,BH_META],'readwrite');}catch(e){_bhResetDb();rej(e);return;}
+  const s=tx.objectStore(BH_STORE),m=tx.objectStore(BH_META);
+  try{
+    puts.forEach(e=>{s.put(e);m.put({at:e.at,reason:e.reason,sig:e.sig,counts:e.counts});});
+    (dels||[]).forEach(at=>{s.delete(at);m.delete(at);});
+  }catch(e){rej(e);return;}
+  tx.oncomplete=()=>res();
+  tx.onerror=e=>rej((e.target&&e.target.error)||new Error('transação falhou'));
+  tx.onabort=e=>rej((e.target&&e.target.error)||new Error('transação abortada'));
+}));
+const bhIdbAllMeta=()=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
+  let r;
+  try{r=db.transaction(BH_META,'readonly').objectStore(BH_META).getAll();}catch(e){_bhResetDb();rej(e);return;}
+  r.onsuccess=e=>res(e.target.result||[]);
+  r.onerror=e=>rej(e.target.error);
+}));
+// PROPOSITALMENTE sem catch devolvendo []: quem chama (gcIdb) precisa distinguir
+// "o histórico não referencia nada" de "não consegui ler o histórico". Engolir o
+// erro aqui faria o GC concluir que nenhum blob está referenciado e apagar todos
+// — a classe exata do incidente da v23.3, agora pelo lado do backup.
+const bhHistoryFull=()=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
+  let r;
+  try{r=db.transaction(BH_STORE,'readonly').objectStore(BH_STORE).getAll();}catch(e){_bhResetDb();rej(e);return;}
+  r.onsuccess=e=>res((e.target.result||[]).sort((a,b)=>a.at<b.at?1:-1));
+  r.onerror=e=>rej(e.target.error);
+}));
+// Um snapshot só, pela chave. A tela de Sync lista a partir do `meta` e chama
+// isto no clique de restaurar — nenhum state entra em memória antes disso.
+const bhHistoryGet=at=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
+  let r;
+  try{r=db.transaction(BH_STORE,'readonly').objectStore(BH_STORE).get(at);}catch(e){_bhResetDb();rej(e);return;}
+  r.onsuccess=e=>res(e.target.result||null);
+  r.onerror=e=>rej(e.target.error);
+}));
+// Espelho em memória do `meta`, sempre o mais novo primeiro. Existe para que a
+// decisão de dedup e a lista da tela continuem SÍNCRONAS, como eram no
+// localStorage — os 7 call sites de bhCapture não mudaram de forma.
+let _bhMeta=[];
+let _bhReady=false;
+const bhHistoryMeta=()=>_bhMeta;
+// Migração (protocolo #4: escreve → VERIFICA → só então remove a origem).
+const bhMigrateLegacy=async()=>{
+  let raw=null;
+  try{raw=localStorage.getItem(BH_HISTORY_KEY);}catch{}
+  if(!raw)return;
+  let list=null;
+  try{list=JSON.parse(raw);}catch{return;} // ilegível: é a única cópia, NÃO apagar
+  if(!Array.isArray(list)){return;}
+  const valid=list.filter(e=>e&&typeof e.at==='string');
+  if(!valid.length){try{localStorage.removeItem(BH_HISTORY_KEY);}catch{}return;}
+  await bhIdbWrite(valid,[]);
+  // Verificação: cada `at` da origem tem de estar no destino. Só depois disso a
+  // origem pode ir embora. Se faltar um, estoura — a chave legada FICA e a
+  // migração é tentada de novo no próximo boot.
+  const gravados=new Set((await bhIdbAllMeta()).map(m=>m.at));
+  const faltando=valid.filter(e=>!gravados.has(e.at));
+  if(faltando.length)throw new Error('migração incompleta: '+faltando.length+'/'+valid.length+' não chegaram ao IDB');
+  try{localStorage.removeItem(BH_HISTORY_KEY);}catch{}
+  console.info('[BoardHub] F1: '+valid.length+' snapshot(s) migrados para o IndexedDB.');
+};
+let _bhInitP=null;
+const bhHistoryInit=()=>{
+  if(_bhInitP)return _bhInitP;
+  _bhInitP=(async()=>{
+    try{
+      await bhMigrateLegacy();
+      _bhMeta=(await bhIdbAllMeta()).sort((a,b)=>a.at<b.at?1:-1);
+      _bhReady=true;
+    }catch(e){
+      // Falhar FECHADO: sem histórico legível, bhCapture não grava (não vai
+      // inventar um histórico novo por cima) e o gcIdb aborta a varredura.
+      _bhReady=false;
+      console.warn('[BoardHub] histórico de backup indisponível:',e);
+    }
+    return _bhReady;
+  })();
+  return _bhInitP;
+};
 // v23.6 P1-3: o autosave chamava bhHistoryLoad() a CADA gravação só para ler
 // list[0].at e decidir se já passaram 30 min desde o último snapshot. Com acervo
 // grande isso é um JSON.parse de vários MB a cada 2,5 s — medido em ~24 ms para
@@ -804,8 +1175,7 @@ let _bhLastAt=null;
 const bhLastAt=()=>{
   if(_bhLastAt!==null)return _bhLastAt;
   try{const v=localStorage.getItem(BH_LAST_AT_KEY);if(v){_bhLastAt=v;return v;}}catch{}
-  const l=bhHistoryLoad();
-  _bhLastAt=(l[0]&&l[0].at)||'';
+  _bhLastAt=(_bhMeta[0]&&_bhMeta[0].at)||'';
   try{if(_bhLastAt)localStorage.setItem(BH_LAST_AT_KEY,_bhLastAt);}catch{}
   return _bhLastAt;
 };
@@ -835,43 +1205,73 @@ const bhRetention=list=>{
   });
   return [...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
 };
+// F1: assíncrona por fora, mesma FORMA por dentro. Nenhum dos 7 call sites usa o
+// retorno — todos são fire-and-forget dentro de try/catch —, então devolver uma
+// Promise não muda o comportamento deles. A promessa nunca rejeita.
+//
+// As capturas são SERIALIZADAS numa fila: duas capturas concorrentes decidiriam
+// a retenção sobre o mesmo _bhMeta e a segunda ressuscitaria o que a primeira
+// acabou de despejar.
+let _bhChain=Promise.resolve();
 const bhCapture=(state,reason)=>{
-  try{
-    if(!bhStateHasData(state))return false; // never snapshot emptiness
-    const sig=bhSig(state);
-    let list=bhHistoryLoad();
-    if(reason==='daily'){
-      // Weekly-slot dedup: compare against the slot this capture would replace
-      // (same weekday). Comparing against list[0] would wrongly skip today's
-      // slot whenever nothing changed since the last auto snapshot.
-      const wd=new Date().getDay();
-      const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd);
-      if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===localDateISO())return false;
-    }else{
-      if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
-    }
-    const entry={at:new Date().toISOString(),reason,sig,counts:bhCounts(state),state};
-    list=bhRetention([entry,...list]);
-    const trySave=l=>{localStorage.setItem(BH_HISTORY_KEY,JSON.stringify(l));};
-    try{trySave(list);}
-    catch(e){
-      // Quota: drop oldest entries one by one, then try a base64-stripped entry
-      let l=[...list];
-      while(l.length>1){
-        l.pop();
-        try{trySave(l);bhMarkCaptured(entry.at);return true;}catch{}
+  const run=async()=>{
+    try{
+      if(!bhStateHasData(state))return false; // never snapshot emptiness
+      // Nunca capturar antes de saber o que já existe: com _bhMeta ainda vazio,
+      // a retenção rodaria contra uma lista vazia e o primeiro autosave após o
+      // boot despejaria o histórico inteiro.
+      if(!_bhReady)await bhHistoryInit();
+      if(!_bhReady)return false;
+      const sig=bhSig(state);
+      const list=_bhMeta;
+      if(reason==='daily'){
+        // Weekly-slot dedup: compare against the slot this capture would replace
+        // (same weekday). Comparing against list[0] would wrongly skip today's
+        // slot whenever nothing changed since the last auto snapshot.
+        const wd=new Date().getDay();
+        const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd);
+        if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===localDateISO())return false;
+      }else{
+        if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
       }
-      try{
-        const lean={...entry,state:(typeof stripInlineImages==='function'?stripInlineImages(state):state)};
-        trySave([lean]);
-      }catch{return false;}
-    }
-    bhMarkCaptured(entry.at);
-    return true;
-  }catch{return false;}
+      // `at` é a chave primária do store. Duas capturas no mesmo milissegundo
+      // sobrescreveriam uma à outra em silêncio; empurra 1ms até ser única.
+      let at=new Date().toISOString();
+      while(list.some(e=>e.at===at))at=new Date(new Date(at).getTime()+1).toISOString();
+      const counts=bhCounts(state);
+      const entry={at,reason,sig,counts,state};
+      const kept=bhRetention([{at,reason,sig,counts},...list]);
+      const keptAts=new Set(kept.map(e=>e.at));
+      if(!keptAts.has(at))return false; // a retenção descartou o próprio recém-nascido
+      const dels=list.filter(e=>!keptAts.has(e.at)).map(e=>e.at);
+      try{await bhIdbWrite([entry],dels);}
+      catch(e){
+        // Cota do IDB é ~2,8GB nesta origem, mas ela é derivada do disco livre e
+        // pode acabar. Último recurso: a mesma entrada sem os data:image
+        // embutidos — que preserva idb://, senão o backup perderia justamente as
+        // referências que o gcIdb usa (v23.3).
+        try{
+          const lean={...entry,state:(typeof stripInlineImages==='function'?stripInlineImages(state):state)};
+          await bhIdbWrite([lean],dels);
+        }catch{return false;}
+      }
+      _bhMeta=kept;
+      bhMarkCaptured(at);
+      return true;
+    }catch{return false;}
+  };
+  const p=_bhChain.then(run,run);
+  _bhChain=p.then(()=>{},()=>{});
+  return p;
 };
 // One-time migration: fold the old two-slot backups into the history, oldest first,
 // so nothing that exists today is lost by the upgrade.
+//
+// F1: continua escrevendo na CHAVE LEGADA do localStorage, de propósito. Este
+// bloco é síncrono e roda no parse do bundle, antes de qualquer IndexedDB estar
+// aberto; a bhMigrateLegacy leva daqui para o IDB logo em seguida, com
+// verificação. Duas migrações em série, cada uma simples, em vez de uma
+// assíncrona que teria de reimplementar a leitura do formato de dois slots.
 (()=>{
   try{
     const oldKeys=['boardhub_daily_backup','boardhub_backup_pre_sync'];
@@ -881,12 +1281,14 @@ const bhCapture=(state,reason)=>{
       if(!r)return;
       try{const p=JSON.parse(r);if(p&&p._snapAt)olds.push({key:k,at:p._snapAt,data:p});}catch{}
     });
+    if(!olds.length)return; // nada legado: não mexe na chave nem para reescrevê-la
+    const readLegacy=()=>{try{const r=localStorage.getItem(BH_HISTORY_KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch{return [];}};
     olds.sort((a,b)=>a.at<b.at?-1:1);
     olds.forEach(o=>{
       const{_snapAt,...data}=o.data;
       if(!bhStateHasData(data))return;
       const sig=bhSig(data);
-      let list=bhHistoryLoad();
+      let list=readLegacy();
       if(list.some(e=>e.sig===sig))return;
       list=bhRetention([{at:o.at,reason:o.key==='boardhub_daily_backup'?'daily':'pre-sync',sig,counts:bhCounts(data),state:data},...list]
         .sort((a,b)=>a.at<b.at?1:-1));
@@ -896,6 +1298,9 @@ const bhCapture=(state,reason)=>{
     localStorage.removeItem('boardhub_daily_backup_date');
   }catch{}
 })();
+// Abre o histórico assim que o bundle executa. É uma conexão de IndexedDB e um
+// getAll no store pequeno; o `state` não é lido aqui.
+bhHistoryInit();
 
 
 // - IDENTITY (hub name + OS name, set on first run) -
@@ -1864,7 +2269,14 @@ const gcIdb=async()=>{
     if(!live)return;
     const referenced=new Set();
     collectIdbKeys(live,referenced);
-    bhHistoryLoad().forEach(e=>{if(e&&e.state)collectIdbKeys(e.state,referenced);});
+    // F1: o histórico agora vem do IndexedDB. bhHistoryFull() REJEITA se não
+    // conseguir ler — e essa rejeição sai pelo catch lá embaixo, abortando a
+    // varredura. É de propósito: um backup que não pôde ser lido não é um backup
+    // que não referencia nada. Se isto virar `.catch(()=>[])` algum dia, o GC
+    // volta a apagar blobs vivos, que foi o P0-1 da v23.3.
+    if(!_bhReady)await bhHistoryInit();
+    if(!_bhReady)return; // histórico indisponível → não dá para saber o que é órfão
+    (await bhHistoryFull()).forEach(e=>{if(e&&e.state)collectIdbKeys(e.state,referenced);});
     const db=await openIdb();
     const keys=await new Promise((res,rej)=>{
       const r=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).getAllKeys();
@@ -2468,48 +2880,56 @@ const playPomoSound = (type) => {
   } catch(e) {}
 };
 
-// Medal achievement sounds — escalating celebration
-const playMedalSound = (level) => {
+// M1 — sons de mudança de andamento (era playMedalSound, por faixa de medalha).
+// Aqui só o DESPACHO mudou de nome: as cadências continuam as mesmas de antes,
+// porque reescrevê-las é trabalho do M2, onde cada andamento ganha uma cadência
+// no seu próprio BPM. Renomear sem tocar no despacho deixaria o som mudo — os
+// níveis viraram adagio/andante/moderato/allegro/vivace e nenhum 'bronze'
+// casaria mais.
+// M2 — os BPM vivem aqui, fora do componente, porque servem a TRÊS consumidores:
+// o rótulo em DAY_TIERS, a cadência de mudança de faixa e o metrônomo. DAY_TIERS
+// LÊ desta tabela em vez de repetir os números — duas listas iguais divergem
+// silenciosamente, e o sintoma seria o app mostrar um andamento e tocar outro.
+const TEMPO_BPM = { adagio:66, andante:76, moderato:108, allegro:132, vivace:160 };
+
+const METRO_LS = 'boardhub_metronome';
+const metronomeLoad = () => { try { return localStorage.getItem(METRO_LS) === '1'; } catch(e) { return false; } };
+const metronomeSave = v => { try { localStorage.setItem(METRO_LS, v ? '1' : '0'); } catch(e) {} };
+
+const playTempoSound = (level) => {
   try {
     const ctx = _getAudioCtx();
     if (!ctx) return;
-    const t0 = ctx.currentTime;
-    if (level === 'bronze') {
-      // Warm 3-note rise — modest win
-      [[523.25,0],[659.25,.18],[783.99,.36]].forEach(([f,dt])=>{
-        _playNote(ctx, f, t0+dt, 0.28, 1.0, 'triangle');
-      });
-    } else if (level === 'silver') {
-      // Sparkling 4-note shimmer
-      [[587.33,0],[739.99,.16],[880,.32],[1046.5,.48]].forEach(([f,dt])=>{
-        _playNote(ctx, f, t0+dt, 0.26, 1.2, 'triangle');
-        _playNote(ctx, f, t0+dt, 0.10, 0.9, 'sine', 6);
-      });
-    } else if (level === 'golden') {
-      // Triumphant fanfare — ascending chord + harmony
-      const melody = [[523.25,0],[659.25,.14],[783.99,.28],[1046.5,.42],[1318.5,.56]];
-      const harmony = [[659.25,0],[783.99,.14],[987.77,.28],[1244,.42],[1567,.56]];
-      melody.forEach(([f,dt])=>{ _playNote(ctx, f, t0+dt, 0.28, 1.4, 'triangle'); });
-      harmony.forEach(([f,dt])=>{ _playNote(ctx, f, t0+dt, 0.12, 1.0, 'sine', 8); });
-      // final chord bloom
-      [523.25,659.25,783.99].forEach(f=>{ _playNote(ctx, f*2, t0+0.78, 0.14, 1.8, 'triangle'); });
-    } else if (level === 'diamond') {
-      // Full cascading celebration
-      const cascade = [
-        [523.25,0],[659.25,.1],[783.99,.2],[987.77,.3],[1174.66,.4],
-        [1318.5,.5],[1567.98,.6],[2093,.7]
-      ];
-      cascade.forEach(([f,dt],i)=>{
-        _playNote(ctx, f, t0+dt, 0.24, 1.6, 'triangle');
-        _playNote(ctx, f, t0+dt, 0.10, 1.2, 'sine', 5);
-      });
-      // Rich chord at peak
-      [523.25,659.25,783.99,1046.5].forEach((f,i)=>{
-        _playNote(ctx, f*2, t0+0.85+i*0.06, 0.16, 2.2, 'triangle');
-      });
+    const bpm = TEMPO_BPM[level];
+    if (!bpm || level === 'adagio') return;  // a faixa base não anuncia nada
+    const t0   = ctx.currentTime;
+    const beat = 60 / bpm;                  // duração da semínima NESTE andamento
+    const ring = beat * 2.4;                // andamento lento deixa a nota soar mais
+
+    // Pentatônica de Dó. O número de graus cresce com a pressa do andamento, e
+    // o Vivace corre em colcheias — é a mesma figura, cada vez mais apertada.
+    const ESCALA = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51];
+    const passos = { andante:3, moderato:4, allegro:5, vivace:7 }[level];
+    const salto  = level === 'vivace' ? 0.5 : 1;
+
+    for (let i = 0; i < passos; i++) {
+      const t = t0 + i * beat * salto;
+      _playNote(ctx, ESCALA[i], t, 0.26, ring, 'triangle');
+      if (level !== 'andante') _playNote(ctx, ESCALA[i], t, 0.09, ring * 0.75, 'sine', 5);
     }
+    // Acorde de chegada, uma semínima depois da última nota.
+    const fim = t0 + passos * beat * salto;
+    [523.25, 659.25, 783.99].forEach((f, i) => {
+      _playNote(ctx, f * (level === 'vivace' ? 2 : 1), fim + i * 0.05, 0.15, ring * 1.6, 'triangle');
+    });
   } catch(e) {}
 };
+
+// M2.1 — o clique audível do metrônomo foi REMOVIDO. Batia ~2×/s durante a
+// sessão inteira e atrapalhava mais do que ajudava, que é o oposto do que um
+// app de foco deveria fazer. O pulso continua existindo, só que VISUAL: o
+// pêndulo do mostrador (ver .bh-pendulum). As cadências de mudança de faixa
+// ficam — aquelas tocam 4× por dia, não 3.600.
 
 const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const BREAK_SECS = 5 * 60;
@@ -2531,6 +2951,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const [mode, setMode]           = useState(_init.mode);
   const [showStats, setShowStats] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [metronomeOn, setMetronomeOn] = useState(metronomeLoad);
 
   const focusMinsRef    = useRef(focusMins);
   const modeRef         = useRef(mode);
@@ -2576,6 +2997,16 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && isActiveRef.current && endTimestampRef.current) {
         const remaining = Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000));
+        // Quando o navegador congela a aba (mobile em segundo plano, ou Chrome
+        // após ~5min oculta), o setInterval para de rodar e ninguém credita o
+        // tempo decorrido. Sem isto, adiantar o relógio aqui apagaria esse
+        // trecho: o próximo tick compararia com o valor já adiantado e veria
+        // delta 0. Credita a diferença antes de mover o ponteiro.
+        const delta = Math.max(0, timeLeftRef.current - remaining);
+        if (modeRef.current === 'focus' && delta > 0) {
+          unsavedSecsRef.current += delta; setDisplayUnsaved(unsavedSecsRef.current);
+          if (unsavedSecsRef.current >= 30) flushPomoSecs();
+        }
         setTimeLeft(remaining); timeLeftRef.current = remaining;
       }
     };
@@ -2592,6 +3023,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
       const remaining = Math.max(0, Math.round((endTimestampRef.current - Date.now()) / 1000));
       if (remaining <= 0) {
         if (modeRef.current === 'focus') {
+          // O laço acima só credita a diferença entre ticks, então o último
+          // trecho (de timeLeft até 0) ficaria de fora — é o que fazia uma
+          // sessão de 30min registrar 29m59s. Credita o resto antes do flush.
+          if (timeLeftRef.current > 0) { unsavedSecsRef.current += timeLeftRef.current; setDisplayUnsaved(unsavedSecsRef.current); }
           flushPomoSecs(); playPomoSound('work_end');
           fireNotification('Pomodoro', 'Sessão de foco encerrada! Hora de pausar. ☕');
           setMode('break'); modeRef.current = 'break';
@@ -2639,71 +3074,116 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     persist(false, fs, 'focus'); flushPomoSecs();
   };
 
-  // Circle drag to set duration
-  const getAngleMins = (e) => {
+  // M2.1 — arrastar na VERTICAL para definir a duração, como se corre o peso na
+  // haste de um metrônomo: mais alto = mais lento = sessão mais longa. O gesto
+  // angular de antes existia porque o mostrador era um círculo; sobre uma
+  // pirâmide ele não quer dizer nada, e o feedback (o peso subindo) precisa ir
+  // na mesma direção do dedo, senão o controle briga com o desenho.
+  const getDragMins = (e) => {
     if (!circleRef.current) return null;
     const rect = circleRef.current.getBoundingClientRect();
-    const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
-    let angle = Math.atan2(e.clientX - cx, -(e.clientY - cy));
-    if (angle < 0) angle += 2 * Math.PI;
-    return Math.max(1, Math.min(MAX_FOCUS_MINS, Math.round((angle / (2*Math.PI)) * MAX_FOCUS_MINS)));
+    const t = 1 - Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+    return Math.max(1, Math.min(MAX_FOCUS_MINS, Math.round(t * MAX_FOCUS_MINS)));
   };
   const handlePointerDown = (e) => {
     if (isActive || mode !== 'focus') return;
     e.preventDefault(); circleRef.current?.setPointerCapture(e.pointerId); setIsDragging(true);
-    const mins = getAngleMins(e);
+    const mins = getDragMins(e);
     if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
   };
   const handlePointerMove = (e) => {
     if (!isDragging) return;
-    const mins = getAngleMins(e);
+    const mins = getDragMins(e);
     if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
   };
   const handlePointerUp = (e) => {
     if (!isDragging) return; setIsDragging(false);
-    const mins = getAngleMins(e);
+    const mins = getDragMins(e);
     if (mins) { setFocusMins(mins); focusMinsRef.current = mins; const fs=mins*60; setTimeLeft(fs); timeLeftRef.current=fs; persist(false,fs,'focus',mins); }
   };
 
-  // Display
-  const R = 34; const CX = 38; const CY = 38;
+  // Display — geometria do metrônomo abstrato (viewBox 76×76).
+  // Pirâmide truncada, pivô da haste logo acima da divisória, e o compartimento
+  // da base guardando a leitura de tempo e a barra de progresso.
+  // A pirâmide ocupa só o topo (y 4→56) para sobrar faixa livre embaixo: a barra
+  // de progresso mora FORA do corpo, e a leitura de tempo mora DENTRO do
+  // compartimento da base sem encostar no contorno. Antes as duas coisas
+  // disputavam o mesmo espaço e os números cruzavam o desenho.
+  const MET_PATH = 'M30,4 L46,4 L70,56 L6,56 Z';
+  const MET_PIVOT_Y = 34;      // articulação da haste, acima da divisória
+  const MET_ARM_TOP = 10;      // altura máxima do peso
+  const MET_DIV_Y = 37;        // divisória do compartimento
+  // Base do texto por MEDIÇÃO, não por chute: em Cormorant 12px a caixa tem 15
+  // de altura e a ascendente é 11. Compartimento de 37→56 = 19 de altura, então
+  // centralizar deixa a caixa em 39→54 — 2 de folga da divisória e 2 do
+  // contorno. Chutar aqui foi o que fez os números encostarem na base.
+  const MET_TEXT_Y = 50;
+  const BAR_X = 7, BAR_W = 62, BAR_Y = 64;
+
   const pct = mode === 'focus'
     ? (isActive ? timeLeft / (focusMins*60) : focusMins / MAX_FOCUS_MINS)
     : timeLeft / BREAK_SECS;
   const isFocus = mode === 'focus';
   const mins = Math.floor(timeLeft/60); const secs = timeLeft % 60;
   const timeStr = (mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs;
-  const knobAngle = isActive ? (1-pct)*2*Math.PI : (focusMins/MAX_FOCUS_MINS)*2*Math.PI;
-  const kx = CX + R*Math.sin(knobAngle); const ky = CY - R*Math.cos(knobAngle);
-  const showKnob = !isActive && isFocus;
+  // Altura do peso na haste = duração escolhida. Mais alto = sessão mais longa,
+  // que é a mesma direção do arrasto e a mesma convenção do instrumento real
+  // (peso em cima = mais lento).
+  const weightY = MET_PIVOT_Y - (Math.min(MAX_FOCUS_MINS,focusMins)/MAX_FOCUS_MINS) * (MET_PIVOT_Y - MET_ARM_TOP);
 
   const todaySecs = ((pomoData.days||{})[pomoTodayKey()])||0;
   const todayDisplay = todaySecs + displayUnsaved + pendingSecsRef.current;
 
+  // M1 — as faixas de foco viraram ANDAMENTOS. Medalha de videogame (estrela,
+  // bronze, prata, troféu, diamante) não combina com um app em Cormorant
+  // Garamond sobre papel quente, e andamento
+  // é a unidade certa: mede ritmo de trabalho, que é exatamente o que o contador
+  // mede. Os BPM são as faixas convencionais de cada marcação — servem de valor
+  // real para o metrônomo opcional (M2), não são enfeite.
+  //
+  // OS PISOS NÃO MUDARAM (0/2/4/6/8h). Renomear é seguro; mexer em piso
+  // reescreveria retroativamente a faixa de todo dia já registrado no histórico.
   const DAY_TIERS = [
-    {level:'none',   icon:'⭐',name:'Iniciante',color:'var(--muted)',floor:0},
-    {level:'bronze', icon:'🥉',name:'Bronze',   color:'#CD7F32',    floor:2*3600},
-    {level:'silver', icon:'🥈',name:'Prata',    color:'#94A3B8',    floor:4*3600},
-    {level:'golden', icon:'🏆',name:'Ouro',     color:'#FBBF24',    floor:6*3600},
-    {level:'diamond',icon:'💎',name:'Diamante', color:'#60A5FA',    floor:8*3600},
+    {level:'adagio',   name:'Adagio',   bpm:TEMPO_BPM.adagio,   glyph:'♩', color:'var(--muted)',   floor:0},
+    {level:'andante',  name:'Andante',  bpm:TEMPO_BPM.andante,  glyph:'♩', color:'var(--tempo-1)', floor:2*3600},
+    {level:'moderato', name:'Moderato', bpm:TEMPO_BPM.moderato, glyph:'♪', color:'var(--tempo-2)', floor:4*3600},
+    {level:'allegro',  name:'Allegro',  bpm:TEMPO_BPM.allegro,  glyph:'♪', color:'var(--tempo-3)', floor:6*3600},
+    {level:'vivace',   name:'Vivace',   bpm:TEMPO_BPM.vivace,   glyph:'♫', color:'var(--tempo-4)', floor:8*3600},
   ];
+  // Adagio é a faixa base, não conquista — a UI o trata como o antigo 'none'.
+  const isBaseTempo = t => t.level === 'adagio';
   const getStarLevel = s => { for(let i=DAY_TIERS.length-1;i>=0;i--) if(s>=DAY_TIERS[i].floor) return DAY_TIERS[i]; return DAY_TIERS[0]; };
   const currentStar = getStarLevel(todayDisplay);
   const prevStarLevelRef = React.useRef(currentStar.level);
   React.useEffect(()=>{
-    if(prevStarLevelRef.current!==currentStar.level&&currentStar.level!=='none') playMedalSound(currentStar.level);
+    if(prevStarLevelRef.current!==currentStar.level&&!isBaseTempo(currentStar)) playTempoSound(currentStar.level);
     prevStarLevelRef.current=currentStar.level;
   },[currentStar.level]);
   const nextStarTier = DAY_TIERS.find(t=>t.floor>currentStar.floor)||null;
   const progressToNext = nextStarTier ? Math.min(100,((todayDisplay-currentStar.floor)/(nextStarTier.floor-currentStar.floor))*100) : 100;
 
+  // M2.1 — o pulso agora é VISUAL. Não há agendador: a haste é uma animação CSS
+  // cuja duração sai do BPM, então o navegador cuida do tempo no compositor e
+  // não há timer em JS para derrapar, vazar ou disputar a thread com o autosave.
+  // Meia oscilação = uma semínima: a haste cruza o centro uma vez por batida, que
+  // é exatamente o que um metrônomo mecânico faz.
+  const beatSecs   = 60 / currentStar.bpm;
+  const pendulumOn = metronomeOn && isActive && mode === 'focus';
+
+  // M1 — o mês usa DINÂMICA, não andamento. Repetir Adagio…Vivace nas duas
+  // escalas confundiria as leituras: o dia mede RITMO (quão rápido você foi
+  // hoje), o mês mede VOLUME (quanto acumulou). Dinâmica é a palavra italiana
+  // certa para volume, e a convenção de gravura já manda escrevê-la em serifada
+  // itálica — que é o que o Cormorant faz bem.
+  // Os pisos seguem intocados (0/40/80/120/160h): renomeação pura.
   const MONTH_TIERS = [
-    {level:'none',   icon:'⭐',name:'Iniciante',color:'var(--muted)',floor:0},
-    {level:'bronze', icon:'🥉',name:'Bronze',   color:'#CD7F32',    floor:40*3600},
-    {level:'silver', icon:'🥈',name:'Prata',    color:'#94A3B8',    floor:80*3600},
-    {level:'golden', icon:'🏆',name:'Ouro',     color:'#FBBF24',    floor:120*3600},
-    {level:'diamond',icon:'💎',name:'Diamante', color:'#60A5FA',    floor:160*3600},
+    {level:'pianissimo',name:'Pianissimo',mark:'pp', color:'var(--muted)',   floor:0},
+    {level:'piano',     name:'Piano',     mark:'p',  color:'var(--tempo-1)', floor:40*3600},
+    {level:'mezzoforte',name:'Mezzo-forte',mark:'mf',color:'var(--tempo-2)', floor:80*3600},
+    {level:'forte',     name:'Forte',     mark:'f',  color:'var(--tempo-3)', floor:120*3600},
+    {level:'fortissimo',name:'Fortissimo',mark:'ff', color:'var(--tempo-4)', floor:160*3600},
   ];
+  const isBaseDynamic = t => t.level === 'pianissimo';
   const getMonthMedal = s => { for(let i=MONTH_TIERS.length-1;i>=0;i--) if(s>=MONTH_TIERS[i].floor) return MONTH_TIERS[i]; return MONTH_TIERS[0]; };
 
   const dayEntries = useMemo(()=>{
@@ -2748,24 +3228,44 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             style={{position:'relative',width:76,height:76,flexShrink:0,cursor:(!isActive&&isFocus)?'pointer':'default',touchAction:'none',userSelect:'none'}}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
-            <svg width="76" height="76" style={{position:'absolute',top:0,left:0,transform:'rotate(-90deg)'}}>
-              <circle cx="38" cy="38" r={R} fill="none" stroke="var(--border)" strokeWidth="4"/>
-              <circle cx="38" cy="38" r={R} fill="none" stroke={isFocus?'var(--text)':'#276b3e'} strokeWidth="4"
-                strokeDasharray={2*Math.PI*R} strokeDashoffset={2*Math.PI*R*(1-pct)} strokeLinecap="round"
-                style={{transition:isDragging?'none':'stroke-dashoffset .5s cubic-bezier(.4,0,.2,1),stroke .4s'}}/>
+            {/* M2.1 — o mostrador virou um metrônomo abstrato: pirâmide truncada,
+                haste com peso, e a leitura na base, como no de madeira. O
+                progresso da sessão continua sendo o MESMO mecanismo de antes —
+                stroke-dashoffset — só que percorrendo o contorno da pirâmide em
+                vez da circunferência. pathLength="100" normaliza o perímetro,
+                então a conta de porcentagem não precisa saber a geometria. */}
+            <svg width="76" height="76" viewBox="0 0 76 76" style={{position:'absolute',top:0,left:0}}>
+              {/* Corpo: contorno fixo. O tempo NÃO é mais desenhado por cima do
+                  contorno — vira a barra da base, mais fácil de ler de relance
+                  do que um traço percorrendo um polígono. */}
+              <path d={MET_PATH} fill="none" stroke="var(--border-2)" strokeWidth="2.5" strokeLinejoin="round"/>
+              <line x1="14.8" y1={MET_DIV_Y} x2="61.2" y2={MET_DIV_Y} stroke="var(--border)" strokeWidth="1.5"/>
+
+              {/* Haste e peso. O peso mora DENTRO do grupo que gira, como no
+                  instrumento real, e sua altura é a duração escolhida. */}
+              <g className={pendulumOn?'bh-pendulum':undefined}
+                 style={pendulumOn?{'--beat':beatSecs+'s','--pivot':MET_PIVOT_Y+'px'}:undefined} aria-hidden="true">
+                <line x1="38" y1={MET_PIVOT_Y} x2="38" y2="6" stroke="var(--border-2)" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="32.5" y={weightY-2.5} width="11" height="5" rx="1.5"
+                  fill={isBaseTempo(currentStar)?'var(--muted)':currentStar.color}
+                  style={{transition:isDragging?'none':'y .18s'}}/>
+              </g>
+              <circle cx="38" cy={MET_PIVOT_Y} r="1.6" fill="var(--border-2)"/>
+
+              <text x="38" y={MET_TEXT_Y} textAnchor="middle"
+                style={{fontFamily:'Cormorant Garamond,serif',fontSize:'12px',fontWeight:500,letterSpacing:'-0.02em',fill:'var(--text)'}}>
+                {isDragging?`${focusMins} min`:timeStr}
+              </text>
+
+              {/* Barra que ESVAZIA, FORA do corpo — o contorno da pirâmide é
+                  desenho, e sobrepor leitura a ele só embola os dois. Trilho
+                  sempre visível para a barra ter contra o que encolher: sem ele,
+                  "quase acabando" e "não começou" são o mesmo vazio. */}
+              <rect x={BAR_X} y={BAR_Y} width={BAR_W} height="3" rx="1.5" fill="var(--border)"/>
+              <rect x={BAR_X} y={BAR_Y} width={Math.max(0,BAR_W*pct)} height="3" rx="1.5"
+                fill={isFocus?'var(--text)':'#276b3e'}
+                style={{transition:isDragging?'none':'width .5s cubic-bezier(.4,0,.2,1),fill .4s'}}/>
             </svg>
-            {showKnob&&(
-              <svg width="76" height="76" style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}>
-                <circle cx={kx} cy={ky} r={isDragging?6:4} fill="var(--text)" stroke="var(--surface)" strokeWidth="2"
-                  style={{transition:isDragging?'none':'r .15s'}}/>
-              </svg>
-            )}
-            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
-              {isDragging
-                ?<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.1rem',fontWeight:500,lineHeight:1}}>{focusMins}<span style={{fontSize:'.6rem',fontWeight:600,color:'var(--muted)',marginLeft:1}}>min</span></span>
-                :<span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.25rem',fontWeight:500,letterSpacing:'-0.02em'}}>{timeStr}</span>
-              }
-            </div>
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:5}}>
@@ -2776,22 +3276,34 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
               <button className="btn btn-ghost" onClick={reset} title="Reiniciar" style={{padding:5}}>
                 <Icon name="rotate-ccw" size={13}/>
               </button>
+              <button className="btn btn-ghost"
+                onClick={()=>{const v=!metronomeOn;setMetronomeOn(v);metronomeSave(v);}}
+                aria-pressed={metronomeOn}
+                title={metronomeOn?`Pêndulo ligado — ${currentStar.bpm} BPM (${currentStar.name})`:'Pêndulo desligado'}
+                style={{padding:'5px 7px',opacity:metronomeOn?1:.4}}>
+                <span style={{fontSize:'.9rem',lineHeight:1,color:metronomeOn&&!isBaseTempo(currentStar)?currentStar.color:'inherit'}}>♪</span>
+              </button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
               <div style={{fontSize:'.67rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
                 <Icon name="clock" size={10}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todayDisplay)}</strong> em foco
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <div style={{display:'flex',alignItems:'center',gap:3,padding:'2px 6px',borderRadius:12,background:currentStar.level==='none'?'var(--bg)':currentStar.color+'20',border:`1px solid ${currentStar.level==='none'?'var(--border)':currentStar.color+'40'}`}}>
-                  <span style={{fontSize:'.95rem',lineHeight:1}}>{currentStar.icon}</span>
-                  <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',color:currentStar.level==='none'?'var(--muted)':currentStar.color}}>{currentStar.name}</span>
+                {/* O tint saía de currentStar.color+'20' — concatenar alpha em hex.
+                    Com a cor vindo de token isso vira "var(--tempo-2)20", que é CSS
+                    inválido; color-mix deriva o mesmo tint a partir da variável e
+                    ainda funciona no tema escuro, porque mistura com transparent. */}
+                <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:12,background:isBaseTempo(currentStar)?'var(--bg)':`color-mix(in srgb, ${currentStar.color} 12%, transparent)`,border:`1px solid ${isBaseTempo(currentStar)?'var(--border)':`color-mix(in srgb, ${currentStar.color} 28%, transparent)`}`}}>
+                  <span style={{fontSize:'.8rem',lineHeight:1,color:isBaseTempo(currentStar)?'var(--muted)':currentStar.color}}>{currentStar.glyph}</span>
+                  <span className="serif" style={{fontStyle:'italic',fontSize:'.95rem',fontWeight:500,lineHeight:1,letterSpacing:'-.01em',color:isBaseTempo(currentStar)?'var(--muted)':currentStar.color}}>{currentStar.name}</span>
+                  <span style={{fontSize:'.55rem',fontWeight:600,letterSpacing:'.04em',color:'var(--muted)',lineHeight:1}} title={`${currentStar.bpm} BPM`}>{currentStar.bpm}</span>
                 </div>
                 {nextStarTier&&(
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{height:3,background:'var(--bg)',borderRadius:2,overflow:'hidden'}}>
                       <div style={{height:'100%',width:Math.min(100,progressToNext)+'%',background:currentStar.color,borderRadius:2,transition:'width 0.5s ease'}}/>
                     </div>
-                    <div style={{fontSize:'.58rem',color:'var(--muted)',marginTop:1,textAlign:'right'}}>{Math.round(progressToNext)}% → {nextStarTier.name}</div>
+                    <div style={{fontSize:'.58rem',color:'var(--muted)',marginTop:1,textAlign:'right'}}>{Math.round(progressToNext)}% → <span className="serif" style={{fontStyle:'italic',fontSize:'.74rem'}}>{nextStarTier.name}</span></div>
                   </div>
                 )}
               </div>
@@ -2814,10 +3326,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                 <div style={{fontSize:'1.2rem',fontWeight:600,fontFamily:'Cormorant Garamond,serif'}}>{pomoFmtSecs(todayDisplay)}</div>
               </div>
               <div style={{padding:'14px 20px',textAlign:'center',borderRight:'1px solid var(--border)'}}>
-                <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Estrela</div>
+                <div style={{fontSize:'.6rem',textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',marginBottom:4}}>Andamento</div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-                  <span style={{fontSize:'1.5rem',lineHeight:1}}>{currentStar.icon}</span>
-                  <span style={{fontSize:'.75rem',fontWeight:700,color:currentStar.color}}>{currentStar.name}</span>
+                  <span style={{fontSize:'1.15rem',lineHeight:1,color:isBaseTempo(currentStar)?'var(--muted)':currentStar.color}}>{currentStar.glyph}</span>
+                  <span className="serif" style={{fontStyle:'italic',fontSize:'1.2rem',fontWeight:500,lineHeight:1,color:isBaseTempo(currentStar)?'var(--muted)':currentStar.color}}>{currentStar.name}</span>
                 </div>
               </div>
               <div style={{padding:'14px 20px',textAlign:'center'}}>
@@ -2843,14 +3355,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'center'}}>
                         <div style={{display:'flex',alignItems:'center',gap:6}}>
                           <span style={{fontSize:'.82rem',fontWeight:500}}>{pomoFmtDay(day)}</span>
-                          {dayStar.level !== 'none' && (
-                            <span style={{fontSize:'.9rem',lineHeight:1}} title={dayStar.name}>{dayStar.icon}</span>
+                          {!isBaseTempo(dayStar) && (
+                            <span className="serif" style={{fontStyle:'italic',fontSize:'.85rem',lineHeight:1,color:dayStar.color}} title={`${dayStar.name} · ${dayStar.bpm} BPM`}>{dayStar.glyph} {dayStar.name}</span>
                           )}
                         </div>
                         <span style={{fontSize:'.82rem',fontWeight:600}}>{pomoFmtSecs(s)}</span>
                       </div>
                       <div style={{height:5,background:'var(--bg)',borderRadius:3,overflow:'hidden'}}>
-                        <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:dayStar.level !== 'none' ? dayStar.color : 'var(--text)',borderRadius:3}}/>
+                        <div style={{height:'100%',width:Math.round(s/maxDay*100)+'%',background:isBaseTempo(dayStar) ? 'var(--text)' : dayStar.color,borderRadius:3}}/>
                       </div>
                     </div>
                   )})}
@@ -2869,14 +3381,14 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'center'}}>
                           <div style={{display:'flex',alignItems:'center',gap:6}}>
                             <span style={{fontSize:'.85rem',fontWeight:600,textTransform:'capitalize'}}>{pomoFmtMonth(mk)}</span>
-                            <span title={mMedal.name} style={{fontSize:'1rem',lineHeight:1}}>{mMedal.icon}</span>
+                            <span title={mMedal.name} className="serif" style={{fontStyle:'italic',fontWeight:600,fontSize:'1.05rem',lineHeight:1,color:isBaseDynamic(mMedal)?'var(--muted)':mMedal.color}}>{mMedal.mark}</span>
                           </div>
                           <span style={{fontSize:'.85rem',fontWeight:700}}>{pomoFmtSecs(s)}</span>
                         </div>
                         <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',marginBottom:2}}>
-                          <div style={{height:'100%',width:mPct+'%',background:mMedal.level!=='none'?mMedal.color:'var(--muted)',borderRadius:3,transition:'width .3s'}}/>
+                          <div style={{height:'100%',width:mPct+'%',background:isBaseDynamic(mMedal)?'var(--muted)':mMedal.color,borderRadius:3,transition:'width .3s'}}/>
                         </div>
-                        {mNext&&<div style={{fontSize:'.6rem',color:'var(--muted)',marginBottom:6,textAlign:'right'}}>{Math.round(mPct)}% → {mNext.name}</div>}
+                        {mNext&&<div style={{fontSize:'.6rem',color:'var(--muted)',marginBottom:6,textAlign:'right'}}>{Math.round(mPct)}% → <span className="serif" style={{fontStyle:'italic',fontSize:'.76rem'}}>{mNext.name}</span></div>}
                         <div style={{paddingLeft:8}}>
                           {daysInMonth.map(([d,ds])=>(
                             <div key={d} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
@@ -5731,17 +6243,27 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   const importRef=useRef();
 
   // Backup history
-  const [backupHistory,setBackupHistory]=useState(()=>bhHistoryLoad());
-  const refreshHistory=()=>setBackupHistory(bhHistoryLoad());
+  // F1: a lista vem do `meta` (sem state). Antes, abrir a tela de Sync trazia o
+  // histórico INTEIRO para a memória do React só para desenhar datas e
+  // contadores; agora o state de um snapshot só é lido no clique de restaurar.
+  const [backupHistory,setBackupHistory]=useState([]);
+  const refreshHistory=()=>{bhHistoryInit().then(()=>setBackupHistory(bhHistoryMeta().slice()));};
+  useEffect(()=>{refreshHistory();},[]);
 
   const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login'};
-  const handleRestoreFromHistory=(entry)=>{
+  const handleRestoreFromHistory=async(entry)=>{
     const dt=new Date(entry.at).toLocaleString('pt-BR');
     const c=entry.counts||{};
     if(!window.confirm(`Restaurar o backup de ${dt}?\n(${c.projects??'?'} projetos · ${c.notes??'?'} notas · ${c.clients??'?'} clientes)\n\nSeus dados atuais serão salvos no histórico antes — dá pra desfazer.`))return;
+    // F1: o state vem do IDB agora. Se a leitura falhar, ABORTA antes de tocar
+    // no estado atual — restaurar um snapshot que não carregou seria trocar
+    // dados bons por nada.
+    let full=null;
+    try{full=await bhHistoryGet(entry.at);}catch{}
+    if(!full||!full.state){showStatus('err','Não foi possível ler esse backup. Nada foi alterado.');return;}
     // Make the restore itself undoable: snapshot current state first
-    try{const cur=lsLoad();if(cur)bhCapture(cur,'pre-restore');}catch{}
-    onImport(entry.state);
+    try{const cur=lsLoad();if(cur)await bhCapture(cur,'pre-restore');}catch{}
+    onImport(full.state);
     showStatus('ok','✓ Backup de '+dt+' restaurado!');
     refreshHistory();
   };
@@ -6384,14 +6906,21 @@ const App=()=>{
   useEffect(()=>{const t=setTimeout(gcIdb,8000);return()=>clearTimeout(t);},[]);
 
   // Daily backup: once per day on first open (into rotating history)
+  // F1: espera o histórico abrir antes de decidir. Sem isso, a checagem rodaria
+  // contra _bhMeta ainda vazio e gravaria um 'daily' por boot.
   useEffect(()=>{
-    try{
-      const today=localDateISO();
-      const list=bhHistoryLoad();
-      if(list.some(e=>e.reason==='daily'&&e.at.slice(0,10)===today))return;
-      const snap=lsLoad();
-      if(snap)bhCapture(snap,'daily');
-    }catch{}
+    let vivo=true;
+    (async()=>{
+      try{
+        await bhHistoryInit();
+        if(!vivo)return;
+        const today=localDateISO();
+        if(bhHistoryMeta().some(e=>e.reason==='daily'&&e.at.slice(0,10)===today))return;
+        const snap=lsLoad();
+        if(snap)bhCapture(snap,'daily');
+      }catch{}
+    })();
+    return()=>{vivo=false;};
   },[]);
 
   // Global keyboard shortcuts
@@ -6901,7 +7430,17 @@ const App=()=>{
 
   return(
     <div style={{display:'flex',flexDirection:isMobile?'column':'row',minHeight:'100vh',overflowX:'hidden'}}>
-      {!identity&&<SetupModal onDone={handleSetupDone}/>}
+      {/* A configuração inicial só aparece DEPOIS de entrar com o Google. Abrir o
+          arquivo local não pede mais nada: sem identity a barra lateral já cai
+          nos mesmos padrões que o modal produziria (splitHubName e o osName têm
+          'BoardHub'/'Storyboard OS' embutidos), então pular a tela não deixa
+          nada indefinido na tela.
+          O !== 'syncing' evita um flash da tela cheia em quem já tem identity na
+          nuvem: no login o listener do Firestore ainda vai aplicar data.identity,
+          e sem essa espera o modal apareceria e sumiria sozinho a cada entrada.
+          Quem realmente é conta nova chega em 'synced' sem identity e aí sim vê
+          a configuração. */}
+      {!identity&&fbUser&&syncStatus!=='syncing'&&<SetupModal onDone={handleSetupDone}/>}
       {showCmdPalette&&<CommandPalette projects={projects} notes={notes} mentors={mentors} clients={clients} galleryPosts={galleryPosts} onNavigate={v=>{navigate(v);setShowCmdPalette(false);}} onSelectProject={p=>{handleSelectProject(p);setShowCmdPalette(false);}} onClose={()=>setShowCmdPalette(false)}/>}
       {showQuickCapture&&<QuickCapture type={quickCaptureType} onClose={()=>setShowQuickCapture(false)} onAddTask={t=>setTasks(prev=>[...prev,t])} onAddNote={n=>setNotes(prev=>[n,...prev])}/>}
       {showShortcuts&&<ShortcutsModal onClose={()=>setShowShortcuts(false)}/>}
