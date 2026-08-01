@@ -796,6 +796,8 @@ const MentorModal = ({ mentor, onClose, onSave, onDelete }) => {
   };
   const photos = form.photos||[null,null,null,null];
   // ... rest of the component remains exactly the same (the JSX portion)
+  };
+   
 const MentorsHub = () => {
   const { mentors, setMentors } = useContext(AppContext);
   const [sel,setSel]=useState(null); const [search,setSearch]=useState(''); const [year,setYear]=useState('all');
