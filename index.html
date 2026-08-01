@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 /* ══════════════════════════════════════════════════════════════
-   BoardHub Complete — Classy & Jazzy
+   BoardHub Complete — Classy & Jazzy (Fixed)
    ══════════════════════════════════════════════════════════════ */
 :root {
   --bg: #F5EEDC;
@@ -52,7 +52,7 @@ body {
 #root { height:100vh; display:flex; }
 
 /* ═══════ GLOBAL CLASSES ═══════ */
-.card{background:var(--surface);border:1px solid var(--glass-border);border-radius:14px;transition:border-color .2s,box-shadow .2s;}
+.card{background:var(--surface);border:1px solid var(--glass-border);border-radius:14px;transition:border-color .2s,box-shadow .2s;overflow:hidden;}
 .card:hover{border-color:var(--accent);box-shadow:var(--shadow);}
 .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:var(--font-ui);font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;}
 .btn-dark{background:var(--text);color:var(--bg);} .btn-dark:hover{opacity:0.9;}
@@ -65,13 +65,39 @@ body {
 .input-box{background:var(--bg);border:1px solid var(--glass-border);border-radius:8px;padding:8px 12px;font-family:var(--font-ui);font-size:.85rem;color:var(--text);outline:none;width:100%;transition:border-color .2s;}
 .input-box:focus{border-color:var(--text);}
 .label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text-secondary);}
-.tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:var(--font-ui);font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
+.tab-btn {
+  padding: 8px 16px;
+  margin-right: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: .85rem;
+  font-weight: 500;
+  transition: all .15s;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.tab-btn:hover { background: rgba(212,168,67,0.15); color: var(--text); }
+.tab-btn.active-folder { background: var(--accent); color: white; font-weight: 600; }
 .fade-up{animation:fadeUp .35s ease both;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
 
 /* ═══════ SIDEBAR ═══════ */
 .sidebar{width:220px;min-width:220px;border-right:1px solid var(--glass-border);height:100vh;position:fixed;top:0;left:0;background:var(--surface);display:flex;flex-direction:column;padding:22px 14px 18px;z-index:30;overflow-y:auto;}
-.main-content{margin-left:220px;flex:1;padding:24px 32px;overflow-y:auto;height:100vh;box-sizing:border-box;}
+.main-content {
+  margin-left: 220px;
+  flex: 1;
+  padding: clamp(16px, 2.5vw, 32px);
+  overflow-y: auto;
+  height: 100vh;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.main-content > .fade-up {
+  max-width: min(1200px, 100%) !important;
+}
 
 /* ═══════ MOBILE ═══════ */
 .bottom-tab-bar{display:none;position:fixed;bottom:0;left:0;right:0;z-index:80;background:var(--surface);backdrop-filter:blur(12px);border-top:1px solid var(--glass-border);padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
@@ -640,7 +666,15 @@ const ProjectDetail = () => {
     <input ref={coverRef} type="file" accept="image/*" hidden onChange={handleCover}/>
     <input ref={researchImgRef} type="file" accept="image/*" multiple hidden onChange={e=>handleResearchImgUpload(showResearchId,e)}/>
     <input ref={miniImgRef} type="file" accept="image/*" multiple hidden onChange={handleMiniImgs}/>
-    <div className="cover-wrap" style={{height:220,borderRadius:16,overflow:'hidden',marginBottom:24,position:'relative'}}><BgImg src={local.cover} full style={{position:'absolute',inset:0}}/><div style={{position:'absolute',inset:0,background:'linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,.2) 60%, transparent 100%)'}}/><div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}><span style={{color:'white'}}>📷 Trocar capa</span></div><div style={{position:'absolute',inset:0,padding:24,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}><div style={{display:'flex',justifyContent:'space-between'}}><button onClick={e=>{e.stopPropagation();onBack();}} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>← Voltar</button><button onClick={e=>{e.stopPropagation();softDel();}} style={{background:'rgba(180,30,30,.3)',border:'1px solid rgba(255,100,100,.3)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>🗑️ Excluir</button></div><div><h1 style={{fontFamily:'var(--font-heading)',fontSize:'2.4rem',fontWeight:400,color:'white'}}>{local.title}</h1><p style={{color:'rgba(255,255,255,.7)'}}>{local.client}</p></div></div></div>
+    <div className="cover-wrap" style={{ height: 'clamp(160px, 25vh, 260px)', borderRadius: 16, overflow: 'hidden', marginBottom: 24, position: 'relative' }}>
+      <BgImg src={local.cover} full style={{position:'absolute',inset:0}}/>
+      <div style={{position:'absolute',inset:0,background:'linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,.2) 60%, transparent 100%)'}}/>
+      <div className="cover-edit-overlay" onClick={()=>coverRef.current.click()}><span style={{color:'white'}}>📷 Trocar capa</span></div>
+      <div style={{position:'absolute',inset:0,padding:24,display:'flex',flexDirection:'column',justifyContent:'space-between',pointerEvents:'none'}}>
+        <div style={{display:'flex',justifyContent:'space-between'}}><button onClick={e=>{e.stopPropagation();onBack();}} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>← Voltar</button><button onClick={e=>{e.stopPropagation();softDel();}} style={{background:'rgba(180,30,30,.3)',border:'1px solid rgba(255,100,100,.3)',color:'white',borderRadius:20,padding:'8px 16px',cursor:'pointer',pointerEvents:'all'}}>🗑️ Excluir</button></div>
+        <div><h1 style={{fontFamily:'var(--font-heading)',fontSize:'clamp(1.4rem, 3vw, 2.4rem)',fontWeight:400,color:'white'}}>{local.title}</h1><p style={{color:'rgba(255,255,255,.7)'}}>{local.client}</p></div>
+      </div>
+    </div>
     <GanttTimeline tasks={autoLate} onUpdateTasks={tasks=>upd('projectTasks',tasks)} projectStart={local.startDate} projectEnd={local.deadline}/>
     <div style={{display:'flex',borderBottom:'1px solid var(--glass-border)',marginBottom:20}}>{['Visão Geral','Tarefas','Pesquisa','Mentores'].map(t=><button key={t} onClick={()=>setTab(t)} className="tab-btn" style={{color:tab===t?'var(--accent)':'var(--text-secondary)',borderBottom:tab===t?'2px solid var(--accent)':'2px solid transparent'}}>{t}</button>)}</div>
     {tab==='Visão Geral'&&<div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 220px',gap:20}}><div style={{display:'flex',flexDirection:'column',gap:16}}><div className="card" style={{padding:24}}><span className="label">Notas</span><textarea value={local.notes} onChange={e=>upd('notes',e.target.value)} style={{width:'100%',minHeight:120,background:'transparent',border:'none',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',resize:'vertical',marginTop:8}}/></div><div className="card" style={{padding:24}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span className="label">Galeria</span><select value={local.galleryFolder||''} onChange={e=>upd('galleryFolder',e.target.value)} className="input-box" style={{width:'auto'}}><option value="">Nenhuma</option>{folders.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select></div>{local.galleryFolder&&(folderPosts.length===0?<div style={{textAlign:'center',padding:16,color:'var(--text-secondary)'}}>Nenhum post nesta pasta.</div>:<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>{folderPosts.map(post=>{const src=post.bannerImage||post.images?.[0];return <div key={post.id} className="card" style={{overflow:'hidden',cursor:'pointer'}} onClick={()=>setGalleryPopup(post)}><div style={{aspectRatio:'16/9',background:'var(--bg)'}}>{src?<Img src={src} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span>🖼️</span>}</div><div style={{padding:'7px 9px'}}>{post.title}</div></div>;})}</div>)}</div></div><div style={{display:'flex',flexDirection:'column',gap:12}}><div className="card" style={{padding:24}}><span className="label">Datas</span><div style={{marginTop:12}}><div className="label">Início</div><input type="date" value={local.startDate||''} onChange={e=>upd('startDate',e.target.value)} className="input-box"/></div><div style={{marginTop:12}}><div className="label">Deadline</div><input type="date" value={local.deadline||''} onChange={e=>upd('deadline',e.target.value)} className="input-box"/></div>{deadlineInfo(local.deadline)&&local.status==='Em Andamento'&&<div style={{marginTop:8,fontSize:'.75rem',fontWeight:700,padding:'5px 8px',borderRadius:8,background:deadlineInfo(local.deadline).bg,color:deadlineInfo(local.deadline).color}}>Entrega {deadlineInfo(local.deadline).label}</div>}</div><div className="card" style={{padding:24}}><span className="label">Financeiro</span><input type="number" min="0" value={local.budget||''} onChange={e=>upd('budget',e.target.value)} className="input-box" style={{marginTop:12}}/>{Number(local.budget)>0&&<label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,cursor:'pointer',fontSize:'.85rem'}}>{local.paid?'✓ Recebido':'A receber'}<input type="checkbox" checked={local.paid} onChange={e=>upd('paid',e.target.checked)}/></label>}</div><div className="card" style={{padding:24}}><span className="label">Shots</span><div style={{display:'flex',alignItems:'center',gap:8,marginTop:12}}><button className="btn btn-outline" onClick={()=>upd('shotsDone',Math.max(0,(local.shotsDone||0)-1))}>−</button><span>{local.shotsDone||0} / {local.shotsTotal||0}</span><button className="btn btn-dark" onClick={()=>upd('shotsDone',Math.min(local.shotsTotal||0,(local.shotsDone||0)+1))}>+</button></div><input type="number" min="0" value={local.shotsTotal||''} onChange={e=>upd('shotsTotal',Number(e.target.value))} className="input-box" style={{marginTop:8}}/></div></div></div>}
@@ -674,7 +708,7 @@ const ProjectDetail = () => {
 };
 
 // ══════════════════════════════════════════════════════════════
-// GALLERY (Full)
+// GALLERY (Full – improved folder tabs)
 // ══════════════════════════════════════════════════════════════
 const Gallery = () => {
   const { galleryPosts, setGalleryPosts, galleryFolders, setGalleryFolders } = useContext(AppContext);
@@ -709,13 +743,28 @@ const Gallery = () => {
   if(selected&&!trash) return <div className="fade-up"><input ref={addImgRef} type="file" accept="image/*,video/*,.gif" multiple hidden onChange={handleAddImages}/><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><button className="btn btn-outline" onClick={()=>setSelected(null)}>← Voltar</button><button className="btn btn-danger" onClick={()=>{softDel(selected.id);setSelected(null);}}>🗑️ Lixeira</button></div><div className="card" style={{padding:24}}><input value={selected.title} onChange={e=>upd('title',e.target.value)} style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem',background:'transparent',border:'none',borderBottom:'1px solid var(--glass-border)',width:'100%',marginBottom:16}}/><div style={{display:'flex',gap:8,marginBottom:20}}><span className="label">Pasta</span>{liveFolders.map(f=><button key={f.id} onClick={()=>upd('folder',f.id)} style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--accent)':'var(--glass-border)'}`,background:selected.folder===f.id?'var(--accent)':'transparent',color:selected.folder===f.id?'white':'var(--text-secondary)'}}>{f.label}</button>)}</div><textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise..." style={{width:'100%',border:'1px solid var(--glass-border)',borderRadius:10,padding:16,minHeight:120,resize:'vertical',marginBottom:24}}/><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{selected.images.map((img,i,list)=><div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>{isVideoSrc(img)?<Vid src={img} controls/>:<Img src={img} onClick={()=>setLightbox(img)} style={{cursor:'zoom-in',width:'100%',height:'100%',objectFit:'cover'}}/>}<button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.6)',border:'none',borderRadius:'50%',width:24,height:24,color:'white'}}>✕</button></div>)}<div className="upload-zone" style={{aspectRatio:'16/9',border:'2px dashed var(--glass-border)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer'}} onClick={()=>addImgRef.current.click()}>+</div></div></div></div>;
   return <div className="fade-up" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 80px)'}}>
     <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><h2 style={{fontFamily:'var(--font-heading)'}}>Galeria</h2><div style={{display:'flex',gap:8}}><button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>🗑️ {trash?'Sair':'Lixeira'}</button>{!trash&&<><button className="btn btn-dark" onClick={()=>{const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:localDateISO(),content:"",images:[],deleted:false};setGalleryPosts(p=>[n,...p]);setSelected(n);}}>+ Criar</button><label className="btn btn-outline" style={{cursor:'pointer'}}>⬆️ Upload<input type="file" accept="image/*,video/*,.gif" multiple hidden onChange={handleUpload}/></label></>}</div></div>
-    {!trash&&<div style={{display:'flex',alignItems:'center',borderBottom:'1px solid var(--glass-border)',marginBottom:14,gap:4,overflowX:'auto'}}>
-      {liveFolders.map((f,idx)=><div key={f.id} className="drag-item" draggable onDragStart={e=>{folderDragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorderFolders(folderDragRef.current,idx);}} style={{display:'flex',alignItems:'center'}}>
-        {editingFolderId===f.id?<><input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)} onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}} onKeyDown={e=>{if(e.key==='Enter'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}} style={{background:'transparent',border:'none',outline:'none',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}/><button onMouseDown={e=>{e.preventDefault();archiveFolder(f.id);setEditingFolderId(null);}}>📦</button><button onMouseDown={e=>{e.preventDefault();trashFolder(f.id);setEditingFolderId(null);}}>🗑️</button></>:<button className="tab-btn" onClick={()=>setActiveFolder(f.id)} onDoubleClick={()=>{setEditingFolderId(f.id);setEditingLabel(f.label);}} style={{color:activeFolder===f.id?'var(--accent)':'var(--text-secondary)',borderBottom:'none',margin:0,padding:'10px 6px'}}>{f.label}</button>}
-      </div>)}
-      <button onClick={addFolder} className="tab-btn" style={{color:'var(--text-secondary)',opacity:.6}}>+</button>
-      {archivedFolders.length>0&&<button onClick={()=>setFolderArchive(!folderArchive)} className="tab-btn" style={{color:folderArchive?'var(--accent)':'var(--text-secondary)',marginLeft:'auto'}}>📦 {archivedFolders.length}</button>}
-      {trashedFolders.length>0&&<button onClick={()=>setFolderTrash(!folderTrash)} className="tab-btn" style={{color:folderTrash?'var(--accent)':'var(--text-secondary)'}}>🗑️ {trashedFolders.length}</button>}
+    {!trash&&<div style={{
+      display:'flex',
+      alignItems:'center',
+      gap:4,
+      overflowX:'auto',
+      padding:'6px 0',
+      marginBottom:14,
+      borderBottom:'2px solid var(--glass-border)'
+    }}>
+      {liveFolders.map((f, idx) => (
+        <button
+          key={f.id}
+          onClick={() => setActiveFolder(f.id)}
+          onDoubleClick={() => { setEditingFolderId(f.id); setEditingLabel(f.label); }}
+          className={`tab-btn ${activeFolder === f.id ? 'active-folder' : ''}`}
+        >
+          {f.label}
+        </button>
+      ))}
+      <button onClick={addFolder} className="tab-btn" style={{ opacity: 0.6 }} title="Nova pasta">+ Nova Pasta</button>
+      {archivedFolders.length > 0 && <button onClick={()=>setFolderArchive(!folderArchive)} className="tab-btn" style={{ marginLeft:'auto' }}>📦 {archivedFolders.length}</button>}
+      {trashedFolders.length > 0 && <button onClick={()=>setFolderTrash(!folderTrash)} className="tab-btn">🗑️ {trashedFolders.length}</button>}
     </div>}
     {folderTrash&&<div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16}}><span className="label">Pastas na lixeira</span>{trashedFolders.map(f=><div key={f.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'}}><span>{f.label}</span><div><button className="btn btn-ghost" onClick={()=>restoreFolder(f.id)}>Restaurar</button><button className="btn btn-ghost text-link-danger" onClick={()=>hardDeleteFolder(f.id)}>Excluir</button></div></div>)}</div>}
     {folderArchive&&<div style={{background:'var(--bg)',borderRadius:10,padding:'12px 16px',marginBottom:16}}><span className="label">Pastas arquivadas</span>{archivedFolders.map(f=><div key={f.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0'}}><span>{f.label}</span><button className="btn btn-ghost" onClick={()=>unarchiveFolder(f.id)}>Desarquivar</button></div>)}</div>}
@@ -771,7 +820,7 @@ const IdeasLab = () => {
 };
 
 // ══════════════════════════════════════════════════════════════
-// MENTORS HUB
+// MENTORS HUB (await fixed)
 // ══════════════════════════════════════════════════════════════
 const MentorModal = ({ mentor, onClose, onSave, onDelete }) => {
   const [form,setForm]=useState({...mentor}); const photoRef=useRef(); const refs=[useRef(),useRef(),useRef(),useRef()];
@@ -795,9 +844,8 @@ const MentorModal = ({ mentor, onClose, onSave, onDelete }) => {
     setForm(fm=>({...fm, photos: imgs}));
   };
   const photos = form.photos||[null,null,null,null];
-  // ... rest of the component remains exactly the same (the JSX portion)
-  };
-   
+  return ReactDOM.createPortal(<div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(10,8,6,.6)',display:'flex',alignItems:'center',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="card" style={{width:'100%',maxWidth:580,padding:28,maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}><div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}><h2 style={{fontFamily:'var(--font-heading)'}}>{form.name||'Mentor'}</h2><button className="btn btn-ghost" onClick={onClose}>✕</button></div><div style={{display:'flex',gap:16,marginBottom:14}}><input ref={photoRef} type="file" accept="image/*" hidden onChange={handlePhoto}/><div onClick={()=>photoRef.current.click()} style={{width:64,height:64,borderRadius:'50%',cursor:'pointer',overflow:'hidden',border:'2px dashed var(--glass-border)',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>{form.photo?<Img src={form.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontFamily:'var(--font-heading)',fontSize:'1.8rem'}}>{form.name.charAt(0)}</span>}</div><div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}><div><span className="label">Nome</span><input className="input-box" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div><div><span className="label">Área</span><input className="input-box" value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))}/></div><div><span className="label">Meio</span><input className="input-box" value={form.medium} onChange={e=>setForm(f=>({...f,medium:e.target.value}))}/></div><div><span className="label">Status</span><select className="input-box" value={form.active?'Ativo':'Inativo'} onChange={e=>setForm(f=>({...f,active:e.target.value==='Ativo'}))}><option>Ativo</option><option>Inativo</option></select></div></div></div><button onClick={()=>setForm(f=>({...f,main:!f.main}))} style={{padding:'6px 14px',borderRadius:10,border:`1.5px solid ${form.main?'#92700b':'var(--glass-border)'}`,background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--text-secondary)',cursor:'pointer',marginBottom:12}}>★ {form.main?'Principal':'Marcar como Principal'}</button><div style={{marginBottom:14}}><span className="label">Notas</span><textarea className="input-box" rows={3} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={{resize:'vertical',marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Links</span><input className="input-box" value={form.links} onChange={e=>setForm(f=>({...f,links:e.target.value}))} style={{marginTop:4}}/></div><div style={{marginBottom:14}}><span className="label">Imagens de Referência</span><div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:4}}>{[0,1,2,3].map(idx=><div key={idx} style={{position:'relative',aspectRatio:'1',borderRadius:10,overflow:'hidden',background:'var(--bg)',border:'1px solid var(--glass-border)',cursor:'pointer'}} onClick={()=>!photos[idx]&&refs[idx].current.click()}><input ref={refs[idx]} type="file" accept="image/*" hidden onChange={e=>handleRef(idx,e)}/>{photos[idx]?<><Img src={photos[idx]} style={{width:'100%',height:'100%',objectFit:'cover'}}/><button onClick={e=>{e.stopPropagation();removeRef(idx);}} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,.55)',border:'none',color:'white',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button></>:<div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',fontSize:'.65rem'}}>+</div>}</div>)}</div></div><div style={{display:'flex',justifyContent:'space-between'}}><button className="btn btn-danger" onClick={onDelete}>🗑️ Excluir</button><div style={{display:'flex',gap:8}}><button className="btn btn-outline" onClick={onClose}>Cancelar</button><button className="btn btn-dark" onClick={()=>onSave(form)}>Salvar</button></div></div></div></div>,document.body);
+};
 const MentorsHub = () => {
   const { mentors, setMentors } = useContext(AppContext);
   const [sel,setSel]=useState(null); const [search,setSearch]=useState(''); const [year,setYear]=useState('all');
@@ -808,7 +856,7 @@ const MentorsHub = () => {
   const del = () => { if(confirm('Excluir?')){setMentors(p=>p.filter(m=>m.id!==sel.id));setSel(null);} };
   const dragRef = useRef(null);
   const reorder = (from,to) => { if(from===to)return; setMentors(prev=>{const live=prev.filter(m=>!m.deleted);const[mv]=live.splice(from,1);live.splice(to,0,mv);return[...live,...prev.filter(m=>m.deleted)];}); };
-  return <div className="fade-up">{sel&&<MentorModal mentor={sel} onClose={()=>setSel(null)} onSave={save} onDelete={del}/>}<div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Mentores</h2><button className="btn btn-dark" onClick={add}>+ Adicionar</button></div>{mentors.filter(m=>!m.deleted).length>0&&<input className="input-box" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{marginBottom:16}}/>}{years.length>0&&<div style={{display:'flex',borderBottom:'1px solid var(--glass-border)',marginBottom:20,gap:0,overflowX:'auto'}}><button onClick={()=>setYear('all')} className="tab-btn" style={{color:year==='all'?'var(--accent)':'var(--text-secondary)'}}>Todos</button>{years.map(y=><button key={y} onClick={()=>setYear(String(y))} className="tab-btn" style={{color:String(year)===String(y)?'var(--accent)':'var(--text-secondary)'}}>{y}</button>)}</div>}<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>{vis.map((m,idx)=>{const ph=(m.photos||[]).filter(Boolean);return <div key={m.id} className="card" draggable onDragStart={e=>{dragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorder(dragRef.current,idx);}} style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSel(m)}>{ph.length>0?<div style={{height:90,display:'grid',gridTemplateColumns:`repeat(${Math.min(ph.length,4)},1fr)`,gap:1}}>{ph.slice(0,4).map((img,i,list)=><Img key={imgKey(img,i,list)} src={img} style={{height:90,objectFit:'cover'}}/>)}</div>:<div style={{height:90,background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)',fontSize:'2.8rem',color:'var(--text-secondary)'}}>{m.name.charAt(0)}</div>}<div style={{padding:'14px 16px'}}><div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>{m.photo?<Img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}}/>:<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)'}}>{m.name.charAt(0)}</div>}<div><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:'.73rem',color:'var(--text-secondary)'}}>{m.area}{m.medium?' - '+m.medium:''}</div></div></div><div style={{display:'flex',gap:5}}><span className="tag" style={{background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--text-secondary)'}}>{m.active?'Ativo':'Inativo'}</span>{m.main&&<span className="tag" style={{background:'#FEF9E7',color:'#92700b'}}>★ Principal</span>}</div></div></div>;})}</div></div>;
+  return <div className="fade-up">{sel&&<MentorModal mentor={sel} onClose={()=>setSel(null)} onSave={save} onDelete={del}/>}<div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h2 style={{fontFamily:'var(--font-heading)'}}>Mentores</h2><button className="btn btn-dark" onClick={add}>+ Adicionar</button></div>{mentors.filter(m=>!m.deleted).length>0&&<input className="input-box" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." style={{marginBottom:16}}/>}{years.length>0&&<div style={{display:'flex',borderBottom:'1px solid var(--glass-border)',marginBottom:20,gap:0,overflowX:'auto'}}><button onClick={()=>setYear('all')} className="tab-btn" style={{color:year==='all'?'var(--accent)':'var(--text-secondary)'}}>Todos</button>{years.map(y=><button key={y} onClick={()=>setYear(String(y))} className="tab-btn" style={{color:String(year)===String(y)?'var(--accent)':'var(--text-secondary)'}}>{y}</button>)}</div>}<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:14}}>{vis.map((m,idx)=>{const ph=(m.photos||[]).filter(Boolean);return <div key={m.id} className="card" draggable onDragStart={e=>{dragRef.current=idx;e.dataTransfer.effectAllowed='move';}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();reorder(dragRef.current,idx);}} style={{padding:0,overflow:'hidden',cursor:'pointer'}} onClick={()=>setSel(m)}>{ph.length>0?<div style={{height:90,display:'grid',gridTemplateColumns:`repeat(${Math.min(ph.length,4)},1fr)`,gap:1}}>{ph.slice(0,4).map((img,i,list)=><Img key={imgKey(img,i,list)} src={img} style={{height:90,objectFit:'cover'}}/>)}</div>:<div style={{height:90,background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)',fontSize:'2.8rem',color:'var(--text-secondary)'}}>{m.name.charAt(0)}</div>}<div style={{padding:'14px 16px'}}><div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>{m.photo?<Img src={m.photo} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover'}}/>:<div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-heading)'}}>{m.name.charAt(0)}</div>}<div><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:'.73rem',color:'var(--text-secondary)'}}>{m.area}{m.medium?' - '+m.medium:''}</div></div></div><div style={{display:'flex',gap:5}}><span className="tag" style={{background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--text-secondary)'}}>{m.active?'Ativo':'Inativo'}</span>{m.main&&<span className="tag" style={{background:'#FEF9E7',color:'#92700b'}}>★ Principal</span>}</div></div></div>;})}</div></div>;
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -840,7 +888,7 @@ const Social = () => {
 };
 
 // ══════════════════════════════════════════════════════════════
-// CLIENTS
+// CLIENTS (await fixed)
 // ══════════════════════════════════════════════════════════════
 const ClientDetail = ({ client, onBack, onSave, onDelete }) => {
   const [form,setForm]=useState({...client}); const photoRef=useRef();
@@ -1006,7 +1054,6 @@ const App = () => {
   useEffect(()=>{const s={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,noteGroups,pomoData};lsSave(s);bhCapture(s,'auto');},[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,noteGroups,pomoData]);
   useEffect(()=>{localStorage.setItem('boardhub_pomo_v3',JSON.stringify(pomoData));},[pomoData]);
 
-  // Trash auto-purge (30 days)
   useEffect(() => {
     const purge = (s) => {
       if (!s) return s;
@@ -1041,7 +1088,6 @@ const App = () => {
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-
 </script>
 </body>
 </html>
