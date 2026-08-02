@@ -63,6 +63,40 @@
      ser NEGADA.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.19 — M4.1: a pausa (ago/2026)
+  Primeiro motivo de notação, agora que o M3 fechou a camada de tokens e o M4
+  não corre risco de ser refeito para o tema escuro.
+  DIAGNÓSTICO: o estado vazio do dashboard era um quadrado arredondado com
+  gradiente e um ícone de pasta dentro — o elemento mais "template de app" da
+  tela inteira, e o único lugar onde o app ainda falava a língua de framework
+  depois da paleta e da haste.
+  • FIX: virou uma PAUSA sobre pauta. A escolha não é decorativa: uma pausa é a
+    notação do SILÊNCIO, e "não há nada aqui" é literalmente o que ela significa
+    numa partitura. É a palavra certa, não um enfeite aplicado por cima — que é
+    a diferença entre motivo e adesivo.
+  • DESENHADA À MÃO em SVG, sem fonte de partitura e sem biblioteca nova
+    (protocolo #7): são cinco linhas e um retângulo. Importar uma família
+    musical inteira para isso seria caro e desnecessário.
+  • GEOMETRIA CORRETA, porque é o que separa notação de traço aleatório: a pausa
+    de MÍNIMA senta SOBRE a linha do meio; a de semibreve fica PENDURADA na de
+    cima. Usei a de mínima — sentada lê melhor isolada, sem o compasso em volta
+    dando contexto. Herda currentColor, então vira com o tema sozinha, e é
+    aria-hidden, porque é decorativa e o texto ao lado já diz o que houve.
+  MEDIDO no app real, por inspeção do DOM: 5 linhas com espaçamento uniforme de
+  5,413px, bloco assentado exatamente sobre a linha do meio (base − linha < 0,01)
+  e centralizado no compasso.
+  CUSTO HONESTO: o teste ficou como guarda de FONTE, não de comportamento. A
+  versão comportamental montava o app e procurava a pauta no DOM do iframe, e
+  não achou: clearStorage cai no SEED (3 projetos demo, o estado vazio nunca
+  aparece) e semear sem projetos também não bastou. Não isolei a condição, e
+  preferi um teste honesto e rotulado a um verde obtido no muque. A geometria
+  está verificada no app de verdade, não no harness.
+  M4 NÃO ESTÁ COMPLETO: falta pauta como divisória e glifos de nota em listas.
+  A divisória esbarra num detalhe que vale registrar — a classe .label serve ao
+  MESMO tempo os títulos de seção e os rótulos dos 23 <Field> de formulário, e
+  qualquer barra de compasso aplicada nela cairia em cima de todo input do app.
+  Separar as duas responsabilidades vem antes do motivo.
+  ──────
   BoardHub v23.18 — M3.2: a haste e a letra (ago/2026)
   Terceira e última correção de rota do M3, a pedido: repensar ícones e
   tipografia junto com a paleta de pigmento.
@@ -941,58 +975,59 @@ try{var _bhT=localStorage.getItem('boardhub_theme');if(_bhT==='notturno')documen
 </script>
 <style>
 :root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(var(--ink),.18);
-/* M1 — rampa de andamento. Substitui as 4 cores de medalha que estavam cravadas
-   no JSX (#CD7F32/#94A3B8/#FBBF24/#60A5FA). Não é arco-íris de gamificação: é
-   tinta esquentando e adensando até chegar no próprio --accent do app, que fica
-   reservado para o topo (Vivace). Adagio não tem cor — usa --muted, porque ser
-   a faixa base não é conquista. */
+/* M1 — tempo ramp. Replaces the 4 medal colours that were hardcoded in the JSX
+   (#CD7F32/#94A3B8/#FBBF24/#60A5FA). It is not a gamification rainbow: it is ink
+   warming and thickening until it reaches the app's own --accent, which stays
+   reserved for the top (Vivace). Adagio has no colour — it uses --muted, because
+   being the base tier is not an achievement. */
 --tempo-1:#8A7A5E;--tempo-2:#A9761F;--tempo-3:#9A5B2A;--tempo-4:#4A3728;
-/* M3 — TRÍADES SEMÂNTICAS DE ESTADO.
-   O app pintava estado com um PAR cravado no lugar de uso: tint claro no fundo
-   + texto escuro por cima (#E8F5EC/#276b3e, #FEF9E7/#92700b, #FDEDED/#9B1C1C).
-   Esse par é o que morre num tema escuro: o tint clarinho vira um bloco leitoso
-   sobre fundo preto e o texto escuro some dentro dele. Não adianta trocar só o
-   fundo da página — os dois lados da tríade têm de virar juntos.
-   Por isso são tokens em TRÍADE (fundo/texto/linha) e não cores soltas: quem
-   usa pede 'perigo', não 'vermelho claro nº 3'. */
-/* M3.1 — PALETA DE PIGMENTO.
-   As tríades nasceram genéricas: verde #48BB78, amarelo #F59E0B, vermelho
-   #DC2626 — a paleta de framework, que grita "notificação de app" e briga com
-   Cormorant sobre papel quente. Trocadas por PIGMENTOS, que é o vocabulário que
-   já está em uso no resto do app (andamento, dinâmica, gravura):
-     verderame  — o verde-azulado da pátina de cobre, o verde da pintura
-                  italiana antes do viridian industrial
-     ocra       — terra amarela, o pigmento mais antigo que existe
-     rosso      — o vermelho veneziano de terra queimada, não o vermelho de alerta
-     oltremare  — o azul de lápis-lazúli, que vinha "de além-mar"
-   São cores de TERRA e MINERAL: dessaturadas, quentes, e convivem com o
-   --accent sépia em vez de disputar com ele. */
+/* M3 — SEMANTIC STATUS TRIADS.
+   The app painted status with a PAIR hardcoded at the point of use: a light tint
+   behind + dark text on top (#E8F5EC/#276b3e, #FEF9E7/#92700b, #FDEDED/#9B1C1C).
+   That pair is what dies in a dark theme: the pale tint becomes a milky block on
+   a black background and the dark text vanishes inside it. Swapping only the page
+   background is not enough — both sides of the triad have to flip together.
+   Hence tokens in TRIADS (background/text/line) and not loose colours: the caller
+   asks for 'danger', not for 'light red no. 3'. */
+/* M3.1 — PIGMENT PALETTE.
+   The triads started out generic: green #48BB78, yellow #F59E0B, red #DC2626 —
+   the framework palette, which shouts "app notification" and fights with
+   Cormorant on warm paper. Replaced by PIGMENTS, which is the vocabulary already
+   in use across the rest of the app (tempo, dynamics, engraving):
+     verderame  — the blue-green of copper patina, the green of Italian
+                  painting before industrial viridian
+     ocra       — yellow earth, the oldest pigment there is
+     rosso      — the Venetian red of burnt earth, not the red of an alert
+     oltremare  — the blue of lapis lazuli, which came "from beyond the sea"
+   These are EARTH and MINERAL colours: desaturated, warm, and they live with the
+   sepia --accent instead of competing with it. */
 --ok-bg:#E6EDE6;--ok-fg:#3F6152;--ok-line:#B4C7BB;
 --warn-bg:#F6EEDC;--warn-fg:#8A6A26;--warn-line:#DCC48A;
 --danger-bg:#F3E4E0;--danger-fg:#8C3A2E;--danger-line:#D9B3A9;
 --info-bg:#E6E9F0;--info-fg:#3A4E73;--info-line:#B3BECF;
 --neutral-bg:#F0EDE9;
 --danger-strong:#A6462F;--ok-strong:#5C8570;--warn-strong:#B98D3A;
-/* M3.1 — A TINTA, como tripla RGB. Havia 28 rgba(var(--ink),α) espalhados pelo
-   CSS: lavagens de tinta sobre papel, para hover, sombra e sulco. Todas somem
-   num fundo escuro, porque lavar preto com preto não faz nada. Guardar o CANAL
-   e não a cor deixa cada alpha no lugar e inverte tudo de uma vez. */
+/* M3.1 — THE INK, as an RGB triple. There were 28 rgba(var(--ink),α) scattered
+   through the CSS: ink washes over paper, for hover, shadow and groove. They all
+   vanish on a dark background, because washing black with black does nothing.
+   Storing the CHANNEL and not the colour keeps every alpha where it is and
+   inverts the whole set at once. */
 --ink:28,25,23;--paper:253,252,250;}
 
 /* ── M3 — NOTTURNO ──────────────────────────────────────────────────────────
-   Tema escuro como TOGGLE, não substituição: o papel quente continua o padrão
-   (decisão do usuário, não minha). Vive inteiro na troca de tokens — nenhuma
-   regra de layout muda, nenhum seletor duplicado.
-   O fundo não é preto: é o mesmo marrom do papel puxado para baixo, senão a
-   interface troca de identidade em vez de trocar de luz. As tríades invertem a
-   lógica — fundo escuro e dessaturado, texto claro —, porque o mesmo tint claro
-   sobre preto vira ruído. */
+   Dark theme as a TOGGLE, not a replacement: the warm paper stays the default
+   (the user's decision, not mine). It lives entirely in the token swap — no
+   layout rule changes, no selector is duplicated.
+   The background is not black: it is the same paper brown pulled downwards,
+   otherwise the interface changes identity instead of changing light. The triads
+   invert the logic — dark desaturated background, light text — because the same
+   pale tint over black turns into noise. */
 :root[data-theme="notturno"]{
 --bg:#17140F;--surface:#211C16;--border:#332B22;--border-2:#4A3F32;
 --text:#EDE7DE;--muted:#A79B8B;--accent:#C9A87C;--focus-ring:rgba(237,231,222,.22);
 --tempo-1:#8A7A5E;--tempo-2:#C08F35;--tempo-3:#C27642;--tempo-4:#C9A87C;
-/* Os mesmos quatro pigmentos vistos à luz de vela: o fundo é a terra, o texto é
-   o pigmento puro clareado o suficiente para ler. Nada de neon. */
+/* The same four pigments seen by candlelight: the background is the earth, the
+   text is the pure pigment lightened just enough to read. No neon. */
 --ok-bg:#1B2620;--ok-fg:#9CBFAA;--ok-line:#3A5647;
 --warn-bg:#2A2417;--warn-fg:#CFAE72;--warn-line:#584A2C;
 --danger-bg:#2B1D19;--danger-fg:#CE9284;--danger-line:#5A3830;
@@ -1182,27 +1217,30 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 }
 
 /* === REDESIGN v2 === */
-/* M2.1 — pêndulo do metrônomo. A duração vem do BPM por --beat (inline), e meia
-   oscilação = uma semínima, então a haste cruza o centro uma vez por batida,
-   como num metrônomo mecânico. O easing imita a física: rápido no meio, quase
-   parado nos extremos — linear denunciaria na hora que é um retângulo girando.
-   O pivô fica embaixo (transform-origin), que é onde fica o de verdade. */
+/* M2.1 — metronome pendulum. The duration comes from the BPM via --beat
+   (inline), and half a swing = one crotchet, so the rod crosses the centre once
+   per beat, as on a mechanical metronome. The easing imitates the physics: fast
+   in the middle, almost stopped at the extremes — linear would give away at once
+   that it is a rectangle rotating. The pivot sits at the bottom
+   (transform-origin), which is where the real one sits. */
 @keyframes bhPendulum{from{transform:rotate(-26deg);}to{transform:rotate(26deg);}}
-/* transform-box:view-box para que o pivô seja em COORDENADA DO SVG (38,70 = a
-   base do mostrador). Sem isso, porcentagem em <g> resolve contra a bounding box
-   do próprio grupo e a haste gira em volta de si mesma. */
-/* O pivô vem de --pivot, escrito pelo JSX a partir de MET_PIVOT_Y. Deixar o
-   número fixo aqui já quebrou uma vez: a geometria mudou, o CSS ficou para trás
-   e a haste passou a girar em volta de um ponto que não existia mais. */
+/* transform-box:view-box so that the pivot is in SVG COORDINATES (38,70 = the
+   base of the dial). Without it, a percentage on a <g> resolves against the
+   group's own bounding box and the rod spins around itself. */
+/* The pivot comes from --pivot, written by the JSX out of MET_PIVOT_Y. Leaving
+   the number fixed here broke once already: the geometry changed, the CSS was
+   left behind, and the rod started rotating around a point that no longer
+   existed. */
 .bh-pendulum{transform-box:view-box;transform-origin:38px var(--pivot,34px);animation:bhPendulum var(--beat,.5s) cubic-bezier(.42,0,.58,1) infinite alternate;}
-/* NÃO há supressão por prefers-reduced-motion aqui, e isso é deliberado. A
-   primeira versão tinha, e transformava a funcionalidade em graveto morto: o
-   pêndulo não é enfeite que aparece sozinho, é um controle OPT-IN que nasce
-   desligado (metronomeLoad devolve false sem chave salva). Quem liga, ligou de
-   propósito, e o tooltip diz o que é. O opt-in É o controle de acessibilidade;
-   um @media por cima só sequestraria a escolha explícita do usuário.
-   O que a preferência do sistema deve governar é o PADRÃO, e o padrão já é
-   desligado para todo mundo. */
+/* There is NO prefers-reduced-motion suppression here, and that is deliberate.
+   The first version had one, and it turned the feature into a dead stick: the
+   pendulum is not an ornament that shows up on its own, it is an OPT-IN control
+   that starts switched off (metronomeLoad returns false with no saved key).
+   Whoever switches it on did so on purpose, and the tooltip says what it is. The
+   opt-in IS the accessibility control; an @media on top would only hijack the
+   user's explicit choice.
+   What the system preference should govern is the DEFAULT, and the default is
+   already off for everybody. */
 @keyframes viewEnter{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .view-enter{animation:viewEnter .28s cubic-bezier(.4,0,.2,1) both;}
 @keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
@@ -1307,22 +1345,23 @@ const localDateISO=(d=new Date())=>{
   return y+'-'+m+'-'+dd;
 };
 
-// - F3: DIÁRIO DE FALHAS -
-// Havia 54 `catch{}` vazios neste arquivo. A maioria é legítima — showPicker(),
-// video.play() sob política de autoplay e dataTransfer estouram por desenho do
-// navegador, e logar isso seria ruído constante. Mas um subconjunto engolia
-// exatamente a classe de falha que já custou dados aqui: localStorage que parou
-// de aceitar escrita (modo privado, cota estourada, perfil corrompido). Nesses,
-// o app seguia como se tivesse salvado, e o usuário só descobria depois.
+// - F3: FAILURE DIARY -
+// There were 54 empty `catch{}` in this file. Most are legitimate — showPicker(),
+// video.play() under autoplay policy and dataTransfer throw by browser design,
+// and logging that would be constant noise. But a subset was swallowing exactly
+// the class of failure that has already cost data here: a localStorage that
+// stopped accepting writes (private mode, quota exceeded, corrupted profile). In
+// those, the app carried on as if it had saved, and the user only found out later.
 //
-// bhLog não substitui tratamento de erro: ele torna a falha AUDÍVEL. O buffer é
-// circular e vive só em memória — de propósito. Gravar o diário de falhas em
-// localStorage seria escrever justamente onde a falha que se quer registrar
-// acontece, e um diário que cresce sem teto numa sessão longa é vazamento.
+// bhLog does not replace error handling: it makes the failure AUDIBLE. The buffer
+// is circular and lives only in memory — on purpose. Writing the failure diary to
+// localStorage would be writing precisely where the failure being recorded
+// happens, and a diary that grows without a ceiling in a long session is a leak.
 //
-// Ele NUNCA pode estourar: é chamado de dentro de catch, e um throw aqui
-// trocaria um erro engolido por um erro que derruba o caminho de recuperação.
-// Por isso o corpo inteiro é envolvido, e nada aqui assume forma da entrada.
+// It may NEVER throw: it is called from inside a catch, and a throw here would
+// trade a swallowed error for an error that brings down the recovery path. That
+// is why the whole body is wrapped, and why nothing here assumes the shape of
+// its input.
 const BH_LOG_CAP=100;
 const _bhLogBuf=[];
 const bhLog=(tag,err,extra)=>{
@@ -1335,13 +1374,13 @@ const bhLog=(tag,err,extra)=>{
     console.warn('[BoardHub]',tag,msg,extra===undefined?'':extra);
   }catch{}
 };
-// Cópia, não o buffer vivo: quem inspeciona não pode alterar o diário.
+// A copy, not the live buffer: whoever inspects it must not be able to alter the diary.
 const bhLogDump=()=>_bhLogBuf.slice();
 
-// - M3: TEMA -
-// 'papel' (padrão) e 'notturno'. O padrão é o papel quente por decisão sua, não
-// por preferência do sistema: o app tem uma identidade e ela é clara. Quem quer
-// o escuro liga, e a escolha persiste.
+// - M3: THEME -
+// 'papel' (the default) and 'notturno'. The default is the warm paper by your
+// decision, not by system preference: the app has an identity and it is light.
+// Whoever wants the dark one switches it on, and the choice persists.
 const THEME_KEY='boardhub_theme';
 const themeLoad=()=>{try{return localStorage.getItem(THEME_KEY)==='notturno'?'notturno':'papel';}catch{return 'papel';}};
 const themeApply=t=>{
@@ -1365,10 +1404,11 @@ const lsSave = s => {
       localStorage.setItem(LS_KEY, JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
       bhLog('lsSave.quota', e, 'gravou sem os data:image embutidos');
     } catch(e2) {
-      // F3: este era o `catch{}` mais caro do arquivo. Se ele dispara, o estado
-      // do usuário NÃO foi para o disco — e o app seguia exatamente igual, com
-      // o "Auto-save ativo" aceso na barra lateral. Continuar não estourando
-      // está certo (derrubar a UI não salva nada), mas silenciar não.
+      // F3: this was the most expensive `catch{}` in the file. If it fires, the
+      // user's state did NOT reach the disk — and the app carried on exactly the
+      // same, with "Auto-save ativo" lit up in the sidebar. Continuing without
+      // throwing is right (bringing down the UI saves nothing), staying silent
+      // is not.
       bhLog('lsSave.FALHOU', e2, 'o estado NÃO foi persistido');
     }
   }
@@ -1414,8 +1454,8 @@ if(!persisted){try{localStorage.setItem(SEEDED_KEY,'1');}catch{}}
 //   • dedup by content signature (no more "two identical backups 1 minute apart")
 //   • NEVER capture an empty/seed state — a backup of nothing is not a backup
 //   • quota-safe: drops oldest entries (and strips base64) before giving up
-// F1: o histórico mora no IndexedDB, em BANCO PRÓPRIO. A chave abaixo é só a
-// ORIGEM da migração — depois de migrada e verificada, ela deixa de existir.
+// F1: the history lives in IndexedDB, in ITS OWN DATABASE. The key below is only
+// the migration SOURCE — once migrated and verified, it ceases to exist.
 const BH_HISTORY_KEY='boardhub_backup_history';
 const BH_DB_NAME='boardhub_backups';
 const BH_STORE='snapshots';   // entrada inteira, com state
@@ -1437,16 +1477,16 @@ const bhSig=s=>{ // cheap content hash (djb2) for dedup — volatile-free copy
   for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))|0;}
   return String(h);
 };
-// F2(A) — o que fazer com um estado remoto que chegou enquanto há edição local
-// pendente. Fica AQUI, fora do App, de propósito: a decisão dentro de
-// applyMerged é inalcançável para o harness (useEffect dentro de componente,
-// atrás de auth do Firebase), e a limitação #3 do BASELINE registra isso como
-// dívida. Extraindo a decisão, ela passa a ser testável por comportamento e o
-// call site vira uma linha.
+// F2(A) — what to do with a remote state that arrived while there is a pending
+// local edit. It lives HERE, outside the App, on purpose: the decision inside
+// applyMerged is unreachable for the harness (a useEffect inside a component,
+// behind Firebase auth), and BASELINE limitation #3 records that as debt.
+// Extracting the decision makes it testable by behaviour and turns the call site
+// into one line.
 //
-// 'arquivar' significa: guardar o remoto no histórico ANTES de descartá-lo em
-// favor das edições locais. Sem isso, o que o outro dispositivo salvou some
-// quando este empurra por cima — sem cópia em lugar nenhum.
+// 'arquivar' means: store the remote in the history BEFORE discarding it in
+// favour of the local edits. Without that, whatever the other device saved
+// disappears when this one pushes over it — with no copy anywhere.
 const bhConcurrentDecision=({localSig,remoteSig,lastArchivedSig,remoteHasData})=>{
   if(!remoteHasData)return 'ignorar';           // nuvem vazia não é dado a preservar
   if(remoteSig===localSig)return 'ignorar';     // é o nosso próprio estado voltando
@@ -1459,19 +1499,20 @@ const bhCounts=s=>({
   notes:(s.notes||[]).filter(n=>!n.deleted).length,
   tasks:(s.tasks||[]).length,
 });
-// ── F1: armazenamento do histórico ──────────────────────────────────────────
-// BANCO PRÓPRIO, não um store a mais no banco de imagens. O gcIdb varre o banco
-// de imagens decidindo o que é blob órfão; se os snapshots morassem lá, a única
-// coisa separando "backup" de "lixo a coletar" seria disciplina de prefixo de
-// chave — e esse GC já apagou arquivo do usuário uma vez (v23.3). Bancos
-// distintos tornam a confusão impossível por construção, não por convenção.
+// ── F1: history storage ─────────────────────────────────────────────────────
+// ITS OWN DATABASE, not one more store in the image database. gcIdb sweeps the
+// image database deciding what is an orphan blob; if the snapshots lived there,
+// the only thing separating "backup" from "rubbish to collect" would be
+// key-prefix discipline — and that GC has already deleted a user file once
+// (v23.3). Distinct databases make the confusion impossible by construction, not
+// by convention.
 //
-// Dois stores: `snapshots` guarda a entrada inteira (com state), `meta` guarda
-// só at/reason/sig/counts. Decisão de dedup, retenção e a LISTA da tela de Sync
-// leem `meta` — que é minúsculo — em vez de arrastar o acervo inteiro para a
-// memória. O state só é lido por quem realmente precisa dele: o gcIdb e a
-// restauração. Os dois stores são escritos na MESMA transação, então não existe
-// meta sem snapshot.
+// Two stores: `snapshots` holds the whole entry (with state), `meta` holds only
+// at/reason/sig/counts. The dedup decision, retention and the Sync screen's LIST
+// read `meta` — which is tiny — instead of dragging the entire archive into
+// memory. The state is only read by whoever genuinely needs it: gcIdb and the
+// restore. Both stores are written in the SAME transaction, so there is no meta
+// without a snapshot.
 let _bhDb=null,_bhDbP=null;
 const _bhResetDb=()=>{_bhDb=null;_bhDbP=null;};
 const bhIdbOpen=()=>{
@@ -1495,8 +1536,9 @@ const bhIdbOpen=()=>{
   });
   return _bhDbP;
 };
-// Grava entradas e remove as despejadas numa transação só: o histórico nunca
-// fica num estado em que a retenção já apagou mas o novo snapshot não entrou.
+// Writes entries and removes the evicted ones in a single transaction: the
+// history never sits in a state where retention has already deleted but the new
+// snapshot has not gone in.
 const bhIdbWrite=(puts,dels)=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
   let tx;
   try{tx=db.transaction([BH_STORE,BH_META],'readwrite');}catch(e){_bhResetDb();rej(e);return;}
@@ -1515,44 +1557,45 @@ const bhIdbAllMeta=()=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
   r.onsuccess=e=>res(e.target.result||[]);
   r.onerror=e=>rej(e.target.error);
 }));
-// PROPOSITALMENTE sem catch devolvendo []: quem chama (gcIdb) precisa distinguir
-// "o histórico não referencia nada" de "não consegui ler o histórico". Engolir o
-// erro aqui faria o GC concluir que nenhum blob está referenciado e apagar todos
-// — a classe exata do incidente da v23.3, agora pelo lado do backup.
+// DELIBERATELY without a catch returning []: the caller (gcIdb) needs to tell
+// "the history references nothing" from "I could not read the history".
+// Swallowing the error here would make the GC conclude that no blob is
+// referenced and delete them all — exactly the class of the v23.3 incident, now
+// from the backup side.
 const bhHistoryFull=()=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
   let r;
   try{r=db.transaction(BH_STORE,'readonly').objectStore(BH_STORE).getAll();}catch(e){_bhResetDb();rej(e);return;}
   r.onsuccess=e=>res((e.target.result||[]).sort((a,b)=>a.at<b.at?1:-1));
   r.onerror=e=>rej(e.target.error);
 }));
-// Um snapshot só, pela chave. A tela de Sync lista a partir do `meta` e chama
-// isto no clique de restaurar — nenhum state entra em memória antes disso.
+// A single snapshot, by key. The Sync screen lists from `meta` and calls this on
+// the restore click — no state enters memory before that.
 const bhHistoryGet=at=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
   let r;
   try{r=db.transaction(BH_STORE,'readonly').objectStore(BH_STORE).get(at);}catch(e){_bhResetDb();rej(e);return;}
   r.onsuccess=e=>res(e.target.result||null);
   r.onerror=e=>rej(e.target.error);
 }));
-// Espelho em memória do `meta`, sempre o mais novo primeiro. Existe para que a
-// decisão de dedup e a lista da tela continuem SÍNCRONAS, como eram no
-// localStorage — os 7 call sites de bhCapture não mudaram de forma.
+// In-memory mirror of `meta`, always newest first. It exists so that the dedup
+// decision and the screen's list stay SYNCHRONOUS, as they were on localStorage —
+// the 7 bhCapture call sites did not change shape.
 let _bhMeta=[];
 let _bhReady=false;
 const bhHistoryMeta=()=>_bhMeta;
-// Migração (protocolo #4: escreve → VERIFICA → só então remove a origem).
+// Migration (protocol #4: write → VERIFY → only then remove the source).
 const bhMigrateLegacy=async()=>{
   let raw=null;
   try{raw=localStorage.getItem(BH_HISTORY_KEY);}catch{}
   if(!raw)return;
   let list=null;
-  try{list=JSON.parse(raw);}catch{return;} // ilegível: é a única cópia, NÃO apagar
+  try{list=JSON.parse(raw);}catch{return;} // unreadable: it is the only copy, do NOT delete
   if(!Array.isArray(list)){return;}
   const valid=list.filter(e=>e&&typeof e.at==='string');
   if(!valid.length){try{localStorage.removeItem(BH_HISTORY_KEY);}catch{}return;}
   await bhIdbWrite(valid,[]);
-  // Verificação: cada `at` da origem tem de estar no destino. Só depois disso a
-  // origem pode ir embora. Se faltar um, estoura — a chave legada FICA e a
-  // migração é tentada de novo no próximo boot.
+  // Verification: every `at` from the source must be present in the destination.
+  // Only after that may the source go. If one is missing it throws — the legacy
+  // key STAYS and the migration is tried again on the next boot.
   const gravados=new Set((await bhIdbAllMeta()).map(m=>m.at));
   const faltando=valid.filter(e=>!gravados.has(e.at));
   if(faltando.length)throw new Error('migração incompleta: '+faltando.length+'/'+valid.length+' não chegaram ao IDB');
@@ -1568,8 +1611,8 @@ const bhHistoryInit=()=>{
       _bhMeta=(await bhIdbAllMeta()).sort((a,b)=>a.at<b.at?1:-1);
       _bhReady=true;
     }catch(e){
-      // Falhar FECHADO: sem histórico legível, bhCapture não grava (não vai
-      // inventar um histórico novo por cima) e o gcIdb aborta a varredura.
+      // Fail CLOSED: with no readable history, bhCapture does not write (it will
+      // not invent a new history on top) and gcIdb aborts the sweep.
       _bhReady=false;
       console.warn('[BoardHub] histórico de backup indisponível:',e);
     }
@@ -1577,14 +1620,14 @@ const bhHistoryInit=()=>{
   })();
   return _bhInitP;
 };
-// v23.6 P1-3: o autosave chamava bhHistoryLoad() a CADA gravação só para ler
-// list[0].at e decidir se já passaram 30 min desde o último snapshot. Com acervo
-// grande isso é um JSON.parse de vários MB a cada 2,5 s — medido em ~24 ms para
-// 12 snapshots de um estado de 1 MB, contra ~4 ms do lsSave que o plano
-// apontava como o gargalo. O timestamp agora vive numa chave própria de ~30
-// bytes; o histórico inteiro só é lido por quem precisa dele de verdade
-// (bhCapture, gcIdb, a tela de Sync e o backup diário, todos fora do caminho
-// quente). Se a chave sumir, cai para o histórico UMA vez por sessão.
+// v23.6 P1-3: the autosave called bhHistoryLoad() on EVERY write just to read
+// list[0].at and decide whether 30 min had passed since the last snapshot. With a
+// large archive that is a JSON.parse of several MB every 2.5 s — measured at
+// ~24 ms for 12 snapshots of a 1 MB state, against the ~4 ms of the lsSave that
+// the plan pointed to as the bottleneck. The timestamp now lives in its own key
+// of ~30 bytes; the whole history is only read by whoever genuinely needs it
+// (bhCapture, gcIdb, the Sync screen and the daily backup, all off the hot path).
+// If the key disappears, it falls back to the history ONCE per session.
 const BH_LAST_AT_KEY='boardhub_backup_last_at';
 let _bhLastAt=null;
 const bhLastAt=()=>{
@@ -1594,8 +1637,8 @@ const bhLastAt=()=>{
   try{if(_bhLastAt)localStorage.setItem(BH_LAST_AT_KEY,_bhLastAt);}catch{}
   return _bhLastAt;
 };
-// F3: se esta chave não grava, o autosave perde a referência de "quando foi o
-// último snapshot" e passa a capturar a cada 2,5s em vez de a cada 30min.
+// F3: if this key fails to write, the autosave loses its reference for "when the
+// last snapshot was" and starts capturing every 2.5s instead of every 30min.
 const bhMarkCaptured=at=>{_bhLastAt=at;try{localStorage.setItem(BH_LAST_AT_KEY,at);}catch(e){bhLog('bhMarkCaptured',e);}};
 const bhRetention=list=>{
   // Two tiers, one merged list (newest-first):
@@ -1607,7 +1650,7 @@ const bhRetention=list=>{
   //    unconditionally, older thinned to one per calendar day, cap BH_MAX_TOTAL.
   const dailies=[];const others=[];
   list.forEach(e=>(e.reason==='daily'?dailies:others).push(e));
-  const byWeekday=new Map(); // 0=dom..6=sáb → newest entry
+  const byWeekday=new Map(); // 0=Sun..6=Sat → newest entry
   dailies.forEach(e=>{
     const wd=new Date(e.at).getDay();
     const cur=byWeekday.get(wd);
@@ -1622,21 +1665,22 @@ const bhRetention=list=>{
   });
   return [...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
 };
-// F1: assíncrona por fora, mesma FORMA por dentro. Nenhum dos 7 call sites usa o
-// retorno — todos são fire-and-forget dentro de try/catch —, então devolver uma
-// Promise não muda o comportamento deles. A promessa nunca rejeita.
+// F1: asynchronous on the outside, same SHAPE on the inside. None of the 7 call
+// sites uses the return value — they are all fire-and-forget inside try/catch —
+// so returning a Promise does not change their behaviour. The promise never
+// rejects.
 //
-// As capturas são SERIALIZADAS numa fila: duas capturas concorrentes decidiriam
-// a retenção sobre o mesmo _bhMeta e a segunda ressuscitaria o que a primeira
-// acabou de despejar.
+// Captures are SERIALISED in a queue: two concurrent captures would decide
+// retention against the same _bhMeta, and the second would resurrect what the
+// first had just evicted.
 let _bhChain=Promise.resolve();
 const bhCapture=(state,reason)=>{
   const run=async()=>{
     try{
       if(!bhStateHasData(state))return false; // never snapshot emptiness
-      // Nunca capturar antes de saber o que já existe: com _bhMeta ainda vazio,
-      // a retenção rodaria contra uma lista vazia e o primeiro autosave após o
-      // boot despejaria o histórico inteiro.
+      // Never capture before knowing what already exists: with _bhMeta still
+      // empty, retention would run against an empty list and the first autosave
+      // after boot would evict the entire history.
       if(!_bhReady)await bhHistoryInit();
       if(!_bhReady)return false;
       const sig=bhSig(state);
@@ -1651,22 +1695,22 @@ const bhCapture=(state,reason)=>{
       }else{
         if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
       }
-      // `at` é a chave primária do store. Duas capturas no mesmo milissegundo
-      // sobrescreveriam uma à outra em silêncio; empurra 1ms até ser única.
+      // `at` is the store's primary key. Two captures in the same millisecond
+      // would silently overwrite one another; push 1ms until it is unique.
       let at=new Date().toISOString();
       while(list.some(e=>e.at===at))at=new Date(new Date(at).getTime()+1).toISOString();
       const counts=bhCounts(state);
       const entry={at,reason,sig,counts,state};
       const kept=bhRetention([{at,reason,sig,counts},...list]);
       const keptAts=new Set(kept.map(e=>e.at));
-      if(!keptAts.has(at))return false; // a retenção descartou o próprio recém-nascido
+      if(!keptAts.has(at))return false; // retention discarded the newborn itself
       const dels=list.filter(e=>!keptAts.has(e.at)).map(e=>e.at);
       try{await bhIdbWrite([entry],dels);}
       catch(e){
-        // Cota do IDB é ~2,8GB nesta origem, mas ela é derivada do disco livre e
-        // pode acabar. Último recurso: a mesma entrada sem os data:image
-        // embutidos — que preserva idb://, senão o backup perderia justamente as
-        // referências que o gcIdb usa (v23.3).
+        // The IDB quota is ~2.8GB on this origin, but it is derived from free
+        // disk and can run out. Last resort: the same entry without the embedded
+        // data:image — which preserves idb://, otherwise the backup would lose
+        // precisely the references gcIdb uses (v23.3).
         try{
           const lean={...entry,state:(typeof stripInlineImages==='function'?stripInlineImages(state):state)};
           await bhIdbWrite([lean],dels);
@@ -1684,11 +1728,12 @@ const bhCapture=(state,reason)=>{
 // One-time migration: fold the old two-slot backups into the history, oldest first,
 // so nothing that exists today is lost by the upgrade.
 //
-// F1: continua escrevendo na CHAVE LEGADA do localStorage, de propósito. Este
-// bloco é síncrono e roda no parse do bundle, antes de qualquer IndexedDB estar
-// aberto; a bhMigrateLegacy leva daqui para o IDB logo em seguida, com
-// verificação. Duas migrações em série, cada uma simples, em vez de uma
-// assíncrona que teria de reimplementar a leitura do formato de dois slots.
+// F1: it still writes to the LEGACY localStorage KEY, on purpose. This block is
+// synchronous and runs while the bundle is being parsed, before any IndexedDB is
+// open; bhMigrateLegacy carries it from here into the IDB right afterwards, with
+// verification. Two migrations in series, each of them simple, instead of one
+// asynchronous migration that would have to reimplement reading the two-slot
+// format.
 (()=>{
   try{
     const oldKeys=['boardhub_daily_backup','boardhub_backup_pre_sync'];
@@ -1698,7 +1743,7 @@ const bhCapture=(state,reason)=>{
       if(!r)return;
       try{const p=JSON.parse(r);if(p&&p._snapAt)olds.push({key:k,at:p._snapAt,data:p});}catch{}
     });
-    if(!olds.length)return; // nada legado: não mexe na chave nem para reescrevê-la
+    if(!olds.length)return; // nothing legacy: do not touch the key, not even to rewrite it
     const readLegacy=()=>{try{const r=localStorage.getItem(BH_HISTORY_KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch{return [];}};
     olds.sort((a,b)=>a.at<b.at?-1:1);
     olds.forEach(o=>{
@@ -1715,8 +1760,8 @@ const bhCapture=(state,reason)=>{
     localStorage.removeItem('boardhub_daily_backup_date');
   }catch{}
 })();
-// Abre o histórico assim que o bundle executa. É uma conexão de IndexedDB e um
-// getAll no store pequeno; o `state` não é lido aqui.
+// Opens the history as soon as the bundle executes. It is one IndexedDB
+// connection and a getAll on the small store; `state` is not read here.
 bhHistoryInit();
 
 
@@ -1813,16 +1858,38 @@ const _resolveIcon=(name)=>{
     tmp.remove();
   }catch(e){}
 };
-// M4-tipografia: a HASTE dos ícones.
-// O Lucide desenha com strokeWidth 2 sobre uma grade de 24 — proporção grossa,
-// que é o que faz um ícone ler como "app moderno" mesmo ao lado de uma serifada
-// do século XVII. Gravura tem haste FINA: a linha existe para delimitar, não
-// para pesar. 1,25 é o ponto onde o traço ainda aguenta 12px sem sumir e já
-// deixa de competir com o texto.
-// Trocar a FAMÍLIA de ícones custaria uma dependência de CDN nova (protocolo
-// #7); mudar a haste custa uma linha e resolve a maior parte da distância.
-// A haste escala com o tamanho: um ícone de 32px com a mesma haste de um de
-// 12px fica anêmico, então cresce um pouco junto.
+// M4-typography: the icon STROKE.
+// Lucide draws with strokeWidth 2 on a grid of 24 — a thick proportion, which is
+// what makes an icon read as "modern app" even next to a 17th-century serif.
+// Engraving has a THIN stroke: the line exists to delimit, not to weigh. 1.25 is
+// the point where the stroke still survives at 12px without vanishing and has
+// already stopped competing with the text.
+// Swapping the icon FAMILY would cost a new CDN dependency (protocol #7);
+// changing the stroke costs one line and closes most of the distance.
+// The stroke scales with size: a 32px icon with the same stroke as a 12px one
+// looks anaemic, so it grows a little along with it.
+// - M4: NOTATION MOTIFS -
+// Stave and rest, drawn by hand in SVG — no music font and no new library
+// (protocol #7). They are two simple geometric shapes; importing a whole score
+// font to draw five lines and a rectangle would be expensive and unnecessary.
+//
+// WHY THE REST IN THE EMPTY STATE: a rest is the notation of SILENCE. "There is
+// nothing here" is exactly what it means on a score — it is not an ornament
+// applied on top, it is the right word. The semibreve rest is a rectangle
+// HANGING from the fourth line; the minim rest SITS on the third. I use the
+// minim: sitting reads better in isolation, without the bar around it to give
+// context.
+const StaveRest=({size=48,style={}})=>{
+  const w=size, h=size*0.58, gap=h/6;
+  const linhas=[0,1,2,3,4].map(i=>gap+i*gap);
+  const meio=linhas[2];
+  return React.createElement('svg',{width:w,height:h,viewBox:`0 0 ${w} ${h}`,fill:'none',style:{display:'block',...style},'aria-hidden':'true'},
+    React.createElement('g',{stroke:'currentColor',strokeWidth:0.75,opacity:.45},
+      ...linhas.map((y,i)=>React.createElement('line',{key:i,x1:0,y1:y,x2:w,y2:y}))),
+    // the rest: a block sitting ON the middle line, one space wide
+    React.createElement('rect',{x:w/2-gap*0.9,y:meio-gap*0.62,width:gap*1.8,height:gap*0.62,fill:'currentColor',opacity:.75})
+  );
+};
 const ICON_STROKE=1.25;
 const Icon=({name,size=16,style={},strokeWidth}) =>{
   _resolveIcon(name);
@@ -1838,25 +1905,27 @@ const Icon=({name,size=16,style={},strokeWidth}) =>{
  'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle','image-off'
 ].forEach(_resolveIcon);
 
-// v23.7 P3: era <div><span class=label>. Um <label> envolvendo o controle cria a
-// associação IMPLÍCITA do HTML — clicar no rótulo foca o campo e leitores de tela
-// anunciam o nome — sem precisar inventar id/htmlFor para 57 inputs. Conferido
-// antes: nenhum dos 23 <Field> tem <button> dentro nem mais de um controle, então
-// não existe risco de ativação dupla.
+// v23.7 P3: this used to be <div><span class=label>. A <label> wrapping the
+// control creates HTML's IMPLICIT association — clicking the label focuses the
+// field and screen readers announce the name — without having to invent
+// id/htmlFor for 57 inputs. Checked beforehand: none of the 23 <Field> has a
+// <button> inside nor more than one control, so there is no double-activation
+// risk.
 const Field=({label,children})=><label style={{display:'flex',flexDirection:'column',gap:6}}><span className="label">{label}</span>{children}</label>;
 
-// v23.7 P3: um <div onClick> não é alcançável por Tab nem acionável por Enter.
-// Converter estes cards para <button> não serve: eles têm botões dentro (excluir,
-// handle de arrastar), e <button> dentro de <button> é HTML inválido — o parser
-// desfaz o aninhamento e o layout quebra. role+tabIndex+onKeyDown dá o mesmo
-// comportamento de teclado sem tocar na árvore. O onClick de cada card fica onde
-// está; isto só acrescenta o caminho de teclado.
+// v23.7 P3: a <div onClick> is neither reachable by Tab nor activatable by Enter.
+// Converting these cards to <button> does not work: they have buttons inside
+// (delete, drag handle), and a <button> inside a <button> is invalid HTML — the
+// parser unwinds the nesting and the layout breaks. role+tabIndex+onKeyDown gives
+// the same keyboard behaviour without touching the tree. Each card's onClick
+// stays where it is; this only adds the keyboard path.
 const keyActivate=(onActivate,label,enabled=true)=>enabled?{
   role:'button',tabIndex:0,'aria-label':label,
   onKeyDown:e=>{
     if(e.key!=='Enter'&&e.key!==' ')return;
-    // Enter/Espaço disparado por um controle DE DENTRO do card pertence a ele,
-    // não ao card: sem esta guarda, teclar no botão de excluir também abriria.
+    // An Enter/Space fired by a control FROM INSIDE the card belongs to that
+    // control, not to the card: without this guard, keying the delete button
+    // would open the card as well.
     if(e.target!==e.currentTarget&&e.target.closest&&e.target.closest('button,a,input,select,textarea'))return;
     e.preventDefault();onActivate(e);
   }}:null;
@@ -2207,11 +2276,11 @@ const _syncUrl=(src,thumb)=>{
 // Unified resolver for idb://, https://, or data: sources. With thumb=true it prefers
 // the downscaled variant for grid/cover display. Checks caches synchronously so
 // prefetched images render with zero flash.
-// v23.3: devolve [url, missing]. `missing` só fica true quando a resolução de um
-// idb:// TERMINOU e não achou blob nenhum — é o que distingue "ainda carregando"
-// (retângulo cinza mudo) de "este dispositivo não tem esse arquivo" (placeholder
-// explicando). Sem esse sinal não há re-render: resolver para '' chama setState
-// com o mesmo valor e o React descarta a atualização.
+// v23.3: returns [url, missing]. `missing` only becomes true once resolving an
+// idb:// has FINISHED and found no blob at all — that is what distinguishes
+// "still loading" (a mute grey rectangle) from "this device does not have that
+// file" (a placeholder explaining it). Without that signal there is no re-render:
+// resolving to '' calls setState with the same value and React drops the update.
 const useDisplayUrlState=(src,thumb)=>{
   const sync=_syncUrl(src,thumb);
   const [state,setState]=React.useState(sync);
@@ -2261,20 +2330,20 @@ const useDisplayUrl=(src,thumb)=>useDisplayUrlState(src,thumb)[0];
 // Back-compat full-res resolver (used by Vid and any direct callers).
 const useIdbUrl=src=>useDisplayUrl(src,false);
 
-// v23.3 P1-2: key posicional em lista de imagem faz o React reusar o elemento
-// errado quando a lista é reordenada ou perde um item — a imagem "pula" para
-// outra célula e é redecodificada à toa. Com o reorder de entradas adicionado na
-// v23 isso virou acionável na prática. A src é única dentro de um post, então
-// ela É a identidade. O índice só entra como desempate quando a MESMA src
-// aparece duas vezes; nesse caso os dois elementos são visualmente idênticos e
-// reusar "o errado" não produz troca visível.
-// O indexOf deixa isto O(n²) por lista. Em grades de dezenas de imagens é ruído,
-// e evita reescrever cada grade para pré-calcular as keys.
+// v23.3 P1-2: a positional key in an image list makes React reuse the wrong
+// element when the list is reordered or loses an item — the image "jumps" to
+// another cell and is re-decoded for nothing. With the entry reorder added in
+// v23 this became triggerable in practice. The src is unique within a post, so
+// the src IS the identity. The index only comes in as a tiebreaker when the SAME
+// src appears twice; in that case the two elements are visually identical and
+// reusing "the wrong one" produces no visible swap.
+// The indexOf makes this O(n²) per list. On grids of a few dozen images that is
+// noise, and it avoids rewriting every grid to precompute the keys.
 const imgKey=(src,i,list)=>{const s=String(src);return list.indexOf(src)===i?s:s+'#'+i;};
 
-// Placeholder para referência local cujo blob não existe NESTE dispositivo.
-// A referência sobrevive ao sync (v23.3 P0-1); o blob não viaja. Mostrar isso
-// explicitamente evita que um retângulo cinza seja lido como imagem corrompida.
+// Placeholder for a local reference whose blob does not exist ON THIS DEVICE.
+// The reference survives the sync (v23.3 P0-1); the blob does not travel. Saying
+// so explicitly stops a grey rectangle from being read as a corrupted image.
 const LOCAL_IMG_MISSING='Imagem local: o arquivo está em outro dispositivo. Abra o BoardHub nele para vê-la aqui — a referência foi preservada.';
 const MissingLocalImg=()=><Icon name="image-off" size={16} style={{width:'55%',height:'55%',maxWidth:22,maxHeight:22,color:'var(--muted)',opacity:.5}}/>;
 
@@ -2335,8 +2404,9 @@ const BgImg=({src,className,style,children,full,thumb=!full,...props})=>{
   const gate=typeof src==='string'&&(src.startsWith('idb://')||(!thumb&&/^https?:\/\//.test(src)));
   const [setRef,inView]=useInView(gate);
   const [url,missing]=useDisplayUrlState(gate&&!inView?null:src,thumb);
-  // O badge vai como FILHO (nenhum call site passa children) e leva o title
-  // consigo, para não sobrescrever um title vindo de {...props} do chamador.
+  // The badge goes in as a CHILD (no call site passes children) and carries the
+  // title with it, so as not to overwrite a title coming from the caller's
+  // {...props}.
   const show=missing&&!url;
   return <div ref={setRef} className={className}
     style={{background:url?'none':'var(--border)',backgroundSize:'cover',
@@ -2526,14 +2596,15 @@ const _compressImage=async(file)=>{
       const canvas=document.createElement('canvas');
       canvas.width=w;canvas.height=h;
       canvas.getContext('2d').drawImage(img,0,0,w,h);
-      // v23.3 P1-4: PNG era re-encodado como PNG, com quality ignorado. O canvas
-      // descarta a paleta indexada do original, então um screenshot PNG de 500KB
-      // podia SAIR MAIOR do que entrou. WebP suporta alpha, então não há motivo
-      // para preservar PNG aqui. E o resultado só é aceito se realmente encolheu
-      // — vale também para JPEG já bem comprimido, que antes sempre era trocado
-      // pelo WebP mesmo quando o WebP ficava maior.
-      // (engine sem suporte a WebP no toBlob cai para PNG; nesse caso o
-      //  comparativo de tamanho devolve o original e nada piora)
+      // v23.3 P1-4: a PNG was being re-encoded as PNG, with quality ignored. The
+      // canvas discards the original's indexed palette, so a 500KB PNG
+      // screenshot could COME OUT BIGGER than it went in. WebP supports alpha, so
+      // there is no reason to preserve PNG here. And the result is only accepted
+      // if it actually shrank — which also covers an already well-compressed
+      // JPEG, which used to be swapped for WebP even when the WebP came out
+      // bigger.
+      // (an engine with no WebP support in toBlob falls back to PNG; in that case
+      //  the size comparison returns the original and nothing gets worse)
       canvas.toBlob(blob=>res(blob&&blob.size<file.size?blob:file),'image/webp',0.82);
     };
     img.onerror=()=>{URL.revokeObjectURL(objUrl);res(file);};
@@ -2612,19 +2683,20 @@ const reuploadLocalImages=async(state,onProgress)=>{
   }
   return rehydrateIdbRefs(state,map);
 };
-// v23.3 P0-1: esta função (antiga stripBase64) misturava DUAS coisas que não têm
-// nada a ver uma com a outra:
-//   • "data:image/...;base64,..." é PAYLOAD. Pode ter megabytes e estoura o
-//     limite de 1MB/documento do Firestore. Tem que sair mesmo.
-//   • "idb://<key>" é REFERÊNCIA — ~40 bytes apontando para um blob local.
-//     Não ameaça limite nenhum.
-// Apagar a referência no push fazia a nuvem gravar '' no lugar dela; como o
-// listener aplica ARRAYS INTEIROS (setGalleryPosts(data.galleryPosts)), esse ''
-// voltava para o estado local na sincronização seguinte e matava a referência no
-// próprio dispositivo que tinha o blob. 24h depois o gcIdb não encontrava mais a
-// referência e apagava o blob — perda irreversível.
-// Um dispositivo que não tem o blob mostra placeholder (ver <Img>/<BgImg>), o que
-// é infinitamente melhor que destruir a referência no dispositivo que tem.
+// v23.3 P0-1: this function (formerly stripBase64) was conflating TWO things that
+// have nothing to do with one another:
+//   • "data:image/...;base64,..." is PAYLOAD. It can be megabytes and it blows
+//     Firestore's 1MB/document limit. It really does have to go.
+//   • "idb://<key>" is a REFERENCE — ~40 bytes pointing at a local blob.
+//     It threatens no limit at all.
+// Deleting the reference on push made the cloud store '' in its place; since the
+// listener applies WHOLE ARRAYS (setGalleryPosts(data.galleryPosts)), that ''
+// came back into the local state on the next sync and killed the reference on the
+// very device that had the blob. 24h later gcIdb no longer found the reference
+// and deleted the blob — irreversible loss.
+// A device that does not have the blob shows a placeholder (see <Img>/<BgImg>),
+// which is infinitely better than destroying the reference on the device that
+// does have it.
 const isInlineImg=v=>typeof v==='string'&&v.startsWith('data:image');
 const stripInlineImages=obj=>{
   if(Array.isArray(obj))return obj.map(stripInlineImages);
@@ -3982,9 +4054,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={10}/></button>
             </div>
             {active.length===0&&<div className="card" style={{padding:'28px 16px',textAlign:'center',color:'var(--muted)',display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
-              <div style={{width:44,height:44,borderRadius:12,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <Icon name="folder-open" size={20} style={{opacity:.4}}/>
-              </div>
+              {/* M4: era um quadrado arredondado com gradiente e um ícone de
+                  pasta dentro — o elemento mais "template de app" da tela. Uma
+                  PAUSA diz a mesma coisa na língua do resto da interface. */}
+              <StaveRest size={56} style={{color:'var(--muted)',marginBottom:2}}/>
               <span style={{fontWeight:600,fontSize:'.84rem',color:'var(--text)'}}>Nenhum projeto ativo</span>
               <span style={{fontSize:'.76rem',lineHeight:1.4}}>Comece criando um novo projeto.</span>
               <button className="btn btn-outline" style={{padding:'5px 14px',fontSize:'.76rem',marginTop:2}} onClick={()=>setView('projects')}>
