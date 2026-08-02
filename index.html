@@ -63,6 +63,287 @@
      ser NEGADA.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.18 — M3.2: a haste e a letra (ago/2026)
+  Terceira e última correção de rota do M3, a pedido: repensar ícones e
+  tipografia junto com a paleta de pigmento.
+  DIAGNÓSTICO: o que fazia a interface parecer "app" e não gravura eram duas
+  coisas mecânicas, nenhuma delas a paleta.
+  1. A HASTE DOS ÍCONES. O Lucide desenha com strokeWidth 2 numa grade de 24 —
+     proporção grossa, pensada para ícone isolado em botão de app. Ao lado de
+     uma serifada do século XVII isso vira uma linha preta que compete com o
+     texto. Gravura tem haste FINA: a linha delimita, não pesa.
+  2. A SANS. Figtree é geométrica — círculos perfeitos, terminações retas,
+     desenho de 2020. Debaixo de Cormorant Garamond, que é um Garamond (tipo
+     que desce do renascimento ITALIANO, de Griffo e Manutius), ela soava como
+     legenda de screenshot de produto.
+  FIX 1 — ICON_STROKE = 1,25, num ponto só. É onde o traço ainda aguenta 12px
+  sem sumir e já deixa de disputar com a letra. A haste ESCALA: ícone de 32px
+  com a mesma espessura de um de 12px fica anêmico, então cresce 20% acima de
+  28px. Continua sendo Lucide — trocar a FAMÍLIA de ícones custaria uma
+  dependência de CDN nova, que o protocolo #7 manda justificar, e a maior parte
+  da distância estética estava na espessura, não no desenho.
+  FIX 2 — Figtree → ALEGREYA SANS, humanista com origem caligráfica, desenhada
+  para texto literário. Ela tem a assimetria e a modulação de haste que um
+  humanista tem e um geométrico não, então conversa com o Cormorant em vez de
+  contrastar com ele.
+  NÃO É DEPENDÊNCIA NOVA (protocolo #7): entra no MESMO <link> do Cormorant, na
+  MESMA origem já pré-conectada, no mesmo número de requisições. É troca de
+  família dentro do que já se baixava. Há teste exigindo que continue existindo
+  UM stylesheet de fonte só.
+  DETALHE DE PESO: o CSS pedia 600 em 8 lugares e o Alegreya Sans não tem 600 —
+  o navegador resolve para 700, que é o que se quer num humanista de haste mais
+  leve que o Figtree.
+  ARMADILHA PAGA: a troca em massa quebrou 40 declarações. O CSS tinha
+  fontFamily:'Figtree,sans-serif' — a pilha INTEIRA dentro de um par de aspas —
+  e substituir o nome por 'Alegreya Sans' produziu ''Alegreya Sans',sans-serif',
+  que é aspa dentro de aspa. Tela branca. O transpilador pegou na hora
+  (protocolo #2). Resolvido sem aspas internas: nome de família com espaço é
+  identificador válido em CSS sem aspas, então 'Alegreya Sans,sans-serif' basta.
+  CUSTO HONESTO: julguei a legibilidade pelo desenho da face e por conferir que
+  ela carrega e se aplica de verdade (65 faces, 400 e 700 confirmados,
+  computed style batendo) — NÃO por leitura prolongada nas telas densas. O app
+  tem texto em 0,65rem em vários lugares, e o Alegreya Sans tem altura-x menor
+  que a do Figtree: se algum canto ficar apertado, é aí. A alternativa pronta,
+  se ficar, é Source Sans 3 — mais neutra, altura-x maior, mesma origem.
+  Os ícones seguem os mesmos do Lucide: mudou a espessura, não o vocabulário de
+  desenho. Trocar metáforas (pasta, engrenagem) por motivos de notação é o M4.
+  ──────
+  BoardHub v23.17 — M3.1: contraste, e a paleta vira pigmento (ago/2026)
+  Duas correções em cima do M3, as duas apontadas por inspeção visual sua — e as
+  duas são coisas que teste nenhum aqui pegaria, porque "está feio" e "está
+  ilegível" não são estados que a suíte sabe ler.
+  1. CONTRASTE — o bug era literal:
+        .nav-item.active{background:var(--text);color:white;}
+     O fundo virava com o tema e o texto não. No notturno --text é creme, então
+     o item ativo do menu ficava CREME COM TEXTO BRANCO. A mesma classe atingia
+     mais 33 pontos: 28 rgba(28,25,23,α) — lavagens de tinta sobre papel, que
+     somem quando o papel é escuro, porque lavar preto com preto não faz nada —
+     e 5 `color:white` pareados com background:var(--text).
+     FIX: a tinta virou CANAL (--ink:28,25,23 / 237,231,222 no notturno), então
+     rgba(var(--ink),α) preserva cada alpha e inverte tudo de uma vez; os brancos
+     literais viraram var(--bg), que é o par correto de var(--text) nos dois
+     temas. Uma regra temática nunca pode nomear uma cor: ela é sempre metade de
+     um par, e a outra metade vai virar sem ela.
+     MEDIDO depois (contraste real, calculado sobre a cor computada):
+       item ativo do menu ..... 14,94:1
+       item inativo ............ 6,74:1
+  2. PALETA — as tríades do M3 nasceram genéricas: verde #48BB78, amarelo
+     #F59E0B, vermelho #DC2626. É a paleta de framework: grita "notificação de
+     app", e briga com Cormorant Garamond sobre papel quente. Passaram a
+     PIGMENTO, que é o vocabulário que o app já usa em todo o resto (andamento,
+     dinâmica, gravura):
+       verderame  o verde-azulado da pátina de cobre — o verde da pintura
+                  italiana antes do viridian industrial
+       ocra       terra amarela, o pigmento mais antigo que existe
+       rosso      o vermelho veneziano de terra queimada, não o de alerta
+       oltremare  o azul de lápis-lazúli, que vinha "de além-mar"
+     São cores de TERRA e MINERAL: dessaturadas, quentes, e convivem com o
+     --accent sépia em vez de disputar com ele. No notturno são os mesmos quatro
+     pigmentos à luz de vela — fundo de terra, pigmento clareado só o bastante
+     para ler. Teste proíbe a volta das seis cores de framework às declarações.
+  CUSTO HONESTO: continua sem inspeção tela a tela e sem teste de contraste
+  automatizado — medi o menu porque foi o que você apontou, não o app inteiro.
+  Os 27 hex one-off do JSX e os 42 rgba() fixos seguem intocados. E a paleta é
+  uma PROPOSTA: pigmento é a leitura que casa com o resto do vocabulário, mas é
+  escolha de gosto e você é quem decide se acertou.
+  NÃO FEITO AQUI, de propósito: tipografia e ícones. Você pediu para repensar os
+  dois junto com a paleta, e nenhum dos dois cabe num diff de correção de
+  contraste — trocar a família de ícones é dependência de CDN nova, que o
+  protocolo #7 exige justificar por escrito antes. Vai como proposta separada.
+  ──────
+  BoardHub v23.16 — M3: camada de tokens e o tema notturno (ago/2026)
+  DIAGNÓSTICO: o app pintava estado com um PAR cravado no lugar de uso — tint
+  claro no fundo, texto escuro por cima (#E8F5EC/#276b3e, #FEF9E7/#92700b,
+  #FDEDED/#9B1C1C). Esse par é exatamente o que morre num tema escuro: o tint
+  clarinho vira um bloco leitoso sobre fundo preto e o texto escuro some dentro
+  dele. Trocar só o fundo da página não resolve nada — os dois lados da tríade
+  têm de virar juntos. Era o que o M3 media desde o começo: o trabalho não é
+  auditar mil estilos, é a família de status e a de vermelhos.
+  MEDIDO (antes → depois), no bloco JSX:
+    hex cravados ......... 115 ocorrências / 50 distintos → 27 / 25
+    var(--) .............. 559 → 704
+    tokens no :root ...... 12 → 30
+  Os 27 que sobraram são one-off de verdade: o azul do botão do Google, o
+  amarelo de um gráfico, um #FF0000 de debug. Não são sistema, e forçá-los em
+  token só inventaria semântica que não existe.
+  • TRÍADES SEMÂNTICAS: --ok-*, --warn-*, --danger-*, --info-* em
+    fundo/texto/linha, mais --neutral-bg e os três --*-strong para pontos e
+    marcadores. Quem usa pede 'perigo', não 'vermelho claro nº 3'. Todo token
+    tem contraparte no notturno — há teste exigindo isso token a token, porque
+    a regressão óbvia é redefinir --bg e esquecer as tríades.
+  • DUAS PALETAS VIRARAM UMA: GANTT_COLORS tinha a própria paleta, mais saturada
+    que a das tags para o MESMO estado — 'Fazendo' era #FEF3C7 na barra e
+    #FEF9E7 na tag. Duas paletas para o mesmo vocabulário divergem caladas e
+    dobram o trabalho de qualquer tema novo. Agora as duas leem as mesmas
+    tríades, e há teste proibindo hex dentro de GANTT_COLORS e statusBg.
+  • O NOTTURNO NÃO É PRETO. O fundo é o mesmo marrom do papel puxado para baixo
+    (#17140F), senão a interface troca de IDENTIDADE em vez de trocar de luz. As
+    tríades invertem a lógica: fundo escuro dessaturado, texto claro. O tema
+    inteiro vive na troca de tokens — nenhuma regra de layout muda, nenhum
+    seletor é duplicado.
+  • APLICADO ANTES DO PRIMEIRO PAINT, por um script síncrono de uma linha no
+    <head>. Esperar o React faria quem usa o notturno ver um lampejo de papel
+    claro em TODA abertura, porque aqui o React só monta depois do Babel —
+    centenas de ms num cache frio. Há teste exigindo que o script venha antes do
+    <style>.
+  • TOGGLE NAS DUAS BARRAS. Só no desktop faria o tema escuro não existir no
+    celular, que é justamente onde se usa o app no escuro. O rótulo diz o que o
+    clique FAZ ("Notturno" quando se está no papel), porque um botão nomeado
+    pelo estado atual é ambíguo nas duas leituras. Teste exige um acionador por
+    barra.
+  • O padrão continua sendo o papel quente, por decisão sua — não a preferência
+    do sistema. O app tem uma identidade e ela é clara; quem quer o escuro liga,
+    e a escolha persiste.
+  CUSTO HONESTO: verifiquei o notturno por cor computada em elementos reais
+  (body #17140F sobre texto #EDE7DE, tags no neutro escuro) e conferindo que as
+  tríades invertem — NÃO por inspeção visual tela a tela, e não há teste de
+  contraste automatizado. É bem provável que existam cantos feios: os 27 hex
+  restantes aparecem como estão, e superfícies que usam rgba() fixo (42 no JSX)
+  não foram tocadas. Sombras e imagens também não: sombra calibrada para papel
+  claro fica invisível no escuro. Se algo estiver ilegível, é aí que eu olharia
+  primeiro. O M4 (motivos de notação) dependia do M3 justamente para não ser
+  refeito — agora está desbloqueado.
+  ──────
+  BoardHub v23.15 — F3.2: os diálogos do navegador saem de cena (ago/2026)
+  Segundo e último lote da F3. Os 18 diálogos bloqueantes (17 window.confirm +
+  o alert que o BASELINE jurava não existir) viram um modal do próprio app.
+  DIAGNÓSTICO: window.confirm congela a thread inteira. Enquanto ele está
+  aberto o autosave não roda, o listener do Firestore não aplica nada e o
+  pêndulo do pomodoro para — num app que salva a cada 2,5s e sincroniza sozinho,
+  isso é uma parada completa esperando um clique. Além disso o diálogo nativo
+  não tem a tipografia do app, não distingue "mover para a lixeira" de "apagar
+  tudo para sempre", e no mobile aparece com o domínio do arquivo em cima.
+  • bhConfirm(opts) devolve Promise<boolean>; bhAlert(msg) é o caso de um botão
+    só. Aceita string ou objeto {title, message, confirmLabel, cancelLabel,
+    danger}. As ações destrutivas agora dizem o que fazem no botão — "Excluir",
+    "Descartar e puxar", "Apagar tudo" — em vez de um "OK" genérico, que é a
+    diferença entre ler e não ler o diálogo.
+  • REUSA o <Modal> existente em vez de desenhar outro: ele já tem o foco preso,
+    a pilha de Escape e a devolução de foco resolvidas desde a v23, e cada uma
+    dessas tem incidente atrás. Duplicar seria reabrir os três.
+  • O ConfirmHost fica FORA do App, irmão dele no ErrorBoundary. Dentro, qualquer
+    re-render ou desmontagem de subárvore levaria junto um diálogo aberto.
+  DUAS ARMADILHAS QUE O DESENHO FECHA, ambas com teste:
+  1. SEM HOST MONTADO (boot, erro de render, harness) a ponte cai para o
+     window.confirm nativo. Devolver false sozinho seria DECIDIR pelo usuário
+     que ele desistiu; devolver true seria pior. Degradar para o comportamento
+     antigo é o único caminho que não inventa uma resposta. Por isso ainda
+     existe exatamente UM window.confirm no arquivo, e o teste exige que seja um.
+  2. HOST DESMONTADO COM DIÁLOGO ABERTO deixaria a promessa pendente para
+     sempre: o `await` de quem chamou nunca continuaria e a ação ficaria travada
+     pela metade, sem erro nenhum na tela. O cleanup resolve como cancelamento —
+     o único desfecho que não executa nada destrutivo.
+  CUSTO: 17 funções viraram async, e isso é contagioso — _askImgurConsent virou
+  async e obrigou _uploadSingle a esperá-la. Foi o transpilador que achou cada
+  uma delas, uma por vez (protocolo #2 fazendo exatamente o que promete). Não há
+  mudança de comportamento nessas funções além do await: nenhuma tinha retorno
+  usado por quem chamava.
+  CUSTO HONESTO: o modal é bonito e não bloqueia, mas também não impede que o
+  usuário mexa no resto da tela por baixo — o <Modal> não é modal de verdade no
+  sentido de inertizar o fundo, e não mudei isso aqui. O teste de comportamento
+  cobre bhConfirm resolvendo com a escolha do usuário pelo caminho de fallback;
+  a abertura real do modal foi verificada à mão (clicar em Restaurar abre o
+  diálogo com título, mensagem e os dois botões; Cancelar fecha e não restaura),
+  não por teste automatizado — dirigir React de dentro do harness é trabalho de
+  outra fase. E o diário do bhLog continua sem superfície na UI: decidi não
+  inventar uma tela para ele sem você pedir.
+  ──────
+  BoardHub v23.14 — F3.1: bhLog, e o fim do silêncio na persistência (ago/2026)
+  Primeiro lote da F3. O plano pedia três coisas — bhLog, classificar os catches
+  vazios e trocar os diálogos bloqueantes. Este lote faz as duas primeiras; os
+  diálogos ficam para o F3.2, porque virar 18 window.confirm em modal assíncrono
+  é mudança de UI e de fluxo, e misturar isso aqui violaria o protocolo #5.
+  NÚMEROS RECONTADOS (o plano media o commit 8ad04c1; o arquivo andou desde):
+    catch vazio ....... plano dizia 47 · em 72afdcc eram 48 · HOJE eram 54
+    window.confirm .... 17, confere
+    alert ............. o BASELINE dizia ZERO. Existe UM, em index.html:6762.
+                        A afirmação era verdadeira sobre a string 'window.alert'
+                        e falsa sobre a realidade: `alert(` puro é igualmente
+                        bloqueante. São 18 diálogos, não 17.
+  E DOS 54, SEIS ERAM MEUS: a F1 levou 48→52 e a F2(A) 52→54. Escrevi catches
+  vazios na mesma sessão em que o plano pedia para eliminá-los.
+  DIAGNÓSTICO: a maioria dos catches vazios é LEGÍTIMA e continua vazia de
+  propósito — showPicker(), video.play() sob política de autoplay e
+  dataTransfer.setData estouram por desenho do navegador, e logar isso seria
+  ruído constante que treina qualquer um a ignorar o console. O subconjunto que
+  importa é outro: os que engoliam falha de ESCRITA em localStorage. Modo
+  privado, cota estourada ou perfil corrompido faziam o app seguir como se
+  tivesse salvado — com "Auto-save ativo" aceso na barra lateral.
+  • bhLog(tag, err, extra): buffer circular de 100 entradas, só em memória.
+    NÃO grava em localStorage de propósito — seria escrever exatamente onde a
+    falha que se quer registrar acontece —, e o teto existe porque diário sem
+    teto numa sessão longa é vazamento. bhLogDump() devolve CÓPIA: quem
+    inspeciona não altera o diário.
+    Ele NUNCA pode estourar: é chamado de dentro de catch, e um throw aqui
+    trocaria um erro engolido por um erro que derruba o caminho de recuperação.
+    Corpo inteiro envolvido, nada assume forma da entrada. Há teste jogando
+    objeto circular, null, undefined e string crua.
+  • 11 chamadas, todas em caminho de dados, com o custo real anotado em cada uma:
+      lsSave.FALHOU ........... o estado do usuário NÃO foi para o disco
+      sync.marcarSujo ......... o last-write-wins fica sem o carimbo local e o
+                                lado remoto ganha por padrão no próximo boot
+      sync.marcarEmDia (×3) ... o dispositivo repete o reconcile de 1º contato
+      reconcile.arquivarNuvem . a nuvem é preterida sem cópia no histórico
+      gc.ledger ............... a carência de 24h reinicia a cada varredura e
+                                nenhum órfão é coletado nunca
+      bhMarkCaptured .......... o autosave passa a capturar a cada 2,5s
+      saveIdentity, lsSave.quota, flushAoSair
+  RESULTADO: 54 → 48 catches vazios. Os 48 que ficam são os legítimos mais os
+  que ainda não foram classificados — este lote não varreu o arquivo inteiro,
+  atacou a classe que custa dados. O que sobra está nomeado no commit.
+  CUSTO HONESTO: bhLog torna a falha audível, não a trata. Ninguém vê o diário
+  sem abrir o console — não há superfície na UI ainda, e decidir se ela deve
+  existir (e onde) é trabalho do F3.2 junto com os diálogos. Os testes cobrem o
+  comportamento do logger e a presença das chamadas nos caminhos críticos; não
+  simulam um localStorage que rejeita escrita, que exigiria interceptar a API.
+  ──────
+  BoardHub v23.13 — F2(A): a edição concorrente para de sumir (ago/2026)
+  DIAGNÓSTICO: dois dispositivos já sincronizados com a conta. A tem edições
+  locais ainda não empurradas; B salva e publica. A recebe o snapshot e cai
+  neste ramo do applyMerged:
+      }else if(_hasPendingLocalEdit.current){ return; }
+  Não deixar o remoto sobrescrever as edições locais está CERTO — é a proteção
+  da v23 e ela fica. O problema é o que acontecia com o estado que chegou:
+  nada. Era descartado. Em seguida A empurrava, o push sobrescrevia a nuvem, e
+  o que B salvou desaparecia — sem cópia no histórico, sem aviso, sem nada que
+  permitisse recuperar. O ramo de PRIMEIRO CONTATO já arquivava o lado perdedor
+  desde a v23.1 ('cloud-superseded'); este, que roda em todo snapshot posterior,
+  não arquivava nada. Era o único caminho do reconcile em que um lado perdia sem
+  ir para o histórico antes.
+  • FIX: antes do return, o estado remoto vai para o histórico com a razão
+    'remoto-concorrente', e um aviso na tela explica que as edições locais foram
+    mantidas e a versão da nuvem está no Histórico de Backups. Arquivar ANTES do
+    return, porque depois do return não existe depois.
+  • A DECISÃO foi extraída para bhConcurrentDecision, função pura no topo do
+    arquivo, fora do App. Motivo: applyMerged vive num useEffect dentro de
+    componente, atrás da autenticação do Firebase, e é inalcançável para o
+    harness — é a limitação #3 do BASELINE. Extraindo a decisão, ela vira
+    testável por COMPORTAMENTO (4 testes) e o call site vira uma linha coberta
+    por guarda de fonte. Não resolve a limitação #3 inteira; tira dela a parte
+    que dava para tirar.
+  • TRÊS CASOS EM QUE NÃO SE ARQUIVA, todos com motivo:
+      remoto igual ao local ....... é o nosso próprio estado voltando; arquivar
+                                    seria ruído puro no histórico.
+      remoto igual ao já arquivado  o listener reentrega o mesmo documento em
+                                    reconexão e em mudança de metadata; sem esta
+                                    guarda, cada reentrega viraria um snapshot.
+      remoto sem dados ............ nuvem vazia virando snapshot é a classe do
+                                    incidente original — estado vazio sendo
+                                    tratado como dado.
+    A assinatura arquivada é zerada quando o dispositivo volta a espelhar a
+    nuvem, para que um conflito futuro seja arquivado de novo.
+  CUSTO HONESTO: isto preserva o estado remoto, não o FUNDE com o local. Quem
+  editou nos dois lugares continua tendo de escolher um e restaurar o outro pelo
+  histórico — merge de verdade é outra fase, e não foi feito. O aviso também não
+  diz QUAIS campos divergiram. E o teste do call site continua sendo de fonte:
+  os quatro testes de comportamento cobrem a decisão, não a chamada dentro do
+  applyMerged, que segue precisando de um stub de Firebase que ainda não existe.
+  ARMADILHA PAGA NO TESTE (a quinta desta série): a guarda de ordem fazia
+  jsx.replace(/\s+/g,'') e olhava 700 chars à frente do `else if`. Tirar espaço
+  não tira comentário — junta tudo num `//` gigante —, e o bloco que documenta
+  este próprio fix empurrou a chamada para fora da janela. Vermelho com o código
+  certo. Agora os comentários saem antes de qualquer medida de posição.
+  ──────
   BoardHub v23.12 — F1: o histórico de backup muda de casa (ago/2026)
   O histórico rotativo sai do localStorage e passa a morar no IndexedDB, em
   BANCO PRÓPRIO (boardhub_backups), com dois stores: `snapshots` (entrada
@@ -644,54 +925,120 @@
      no fim do <body>, e só quando o cache do bundle compilado não bate. -->
 <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
 <!-- Firebase loaded LAZILY after first paint — see _lazyFirebase() below -->
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- M4-tipografia: Figtree saiu, Alegreya Sans entrou. MESMA origem, MESMO link,
+     mesma quantidade de requisições — não é dependência nova (protocolo #7), é
+     troca de família dentro do que já se baixava. Pesos 300/400/500/700: o 600
+     que o CSS pedia em 8 lugares não existe no Alegreya Sans e o navegador
+     resolve para 700, que é o comportamento desejado num humanista de haste
+     mais leve que o Figtree. -->
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Alegreya+Sans:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<script>
+/* M3 — o tema tem de estar aplicado ANTES do primeiro paint. Esperar o React
+   faria quem usa o notturno ver um lampejo de papel claro em TODA abertura, e
+   aqui o React só monta depois do Babel — centenas de ms num cache frio.
+   Síncrono, minúsculo, e tolerante a localStorage indisponível (modo privado). */
+try{var _bhT=localStorage.getItem('boardhub_theme');if(_bhT==='notturno')document.documentElement.setAttribute('data-theme','notturno');}catch(e){}
+</script>
 <style>
-:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(28,25,23,.18);
+:root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(var(--ink),.18);
 /* M1 — rampa de andamento. Substitui as 4 cores de medalha que estavam cravadas
    no JSX (#CD7F32/#94A3B8/#FBBF24/#60A5FA). Não é arco-íris de gamificação: é
    tinta esquentando e adensando até chegar no próprio --accent do app, que fica
    reservado para o topo (Vivace). Adagio não tem cor — usa --muted, porque ser
    a faixa base não é conquista. */
---tempo-1:#8A7A5E;--tempo-2:#A9761F;--tempo-3:#9A5B2A;--tempo-4:#4A3728;}
+--tempo-1:#8A7A5E;--tempo-2:#A9761F;--tempo-3:#9A5B2A;--tempo-4:#4A3728;
+/* M3 — TRÍADES SEMÂNTICAS DE ESTADO.
+   O app pintava estado com um PAR cravado no lugar de uso: tint claro no fundo
+   + texto escuro por cima (#E8F5EC/#276b3e, #FEF9E7/#92700b, #FDEDED/#9B1C1C).
+   Esse par é o que morre num tema escuro: o tint clarinho vira um bloco leitoso
+   sobre fundo preto e o texto escuro some dentro dele. Não adianta trocar só o
+   fundo da página — os dois lados da tríade têm de virar juntos.
+   Por isso são tokens em TRÍADE (fundo/texto/linha) e não cores soltas: quem
+   usa pede 'perigo', não 'vermelho claro nº 3'. */
+/* M3.1 — PALETA DE PIGMENTO.
+   As tríades nasceram genéricas: verde #48BB78, amarelo #F59E0B, vermelho
+   #DC2626 — a paleta de framework, que grita "notificação de app" e briga com
+   Cormorant sobre papel quente. Trocadas por PIGMENTOS, que é o vocabulário que
+   já está em uso no resto do app (andamento, dinâmica, gravura):
+     verderame  — o verde-azulado da pátina de cobre, o verde da pintura
+                  italiana antes do viridian industrial
+     ocra       — terra amarela, o pigmento mais antigo que existe
+     rosso      — o vermelho veneziano de terra queimada, não o vermelho de alerta
+     oltremare  — o azul de lápis-lazúli, que vinha "de além-mar"
+   São cores de TERRA e MINERAL: dessaturadas, quentes, e convivem com o
+   --accent sépia em vez de disputar com ele. */
+--ok-bg:#E6EDE6;--ok-fg:#3F6152;--ok-line:#B4C7BB;
+--warn-bg:#F6EEDC;--warn-fg:#8A6A26;--warn-line:#DCC48A;
+--danger-bg:#F3E4E0;--danger-fg:#8C3A2E;--danger-line:#D9B3A9;
+--info-bg:#E6E9F0;--info-fg:#3A4E73;--info-line:#B3BECF;
+--neutral-bg:#F0EDE9;
+--danger-strong:#A6462F;--ok-strong:#5C8570;--warn-strong:#B98D3A;
+/* M3.1 — A TINTA, como tripla RGB. Havia 28 rgba(var(--ink),α) espalhados pelo
+   CSS: lavagens de tinta sobre papel, para hover, sombra e sulco. Todas somem
+   num fundo escuro, porque lavar preto com preto não faz nada. Guardar o CANAL
+   e não a cor deixa cada alpha no lugar e inverte tudo de uma vez. */
+--ink:28,25,23;--paper:253,252,250;}
+
+/* ── M3 — NOTTURNO ──────────────────────────────────────────────────────────
+   Tema escuro como TOGGLE, não substituição: o papel quente continua o padrão
+   (decisão do usuário, não minha). Vive inteiro na troca de tokens — nenhuma
+   regra de layout muda, nenhum seletor duplicado.
+   O fundo não é preto: é o mesmo marrom do papel puxado para baixo, senão a
+   interface troca de identidade em vez de trocar de luz. As tríades invertem a
+   lógica — fundo escuro e dessaturado, texto claro —, porque o mesmo tint claro
+   sobre preto vira ruído. */
+:root[data-theme="notturno"]{
+--bg:#17140F;--surface:#211C16;--border:#332B22;--border-2:#4A3F32;
+--text:#EDE7DE;--muted:#A79B8B;--accent:#C9A87C;--focus-ring:rgba(237,231,222,.22);
+--tempo-1:#8A7A5E;--tempo-2:#C08F35;--tempo-3:#C27642;--tempo-4:#C9A87C;
+/* Os mesmos quatro pigmentos vistos à luz de vela: o fundo é a terra, o texto é
+   o pigmento puro clareado o suficiente para ler. Nada de neon. */
+--ok-bg:#1B2620;--ok-fg:#9CBFAA;--ok-line:#3A5647;
+--warn-bg:#2A2417;--warn-fg:#CFAE72;--warn-line:#584A2C;
+--danger-bg:#2B1D19;--danger-fg:#CE9284;--danger-line:#5A3830;
+--info-bg:#1B2029;--info-fg:#9AAAC4;--info-line:#3A4557;
+--neutral-bg:#241E18;
+--danger-strong:#B4614C;--ok-strong:#6F937E;--warn-strong:#AC8A4E;
+--ink:237,231,222;--paper:23,20,15;}
 *,*::before,*::after{box-sizing:border-box;}
 /* Selection color */
-::selection{background:rgba(28,25,23,.12);color:var(--text);}
+::selection{background:rgba(var(--ink),.12);color:var(--text);}
 /* Smooth scroll for scrollable containers */
 html{scroll-behavior:smooth;}
 /* Offscreen rendering optimization - scoped to view containers only (not overlays/modals) */
 main>.fade-up{content-visibility:auto;contain-intrinsic-size:auto 500px;}
 /* Image performance: prevent layout shift, smooth decode */
 img{max-width:100%;display:block;}
-body{font-family:'Figtree',sans-serif;background:var(--bg);color:var(--text);margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+body{font-family:'Alegreya Sans',sans-serif;background:var(--bg);color:var(--text);margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
 h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
 ::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}::-webkit-scrollbar-thumb:hover{background:var(--muted);}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s,transform .15s;}
-.card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(28,25,23,.05);}
-.card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(28,25,23,.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:white;opacity:0;transition:opacity .2s;z-index:2;}
+.card:hover{border-color:var(--border-2);box-shadow:0 4px 20px rgba(var(--ink),.05);}
+.card .card-delete-btn{position:absolute;top:8px;left:8px;background:rgba(var(--ink),.55);backdrop-filter:blur(4px);border:none;border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--bg);opacity:0;transition:opacity .2s;z-index:2;}
 .card:hover .card-delete-btn{opacity:1;}
 /* Touch devices have no hover — keep card actions always visible (slightly dimmed) */
 @media (hover:none),(pointer:coarse){.card .card-delete-btn{opacity:.85;}}
-.card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(28,25,23,.07)!important;}
-.card-click:active{transform:scale(.985);box-shadow:0 1px 8px rgba(28,25,23,.06)!important;}
+.card-click{cursor:pointer;}.card-click:hover{border-color:var(--text)!important;box-shadow:0 4px 20px rgba(var(--ink),.07)!important;}
+.card-click:active{transform:scale(.985);box-shadow:0 1px 8px rgba(var(--ink),.06)!important;}
 /* Buttons — improved hover lift + press feedback */
-.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;position:relative;}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;font-family:'Alegreya Sans',sans-serif;font-size:.85rem;font-weight:500;cursor:pointer;transition:all .18s;border:none;outline:none;position:relative;}
 .btn:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);}
-.btn-dark{background:var(--text);color:white;}.btn-dark:hover{box-shadow:0 2px 10px rgba(28,25,23,.2);transform:translateY(-1px);}.btn-dark:active{transform:translateY(0);box-shadow:none;opacity:.9;}
+.btn-dark{background:var(--text);color:var(--bg);}.btn-dark:hover{box-shadow:0 2px 10px rgba(var(--ink),.2);transform:translateY(-1px);}.btn-dark:active{transform:translateY(0);box-shadow:none;opacity:.9;}
 .btn-outline{background:transparent;color:var(--muted);border:1px solid var(--border);}.btn-outline:hover{border-color:var(--text);color:var(--text);}.btn-outline:active{background:var(--bg);}
 .btn-ghost{background:transparent;color:var(--muted);border:none;padding:6px 10px;border-radius:6px;}.btn-ghost:hover{color:var(--text);background:var(--bg);}.btn-ghost:active{background:var(--border);}
 .btn-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;}.btn-danger:hover{background:#FEE2E2;}.btn-danger:active{background:#FECACA;}
 /* Nav items with subtle left accent on active */
-.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.85rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;background:transparent;border:none;outline:none;width:100%;font-family:'Figtree',sans-serif;letter-spacing:.01em;}
-.nav-item:hover{background:rgba(28,25,23,.05);color:var(--text);}.nav-item.active{background:var(--text);color:white;box-shadow:0 1px 4px rgba(28,25,23,.15);}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.85rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;background:transparent;border:none;outline:none;width:100%;font-family:'Alegreya Sans',sans-serif;letter-spacing:.01em;}
+.nav-item:hover{background:rgba(var(--ink),.05);color:var(--text);}.nav-item.active{background:var(--text);color:var(--bg);box-shadow:0 1px 4px rgba(var(--ink),.15);}
 .nav-item:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);}
 .tag{display:inline-block;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:4px;}
-.tag-green{background:#E8F5EC;color:#276b3e;}.tag-yellow{background:#FEF9E7;color:#92700b;}.tag-gray{background:#F0EDE9;color:var(--muted);}.tag-red{background:#FDEDED;color:#9B1C1C;}.tag-blue{background:#EFF6FF;color:#1e40af;}
-.input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Figtree',sans-serif;color:var(--text);transition:border-color .2s,box-shadow .2s;}.input-bare:focus{border-color:var(--text);box-shadow:0 1px 0 0 var(--text);}
+.tag-green{background:var(--ok-bg);color:var(--ok-fg);}.tag-yellow{background:var(--warn-bg);color:var(--warn-fg);}.tag-gray{background:var(--neutral-bg);color:var(--muted);}.tag-red{background:var(--danger-bg);color:var(--danger-fg);}.tag-blue{background:var(--info-bg);color:var(--info-fg);}
+.input-bare{background:transparent;outline:none;border-bottom:1px solid var(--border);font-family:'Alegreya Sans',sans-serif;color:var(--text);transition:border-color .2s,box-shadow .2s;}.input-bare:focus{border-color:var(--text);box-shadow:0 1px 0 0 var(--text);}
 /* Input — subtle focus glow */
-.input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Figtree',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}.input-box:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(28,25,23,.06);}
-input[type="date"]{font-family:'Figtree',sans-serif;}
+.input-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'Alegreya Sans',sans-serif;font-size:.85rem;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}.input-box:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(var(--ink),.06);}
+input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
-.tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
+.tab-btn{padding:10px 0;margin-right:24px;background:none;border:none;cursor:pointer;font-family:'Alegreya Sans',sans-serif;font-size:.85rem;font-weight:500;transition:all .15s;margin-bottom:-1px;}
 .tab-btn:focus-visible{box-shadow:0 0 0 2.5px var(--focus-ring);border-radius:4px;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
 .fade-up{animation:fadeUp .35s ease both;}
@@ -699,9 +1046,9 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 /* Overlay now has a visible backdrop */
 .overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;animation:overlayIn .2s ease;padding:24px;padding-left:244px;/* 220px sidebar + 24px — centers dialogs over the content area; mobile media query zeroes this */}
-.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(28,25,23,.18);max-height:95vh;overflow-y:auto;}
+.modal{background:var(--surface);border-radius:18px;border:1px solid var(--border);padding:24px 28px;width:100%;animation:modalIn .25s ease;box-shadow:0 20px 60px rgba(var(--ink),.18);max-height:95vh;overflow-y:auto;}
 .upload-zone{border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:border-color .2s,background .2s,transform .15s;padding:24px;text-align:center;color:var(--muted);}
-.upload-zone:hover{border-color:var(--text);background:rgba(28,25,23,.02);color:var(--text);}.upload-zone:active{transform:scale(.98);}
+.upload-zone:hover{border-color:var(--text);background:rgba(var(--ink),.02);color:var(--text);}.upload-zone:active{transform:scale(.98);}
 .cover-wrap{position:relative;}.cover-edit-overlay{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .25s;cursor:pointer;}
 .cover-wrap:hover .cover-edit-overlay{background:rgba(0,0,0,.45);opacity:1;}
 .task-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);transition:background .1s;}.task-row:last-child{border-bottom:none;}
@@ -715,11 +1062,11 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 @keyframes lbIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
 .lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
 .lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;}
-.ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Figtree',sans-serif;transition:all .12s;}
+.ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Alegreya Sans',sans-serif;transition:all .12s;}
 .ptask-pill:active{transform:scale(.92);}
-.ptask-Pendente{background:#F0EDE9;color:var(--muted);}.ptask-Fazendo{background:#FEF9E7;color:#92700b;}.ptask-Concluído{background:#E8F5EC;color:#276b3e;}.ptask-Atrasado{background:#FDEDED;color:#9B1C1C;}
+.ptask-Pendente{background:var(--neutral-bg);color:var(--muted);}.ptask-Fazendo{background:var(--warn-bg);color:var(--warn-fg);}.ptask-Concluído{background:var(--ok-bg);color:var(--ok-fg);}.ptask-Atrasado{background:var(--danger-bg);color:var(--danger-fg);}
 @keyframes toastPop{from{opacity:0;transform:translateX(-50%) translateY(8px) scale(.95);}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
-.save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:white;padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .3s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(28,25,23,.2);}
+.save-toast{position:fixed;bottom:20px;left:calc(220px + 50%);transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 18px;border-radius:30px;font-size:.78rem;font-weight:500;z-index:999;animation:toastPop .3s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 16px rgba(var(--ink),.2);}
 .drag-handle{cursor:grab;color:var(--border-2);opacity:0;transition:opacity .15s;display:flex;align-items:center;flex-shrink:0;padding:2px 3px;}
 .drag-handle:active{cursor:grabbing;}
 .drag-row:hover .drag-handle,.drag-card:hover .drag-handle{opacity:1;}
@@ -728,41 +1075,41 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 
 /* Gantt styles */
 .gantt-bar{transition:opacity .12s,box-shadow .12s;}.gantt-bar:hover{opacity:.88;}
-.gantt-row-left:hover{background:rgba(28,25,23,.04)!important;}
+.gantt-row-left:hover{background:rgba(var(--ink),.04)!important;}
 /* Gallery image hover zoom — replaces JS onMouseEnter/Leave handlers */
 .img-zoom{transition:transform .4s;}.img-zoom:hover{transform:scale(1.06);}
 .img-zoom-sm{transition:transform .3s;}.img-zoom-sm:hover{transform:scale(1.03);}
 
 /* Hover utilities - replaces onMouseEnter/Leave JS handlers */
 .hover-text:hover{color:var(--text)!important;}
-.hover-danger:hover{color:#DC2626!important;}
+.hover-danger:hover{color:var(--danger-strong)!important;}
 .hover-surface:hover{background:var(--surface);}
 .hover-border-text:hover{border-color:var(--text)!important;}
 .text-link{color:var(--muted);transition:color .15s;}.text-link:hover{color:var(--text)!important;}
-.text-link-danger{color:var(--muted);transition:color .15s;}.text-link-danger:hover{color:#DC2626!important;}
+.text-link-danger{color:var(--muted);transition:color .15s;}.text-link-danger:hover{color:var(--danger-strong)!important;}
 
 /* Pomodoro stats slide-in panel */
 @keyframes slideInStats{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
 
 /* - BOTTOM TAB BAR - */
 .bottom-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:80;background:rgba(253,252,250,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);display:flex;align-items:stretch;justify-content:space-around;padding:4px 0 env(safe-area-inset-bottom,0);height:56px;}
-.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s,transform .1s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
+.bottom-tab-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;border:none;background:none;cursor:pointer;font-family:'Alegreya Sans',sans-serif;font-size:.62rem;font-weight:600;color:var(--muted);padding:6px 2px;transition:color .15s,transform .1s;-webkit-tap-highlight-color:transparent;letter-spacing:.02em;}
 .bottom-tab-item.active{color:var(--text);}
 .bottom-tab-item:active{transform:scale(.9);opacity:.7;}
 @keyframes moreSheetIn{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
 @keyframes moreOverlayIn{from{opacity:0;}to{opacity:1;}}
 .more-sheet-overlay{position:fixed;inset:0;z-index:90;animation:moreOverlayIn .2s ease;}
-.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .3s cubic-bezier(.32,0.72,.5,1.02);max-height:70vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(28,25,23,.15);}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;z-index:91;background:var(--surface);border-radius:18px 18px 0 0;padding:12px 16px env(safe-area-inset-bottom,16px);animation:moreSheetIn .3s cubic-bezier(.32,0.72,.5,1.02);max-height:70vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(var(--ink),.15);}
 .more-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--border-2);margin:0 auto 16px;}
-.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent;}
+.more-sheet-item{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:10px;border:none;background:none;cursor:pointer;font-family:'Alegreya Sans',sans-serif;font-size:.95rem;font-weight:500;color:var(--text);width:100%;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent;}
 .more-sheet-item:active{background:var(--bg);transform:scale(.97);}
 .more-sheet-item.active-sheet{background:var(--bg);font-weight:600;}
 /* Mobile header bar — frosted glass */
 .mobile-header{position:sticky;top:0;z-index:50;background:rgba(253,252,250,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .mobile-header-title{font-family:'Cormorant Garamond',serif;font-size:1.15rem;font-weight:500;letter-spacing:-.02em;}
 /* FAB */
-.fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(28,25,23,.25),0 1px 3px rgba(28,25,23,.1);z-index:70;transition:transform .15s,box-shadow .15s;-webkit-tap-highlight-color:transparent;}
-.fab:active{transform:scale(.88);box-shadow:0 2px 8px rgba(28,25,23,.2);}
+.fab{position:fixed;bottom:72px;right:16px;width:56px;height:56px;border-radius:50%;background:var(--text);color:var(--bg);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(var(--ink),.25),0 1px 3px rgba(var(--ink),.1);z-index:70;transition:transform .15s,box-shadow .15s;-webkit-tap-highlight-color:transparent;}
+.fab:active{transform:scale(.88);box-shadow:0 2px 8px rgba(var(--ink),.2);}
 
 /* - MOBILE-LAYOUT COMPONENT STYLES (always applied - used whenever isMobile=true) - */
 /* Compact list rows */
@@ -775,9 +1122,9 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .compact-row-meta{font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* Segmented tabs */
 .seg-tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
-.seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Figtree',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .2s cubic-bezier(.4,0,.2,1);background:transparent;color:var(--muted);}
+.seg-tab{flex:1;min-width:0;padding:10px 8px;border-radius:8px;border:none;cursor:pointer;font-family:'Alegreya Sans',sans-serif;font-size:.84rem;font-weight:600;text-align:center;white-space:nowrap;transition:all .2s cubic-bezier(.4,0,.2,1);background:transparent;color:var(--muted);}
 .seg-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1);}
-.seg-tab:active:not(.active){background:rgba(28,25,23,.04);}
+.seg-tab:active:not(.active){background:rgba(var(--ink),.04);}
 /* Vertical timeline */
 .vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
 .vtimeline-item:last-child{border-bottom:none;}
@@ -787,7 +1134,7 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
 .drag-item .drag-handle{opacity:0;transition:opacity .12s;}
 .drag-item:hover .drag-handle{opacity:1;}
-.drag-item.drag-over{outline:2px dashed var(--text);outline-offset:-2px;border-radius:8px;background:rgba(28,25,23,.02);}
+.drag-item.drag-over{outline:2px dashed var(--text);outline-offset:-2px;border-radius:8px;background:rgba(var(--ink),.02);}
 
 /* - RESPONSIVE - */
 @media(max-width:768px){
@@ -860,41 +1207,41 @@ input[type="date"]{font-family:'Figtree',sans-serif;}
 .view-enter{animation:viewEnter .28s cubic-bezier(.4,0,.2,1) both;}
 @keyframes cmdIn{from{opacity:0;transform:scale(.97) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 @keyframes cmdOverlayIn{from{opacity:0;}to{opacity:1;}}
-.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(28,25,23,.08);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
-.cmd-palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 80px rgba(28,25,23,.18),0 4px 16px rgba(28,25,23,.08);overflow:hidden;animation:cmdIn .2s cubic-bezier(.32,.72,.5,1.02);}
+.cmd-overlay{position:fixed;inset:0;z-index:9999;background:rgba(var(--ink),.08);display:flex;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px);animation:cmdOverlayIn .15s ease;}
+.cmd-palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 80px rgba(var(--ink),.18),0 4px 16px rgba(var(--ink),.08);overflow:hidden;animation:cmdIn .2s cubic-bezier(.32,.72,.5,1.02);}
 .cmd-input-wrap{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);}
-.cmd-input{flex:1;border:none;outline:none;background:transparent;font-family:'Figtree',sans-serif;font-size:1rem;color:var(--text);}
+.cmd-input{flex:1;border:none;outline:none;background:transparent;font-family:'Alegreya Sans',sans-serif;font-size:1rem;color:var(--text);}
 .cmd-input::placeholder{color:var(--border-2);}
 .cmd-results{max-height:340px;overflow-y:auto;padding:8px;}
 .cmd-results::-webkit-scrollbar{width:4px;}.cmd-results::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
 .cmd-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;cursor:pointer;transition:background .1s;font-size:.88rem;}
 .cmd-item:hover,.cmd-item.cmd-active{background:var(--bg);}
 .cmd-item-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--bg);color:var(--muted);}
-.cmd-item.cmd-active .cmd-item-icon{background:var(--text);color:white;}
+.cmd-item.cmd-active .cmd-item-icon{background:var(--text);color:var(--bg);}
 .cmd-item-title{font-weight:600;font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .cmd-item-meta{font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.cmd-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:5px;background:var(--bg);border:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--muted);font-family:'Figtree',sans-serif;}
+.cmd-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:5px;background:var(--bg);border:1px solid var(--border);font-size:.68rem;font-weight:600;color:var(--muted);font-family:'Alegreya Sans',sans-serif;}
 .cmd-footer{display:flex;align-items:center;gap:12px;padding:10px 20px;border-top:1px solid var(--border);font-size:.72rem;color:var(--muted);}
 .cmd-empty{padding:32px 20px;text-align:center;color:var(--muted);font-size:.88rem;}
 .progress-ring{transform:rotate(-90deg);}
 .progress-ring-bg{stroke:var(--border);fill:none;}
 .progress-ring-fill{fill:none;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1);}
 .sidebar-section-label{font-size:.6rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--border-2);padding:0 12px;margin-top:20px;margin-bottom:6px;}
-.sidebar-fav{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;font-size:.8rem;color:var(--muted);cursor:pointer;transition:all .12s;border:none;background:none;width:100%;font-family:'Figtree',sans-serif;text-align:left;}
-.sidebar-fav:hover{background:rgba(28,25,23,.05);color:var(--text);}
+.sidebar-fav{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;font-size:.8rem;color:var(--muted);cursor:pointer;transition:all .12s;border:none;background:none;width:100%;font-family:'Alegreya Sans',sans-serif;text-align:left;}
+.sidebar-fav:hover{background:rgba(var(--ink),.05);color:var(--text);}
 .sidebar-fav .fav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 @keyframes quickCaptureIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
-.quick-capture{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:85;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(28,25,23,.12),0 2px 8px rgba(28,25,23,.06);display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;animation:quickCaptureIn .25s cubic-bezier(.34,1.56,.64,1);min-width:320px;max-width:min(480px,90vw);}
-.quick-capture input{flex:1;border:none;outline:none;background:transparent;font-family:'Figtree',sans-serif;font-size:.9rem;color:var(--text);}
+.quick-capture{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:85;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(var(--ink),.12),0 2px 8px rgba(var(--ink),.06);display:flex;align-items:center;gap:10px;padding:8px 12px 8px 16px;animation:quickCaptureIn .25s cubic-bezier(.34,1.56,.64,1);min-width:320px;max-width:min(480px,90vw);}
+.quick-capture input{flex:1;border:none;outline:none;background:transparent;font-family:'Alegreya Sans',sans-serif;font-size:.9rem;color:var(--text);}
 .quick-capture input::placeholder{color:var(--border-2);}
 .card-project{position:relative;overflow:hidden;transition:all .2s cubic-bezier(.4,0,.2,1);}
-.card-project:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(28,25,23,.08)!important;}
+.card-project:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(var(--ink),.08)!important;}
 .card-project:active{transform:translateY(0);}
-.streak-dot-0{background:var(--border);}.streak-dot-1{background:#E8F5EC;}.streak-dot-2{background:#9AE6B4;}.streak-dot-3{background:#48BB78;}.streak-dot-4{background:#276b3e;}
+.streak-dot-0{background:var(--border);}.streak-dot-1{background:var(--ok-bg);}.streak-dot-2{background:var(--ok-line);}.streak-dot-3{background:var(--ok-strong);}.streak-dot-4{background:var(--ok-fg);}
 .heatmap-row{display:flex;gap:3px;align-items:center;}
 .heat-cell{border-radius:3px;transition:all .15s;}.heat-cell:hover{transform:scale(1.3);}
-.nav-item .nav-badge{position:absolute;right:10px;min-width:18px;height:18px;border-radius:9px;background:rgba(28,25,23,.08);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;}
-.nav-item.active .nav-badge{background:rgba(255,255,255,.2);color:white;}
+.nav-item .nav-badge{position:absolute;right:10px;min-width:18px;height:18px;border-radius:9px;background:rgba(var(--ink),.08);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700;}
+.nav-item.active .nav-badge{background:rgba(var(--paper),.22);color:var(--bg);}
 @keyframes countUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes imgFadeIn{from{opacity:0;}to{opacity:1;}}
 .stat-value{animation:countUp .4s cubic-bezier(.4,0,.2,1) both;}
@@ -960,6 +1307,51 @@ const localDateISO=(d=new Date())=>{
   return y+'-'+m+'-'+dd;
 };
 
+// - F3: DIÁRIO DE FALHAS -
+// Havia 54 `catch{}` vazios neste arquivo. A maioria é legítima — showPicker(),
+// video.play() sob política de autoplay e dataTransfer estouram por desenho do
+// navegador, e logar isso seria ruído constante. Mas um subconjunto engolia
+// exatamente a classe de falha que já custou dados aqui: localStorage que parou
+// de aceitar escrita (modo privado, cota estourada, perfil corrompido). Nesses,
+// o app seguia como se tivesse salvado, e o usuário só descobria depois.
+//
+// bhLog não substitui tratamento de erro: ele torna a falha AUDÍVEL. O buffer é
+// circular e vive só em memória — de propósito. Gravar o diário de falhas em
+// localStorage seria escrever justamente onde a falha que se quer registrar
+// acontece, e um diário que cresce sem teto numa sessão longa é vazamento.
+//
+// Ele NUNCA pode estourar: é chamado de dentro de catch, e um throw aqui
+// trocaria um erro engolido por um erro que derruba o caminho de recuperação.
+// Por isso o corpo inteiro é envolvido, e nada aqui assume forma da entrada.
+const BH_LOG_CAP=100;
+const _bhLogBuf=[];
+const bhLog=(tag,err,extra)=>{
+  try{
+    let msg='';
+    try{msg=(err&&(err.message||err.name))||(err==null?'':String(err));}catch{msg='(erro ilegível)';}
+    _bhLogBuf.push({at:new Date().toISOString(),tag:String(tag==null?'?':tag),msg:String(msg).slice(0,300),
+                    extra:extra===undefined?undefined:String(extra).slice(0,200)});
+    while(_bhLogBuf.length>BH_LOG_CAP)_bhLogBuf.shift();
+    console.warn('[BoardHub]',tag,msg,extra===undefined?'':extra);
+  }catch{}
+};
+// Cópia, não o buffer vivo: quem inspeciona não pode alterar o diário.
+const bhLogDump=()=>_bhLogBuf.slice();
+
+// - M3: TEMA -
+// 'papel' (padrão) e 'notturno'. O padrão é o papel quente por decisão sua, não
+// por preferência do sistema: o app tem uma identidade e ela é clara. Quem quer
+// o escuro liga, e a escolha persiste.
+const THEME_KEY='boardhub_theme';
+const themeLoad=()=>{try{return localStorage.getItem(THEME_KEY)==='notturno'?'notturno':'papel';}catch{return 'papel';}};
+const themeApply=t=>{
+  try{
+    if(t==='notturno')document.documentElement.setAttribute('data-theme','notturno');
+    else document.documentElement.removeAttribute('data-theme');
+  }catch(e){bhLog('themeApply',e);}
+  try{localStorage.setItem(THEME_KEY,t);}catch(e){bhLog('themeSave',e,'o tema volta ao padrão no próximo boot');}
+};
+
 // - LOCAL STORAGE -
 const LS_KEY = 'boardhub_v2';
 const DIRTY_KEY = 'boardhub_dirty'; // '1' = localStorage holds edits not yet confirmed pushed to cloud
@@ -971,7 +1363,14 @@ const lsSave = s => {
     // Quota exceeded — strip any accidental base64 that slipped through (single pass)
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
-    } catch { /* silent - idb:// refs and https:// URLs never cause quota issues */ }
+      bhLog('lsSave.quota', e, 'gravou sem os data:image embutidos');
+    } catch(e2) {
+      // F3: este era o `catch{}` mais caro do arquivo. Se ele dispara, o estado
+      // do usuário NÃO foi para o disco — e o app seguia exatamente igual, com
+      // o "Auto-save ativo" aceso na barra lateral. Continuar não estourando
+      // está certo (derrubar a UI não salva nada), mas silenciar não.
+      bhLog('lsSave.FALHOU', e2, 'o estado NÃO foi persistido');
+    }
   }
 };
 // - GLOBAL TRASH AUTO-PURGE -
@@ -1037,6 +1436,22 @@ const bhSig=s=>{ // cheap content hash (djb2) for dedup — volatile-free copy
   let h=5381;
   for(let i=0;i<str.length;i++){h=((h<<5)+h+str.charCodeAt(i))|0;}
   return String(h);
+};
+// F2(A) — o que fazer com um estado remoto que chegou enquanto há edição local
+// pendente. Fica AQUI, fora do App, de propósito: a decisão dentro de
+// applyMerged é inalcançável para o harness (useEffect dentro de componente,
+// atrás de auth do Firebase), e a limitação #3 do BASELINE registra isso como
+// dívida. Extraindo a decisão, ela passa a ser testável por comportamento e o
+// call site vira uma linha.
+//
+// 'arquivar' significa: guardar o remoto no histórico ANTES de descartá-lo em
+// favor das edições locais. Sem isso, o que o outro dispositivo salvou some
+// quando este empurra por cima — sem cópia em lugar nenhum.
+const bhConcurrentDecision=({localSig,remoteSig,lastArchivedSig,remoteHasData})=>{
+  if(!remoteHasData)return 'ignorar';           // nuvem vazia não é dado a preservar
+  if(remoteSig===localSig)return 'ignorar';     // é o nosso próprio estado voltando
+  if(remoteSig===lastArchivedSig)return 'ignorar'; // o listener reentrega o mesmo doc
+  return 'arquivar';
 };
 const bhCounts=s=>({
   projects:(s.projects||[]).filter(p=>!p.deleted).length,
@@ -1179,7 +1594,9 @@ const bhLastAt=()=>{
   try{if(_bhLastAt)localStorage.setItem(BH_LAST_AT_KEY,_bhLastAt);}catch{}
   return _bhLastAt;
 };
-const bhMarkCaptured=at=>{_bhLastAt=at;try{localStorage.setItem(BH_LAST_AT_KEY,at);}catch{}};
+// F3: se esta chave não grava, o autosave perde a referência de "quando foi o
+// último snapshot" e passa a capturar a cada 2,5s em vez de a cada 30min.
+const bhMarkCaptured=at=>{_bhLastAt=at;try{localStorage.setItem(BH_LAST_AT_KEY,at);}catch(e){bhLog('bhMarkCaptured',e);}};
 const bhRetention=list=>{
   // Two tiers, one merged list (newest-first):
   //  • WEEKLY tier (reason 'daily'): one slot per weekday, captured on first open
@@ -1306,7 +1723,7 @@ bhHistoryInit();
 // - IDENTITY (hub name + OS name, set on first run) -
 const ID_KEY = 'boardhub_identity';
 const loadIdentity = () => { try { const s = localStorage.getItem(ID_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
-const saveIdentity = id => { try { localStorage.setItem(ID_KEY, JSON.stringify(id)); } catch {} };
+const saveIdentity = id => { try { localStorage.setItem(ID_KEY, JSON.stringify(id)); } catch(e) { bhLog('saveIdentity', e); } };
 
 // - SEED DATA -
 // Dynamic dates relative to today so new users see relevant timelines
@@ -1396,9 +1813,21 @@ const _resolveIcon=(name)=>{
     tmp.remove();
   }catch(e){}
 };
-const Icon=({name,size=16,style={}})=>{
+// M4-tipografia: a HASTE dos ícones.
+// O Lucide desenha com strokeWidth 2 sobre uma grade de 24 — proporção grossa,
+// que é o que faz um ícone ler como "app moderno" mesmo ao lado de uma serifada
+// do século XVII. Gravura tem haste FINA: a linha existe para delimitar, não
+// para pesar. 1,25 é o ponto onde o traço ainda aguenta 12px sem sumir e já
+// deixa de competir com o texto.
+// Trocar a FAMÍLIA de ícones custaria uma dependência de CDN nova (protocolo
+// #7); mudar a haste custa uma linha e resolve a maior parte da distância.
+// A haste escala com o tamanho: um ícone de 32px com a mesma haste de um de
+// 12px fica anêmico, então cresce um pouco junto.
+const ICON_STROKE=1.25;
+const Icon=({name,size=16,style={},strokeWidth}) =>{
   _resolveIcon(name);
-  return React.createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
+  const sw=strokeWidth!=null?strokeWidth:(size>=28?ICON_STROKE*1.2:ICON_STROKE);
+  return React.createElement('svg',{xmlns:'http://www.w3.org/2000/svg',width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:sw,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'inline-block',flexShrink:0,...style},dangerouslySetInnerHTML:{__html:_svgCache[name]||''}});
 };
 // Pre-resolve high-frequency icons so first render avoids DOM fallback
 ['layout-dashboard','folder-open','image','lightbulb','graduation-cap','share-2','users','refresh-cw',
@@ -2116,13 +2545,16 @@ const _compressImage=async(file)=>{
 // that matters — ask once per session before the first Imgur fallback and
 // remember the answer. Declining stores the image locally (IDB) instead.
 let _imgurAllowed=null; // null = not asked yet, true/false = session decision
-const _askImgurConsent=()=>{
+const _askImgurConsent=async()=>{
   if(_imgurAllowed===null){
-    _imgurAllowed=window.confirm(
-      'Sem nuvem do Google disponível para esta imagem.\n\n'+
+    _imgurAllowed=await bhConfirm({
+      title:'Enviar ao Imgur?',
+      confirmLabel:'Enviar ao Imgur',
+      cancelLabel:'Manter só aqui',
+      message:'Sem nuvem do Google disponível para esta imagem.\n\n'+
       'Enviar para o Imgur? A imagem ficará acessível publicamente por URL '+
       '(qualquer pessoa com o link pode ver).\n\n'+
-      'Cancelar mantém a imagem apenas neste dispositivo (não sincroniza).');
+      'Cancelar mantém a imagem apenas neste dispositivo (não sincroniza).'});
   }
   return _imgurAllowed;
 };
@@ -2133,7 +2565,7 @@ const _uploadSingle=async(file)=>{
     try{return await uploadToFirebaseStorage(file,_fbAuth.currentUser.uid);}
     catch(e){console.warn('[BoardHub] Firebase Storage failed:',e.message);}
   }
-  if(!_isVideoFile(file)&&_askImgurConsent()){
+  if(!_isVideoFile(file)&&await _askImgurConsent()){
     try{return await _uploadImgur(file);}catch(e){console.warn('[BoardHub] Imgur failed:',e.message);}
   }
   console.warn('[BoardHub] Falling back to local IDB. File will NOT sync across devices.');
@@ -2259,7 +2691,10 @@ const _idbKeyAgeMs=k=>{
 const GC_LEDGER_KEY='boardhub_gc_pending';
 const GC_GRACE_MS=24*3600*1000;
 const _gcLedgerLoad=()=>{try{const o=JSON.parse(localStorage.getItem(GC_LEDGER_KEY));return o&&typeof o==='object'&&!Array.isArray(o)?o:{};}catch{return{};}};
-const _gcLedgerSave=o=>{try{Object.keys(o).length?localStorage.setItem(GC_LEDGER_KEY,JSON.stringify(o)):localStorage.removeItem(GC_LEDGER_KEY);}catch{}};
+// F3: o ledger é o que dá ao GC a carência de 24h. Se ele não grava, toda
+// varredura vira "primeira observação" e nenhum órfão é coletado nunca — falha
+// segura, mas silenciosa, e o banco cresce sem explicação.
+const _gcLedgerSave=o=>{try{Object.keys(o).length?localStorage.setItem(GC_LEDGER_KEY,JSON.stringify(o)):localStorage.removeItem(GC_LEDGER_KEY);}catch(e){bhLog('gc.ledger',e,'a carência de 24h reinicia a cada varredura');}};
 const gcIdb=async()=>{
   try{
     const live=lsLoad();
@@ -2310,10 +2745,10 @@ const gcIdb=async()=>{
 
 // - TRASH BANNER -
 const TrashBanner=({label,onExit})=>(
-  <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'#991B1B'}}>
+  <div style={{background:'var(--danger-bg)',border:'1px solid #FECACA',borderRadius:10,padding:'10px 18px',marginBottom:20,display:'flex',alignItems:'center',gap:10,fontSize:'.83rem',color:'var(--danger-fg)'}}>
     <Icon name="trash-2" size={14}/>
     <span>Você está vendo a lixeira de <strong>{label}</strong>. Itens aqui podem ser restaurados ou excluídos permanentemente.</span>
-    <button onClick={onExit} className="btn btn-ghost" style={{marginLeft:'auto',padding:'3px 10px',fontSize:'.78rem',color:'#991B1B'}}>Sair da lixeira</button>
+    <button onClick={onExit} className="btn btn-ghost" style={{marginLeft:'auto',padding:'3px 10px',fontSize:'.78rem',color:'var(--danger-fg)'}}>Sair da lixeira</button>
   </div>
 );
 
@@ -2322,6 +2757,65 @@ const TrashBanner=({label,onExit})=>(
 // document-level listener). A shared stack makes Escape close only the top
 // one. Also adds a minimal focus trap + focus restore for keyboard use.
 const _modalStack=[];
+// - F3.2: CONFIRMAÇÃO ASSÍNCRONA -
+// Substitui window.confirm/alert, que congelam a thread inteira: durante um
+// confirm nativo o autosave não roda, o listener do Firestore não aplica nada e
+// o pêndulo do pomodoro para. Fora isso, o diálogo do navegador não tem a
+// tipografia do app e não dá para marcar uma ação como destrutiva.
+//
+// A ponte é module-level porque bhConfirm é chamada de funções que não são
+// componentes. O host se registra ao montar e se desregistra ao desmontar.
+let _bhConfirmOpen=null;
+const bhConfirm=opts=>{
+  const o=typeof opts==='string'?{message:opts}:(opts||{});
+  // Sem host montado (boot, erro de render, harness), cai para o diálogo nativo.
+  // Retornar false sozinho seria DECIDIR PELO USUÁRIO que ele desistiu; retornar
+  // true seria pior ainda. Degradar para o comportamento antigo é o único
+  // caminho que não inventa uma resposta.
+  if(typeof _bhConfirmOpen!=='function'){
+    try{return Promise.resolve(window.confirm(o.message||''));}catch{return Promise.resolve(false);}
+  }
+  return new Promise(res=>{_bhConfirmOpen(o,res);});
+};
+const bhAlert=message=>bhConfirm({message,alertOnly:true}).then(()=>undefined);
+const ConfirmHost=()=>{
+  const [st,setSt]=useState(null); // {opts,resolve}
+  const stRef=useRef(null);
+  useEffect(()=>{stRef.current=st;});
+  useEffect(()=>{
+    _bhConfirmOpen=(opts,resolve)=>setSt({opts,resolve});
+    return()=>{
+      _bhConfirmOpen=null;
+      // Se o host desmontar com um diálogo aberto, a promessa ficaria pendente
+      // para sempre e o `await` de quem chamou nunca continuaria — a ação
+      // travaria pela metade, sem erro. Resolver como "cancelou" é o único
+      // desfecho seguro: não executa nada destrutivo.
+      const cur=stRef.current;
+      if(cur&&cur.resolve){try{cur.resolve(false);}catch{}}
+    };
+  },[]);
+  if(!st)return null;
+  const o=st.opts||{};
+  const done=v=>{const r=st.resolve;setSt(null);try{r(v);}catch(e){bhLog('bhConfirm.resolve',e);}};
+  return (
+    <Modal title={o.title||(o.alertOnly?'Aviso':'Confirmar')} onClose={()=>done(false)} width={o.width||420}>
+      <div style={{fontSize:'.85rem',lineHeight:1.6,whiteSpace:'pre-wrap',color:'var(--text)'}}>{o.message||''}</div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:20}}>
+        {!o.alertOnly&&(
+          <button onClick={()=>done(false)} className="btn btn-ghost" style={{padding:'6px 14px',fontSize:'.8rem'}}>
+            {o.cancelLabel||'Cancelar'}
+          </button>
+        )}
+        <button onClick={()=>done(true)} autoFocus
+                className={o.danger?'btn btn-danger':'btn btn-primary'}
+                style={{padding:'6px 14px',fontSize:'.8rem'}}>
+          {o.confirmLabel||(o.alertOnly?'Entendi':'Confirmar')}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
 const Modal=({title,onClose,children,width=480})=>{
   const boxRef=useRef(null);
   const tokenRef=useRef(null);
@@ -2586,7 +3080,7 @@ const SetupModal=({onDone})=>{
 const splitHubName=name=>{const m=(name||'BoardHub').match(/^([A-Z][a-z]*)([A-Z].*)$/);return m?[m[1],m[2]]:[(name||'BoardHub'),''];};
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject})=>{
+const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
   const activeProjects=useMemo(()=>(projects||[]).filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const badges={'projects':activeProjects.length||0};
   return(
@@ -2597,7 +3091,7 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
       </div>
       <div style={{fontSize:'.6rem',color:'var(--muted)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:3}}>{osName||'Storyboard OS'}</div>
     </div>
-    <button onClick={onOpenCmd} className="hover-border-text" style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:400,color:'var(--muted)',transition:'all .15s',width:'100%',marginBottom:16,textAlign:'left'}}>
+    <button onClick={onOpenCmd} className="hover-border-text" style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.78rem',fontWeight:400,color:'var(--muted)',transition:'all .15s',width:'100%',marginBottom:16,textAlign:'left'}}>
       <Icon name="search" size={13}/><span style={{flex:1}}>Buscar...</span><span className="cmd-kbd" style={{fontSize:'.58rem'}}>Cmd+K</span>
     </button>
     {activeProjects.length>0&&(
@@ -2605,7 +3099,7 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
         <div className="sidebar-section-label">Em andamento</div>
         {activeProjects.slice(0,4).map(p=>(
           <button key={p.id} className="sidebar-fav" onClick={()=>{if(onSelectProject)onSelectProject(p);}}>
-            <span className="fav-dot" style={{backgroundColor:p.type==='work'?'#48BB78':'#ECC94B'}}/>
+            <span className="fav-dot" style={{backgroundColor:p.type==='work'?'var(--ok-strong)':'#ECC94B'}}/>
             <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:'.78rem',fontWeight:500}}>{p.title}</span>
           </button>
         ))}
@@ -2622,10 +3116,18 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
     </nav>
     <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:8}}>
       <button onClick={()=>setForceMobile(true)} className="hover-border-text hover-text"
-        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
+        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
         <Icon name="smartphone" size={12}/> Mobile
       </button>
-      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.7rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',padding:'0 4px'}}>
+      {/* M3: o rótulo diz o que o clique FAZ, não em que estado se está — um
+          botão "Notturno" no tema claro é ambíguo nas duas leituras. */}
+      <button onClick={onToggleTheme} className="hover-border-text hover-text"
+        title={theme==='notturno'?'Voltar ao tema papel':'Mudar para o tema notturno'}
+        aria-label={theme==='notturno'?'Voltar ao tema papel':'Mudar para o tema notturno'}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
+        <Icon name={theme==='notturno'?'sun':'moon'} size={12}/> {theme==='notturno'?'Papel':'Notturno'}
+      </button>
+      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.7rem',transition:'color .4s',color:saveFlash?'var(--ok-fg)':'var(--muted)',padding:'0 4px'}}>
         <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>{saveFlash?'Salvo!':'Auto-save ativo'}
       </div>
     </div>
@@ -2646,7 +3148,7 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hubName,onOpenCmd})=>{
+const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
   const [moreOpen,setMoreOpen]=useState(false);
   const go=id=>{setView(id);setMoreOpen(false);};
   const isMore=MORE_ITEMS.some(n=>activeView.startsWith(n.id));
@@ -2660,7 +3162,7 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hub
         </span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
-          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'#276b3e':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'var(--ok-fg)':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
             <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>
           </div>
         </div>
@@ -2695,6 +3197,14 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hub
                 className="more-sheet-item"
                 style={{color:'var(--muted)',fontSize:'.88rem'}}>
                 <Icon name="monitor" size={18}/> Visualização Desktop
+              </button>
+              {/* M3: o toggle também vive aqui. Deixá-lo só na barra lateral do
+                  desktop faria o tema escuro não existir no celular — que é
+                  justamente onde se usa o app no escuro. */}
+              <button onClick={()=>{onToggleTheme();setMoreOpen(false);}}
+                className="more-sheet-item"
+                style={{color:'var(--muted)',fontSize:'.88rem'}}>
+                <Icon name={theme==='notturno'?'sun':'moon'} size={18}/> {theme==='notturno'?'Tema papel':'Tema notturno'}
               </button>
               <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
                 <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
@@ -3211,7 +3721,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7}}>
         <span className="label">Pomodoro</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'#E8F5EC',color:isFocus?'var(--muted)':'#276b3e',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
+          <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:20,background:isFocus?'rgba(28,25,23,.06)':'var(--ok-bg)',color:isFocus?'var(--muted)':'var(--ok-fg)',fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em'}}>
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
             {isFocus?'Foco':'Pausa'}
           </div>
@@ -3263,7 +3773,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
                   "quase acabando" e "não começou" são o mesmo vazio. */}
               <rect x={BAR_X} y={BAR_Y} width={BAR_W} height="3" rx="1.5" fill="var(--border)"/>
               <rect x={BAR_X} y={BAR_Y} width={Math.max(0,BAR_W*pct)} height="3" rx="1.5"
-                fill={isFocus?'var(--text)':'#276b3e'}
+                fill={isFocus?'var(--text)':'var(--ok-fg)'}
                 style={{transition:isDragging?'none':'width .5s cubic-bezier(.4,0,.2,1),fill .4s'}}/>
             </svg>
           </div>
@@ -3339,7 +3849,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             </div>
             <div style={{display:'flex',borderBottom:'1px solid var(--border)',flexShrink:0}}>
               {['days','months'].map(t=>(
-                <button key={t} onClick={()=>setStatsTab(t)} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,color:statsTab===t?'var(--text)':'var(--muted)',borderBottom:statsTab===t?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>
+                <button key={t} onClick={()=>setStatsTab(t)} style={{flex:1,padding:'10px 0',border:'none',background:'none',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.82rem',fontWeight:500,color:statsTab===t?'var(--text)':'var(--muted)',borderBottom:statsTab===t?'2px solid var(--text)':'2px solid transparent',marginBottom:-1,transition:'all .15s'}}>
                   {t==='days'?'Por Dia':'Por Mes'}
                 </button>
               ))}
@@ -3429,7 +3939,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
     return streak;
   },[pomoData]);
   const stats=[
-    {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects',color:'#48BB78'},
+    {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects',color:'var(--ok-strong)'},
     {label:'Tarefas Abertas',value:active.reduce((s,p)=>(s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length),0),icon:'check-square',view:'projects',color:'#ECC94B'},
     {label:'Atividades Pendentes',value:tasks.filter(t=>!t.done).length,icon:'list-checks',view:'dashboard',color:'#F56565'}
   ];
@@ -3504,7 +4014,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                       <svg width={26} height={26} className="progress-ring" style={{flexShrink:0}}>
                         <circle className="progress-ring-bg" cx={13} cy={13} r={r} strokeWidth={2.5}/>
                         <circle className="progress-ring-fill" cx={13} cy={13} r={r} strokeWidth={2.5}
-                          stroke={pct===100?'#48BB78':'var(--text)'}
+                          stroke={pct===100?'var(--ok-strong)':'var(--text)'}
                           strokeDasharray={c} strokeDashoffset={offset}/>
                       </svg>
                     )}
@@ -3594,7 +4104,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
             <div className="card" style={{padding:'10px 14px',flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
               <div style={{display:'flex',gap:7,marginBottom:tasks.length>0?8:0,flexShrink:0}}>
                 <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
-                  placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.8rem',color:'var(--text)',paddingBottom:3}}/>
+                  placeholder="Nova atividade..." style={{flex:1,background:'transparent',border:'none',outline:'none',borderBottom:'1px solid var(--border)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.8rem',color:'var(--text)',paddingBottom:3}}/>
                 <button onClick={addTask} className="btn btn-dark" style={{padding:'3px 8px',fontSize:'.73rem'}} title="Adicionar atividade" aria-label="Adicionar atividade"><Icon name="plus" size={12}/></button>
               </div>
               {tasks.length===0&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'12px 0',color:'var(--muted)'}}>
@@ -3723,7 +4233,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   const visible=projects.filter(p=>trash?p.deleted:(!p.deleted&&(filterType==='all'||p.type===filterType)&&(!onlyActive||p.status==='Em Andamento')));
   const softDelete=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
   const restore=id=>setProjects(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')){setProjects(p=>p.filter(x=>x.id!==id));}}
+  const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente? Esta ação não pode ser desfeita.',danger:true,confirmLabel:'Excluir'})){setProjects(p=>p.filter(x=>x.id!==id));}}
   // Drag-to-reorder (desktop grid). Moves the dragged project just before the drop target in
   // the full array; since the visible list preserves array order, the visible order follows.
   const projDrag=useRef(null);
@@ -3754,8 +4264,8 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   // All pending tasks grouped by project
   const activeProjsWithTasks=projects.filter(p=>!p.deleted&&(p.projectTasks||[]).some(t=>t.status!=='Concluído'));
   const PTASK_STATUS_ORDER=['Fazendo','Atrasado','Pendente'];
-  const statusColor={'Fazendo':'#92700b','Atrasado':'#9B1C1C','Pendente':'var(--muted)'};
-  const statusBg={'Fazendo':'#FEF9E7','Atrasado':'#FDEDED','Pendente':'#F0EDE9'};
+  const statusColor={'Fazendo':'var(--warn-fg)','Atrasado':'var(--danger-fg)','Pendente':'var(--muted)'};
+  const statusBg={'Fazendo':'var(--warn-bg)','Atrasado':'var(--danger-bg)','Pendente':'var(--neutral-bg)'};
 
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
@@ -3779,7 +4289,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 16px 6px 6px',marginBottom:isMobile?12:16,flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?8:0}}>
               <div style={{display:'flex',gap:4}}>
                 {[['all','Todos'],['work','Trabalho'],['personal','Pessoal']].map(([v,l])=>(
-                  <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
+                  <button key={v} onClick={()=>setFilterType(v)} style={{padding:'7px 16px',borderRadius:7,border:'none',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.82rem',fontWeight:500,background:filterType===v?'var(--text)':'transparent',color:filterType===v?'white':'var(--muted)',transition:'all .15s'}}>{l}</button>
                 ))}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -3853,12 +4363,12 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                     <div style={{fontWeight:600,fontSize:'.92rem',marginBottom:3}}>{p.title}</div>
                     <div style={{fontSize:'.75rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                       <span>{p.client}</span>
-                      {fmtBRL(p.budget)&&<span style={{fontWeight:600,color:p.paid?'#276b3e':'var(--text)',display:'flex',alignItems:'center',gap:3}}>{fmtBRL(p.budget)}{p.paid&&<Icon name="check" size={10}/>}</span>}
+                      {fmtBRL(p.budget)&&<span style={{fontWeight:600,color:p.paid?'var(--ok-fg)':'var(--text)',display:'flex',alignItems:'center',gap:3}}>{fmtBRL(p.budget)}{p.paid&&<Icon name="check" size={10}/>}</span>}
                     </div>
                     {Number(p.shotsTotal)>0&&(()=>{const pct=Math.min(100,Math.round((Number(p.shotsDone)||0)/Number(p.shotsTotal)*100));return(
                       <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8}}>
                         <div style={{flex:1,height:4,background:'var(--bg)',borderRadius:2,overflow:'hidden',border:'1px solid var(--border)'}}>
-                          <div style={{height:'100%',width:pct+'%',background:pct===100?'#48BB78':'var(--border-2)',borderRadius:2}}/>
+                          <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--ok-strong)':'var(--border-2)',borderRadius:2}}/>
                         </div>
                         <span style={{fontSize:'.64rem',color:'var(--muted)',flexShrink:0}}>{(p.shotsDone||0)}/{p.shotsTotal} painéis</span>
                       </div>
@@ -3916,7 +4426,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                       <div style={{display:'flex',flexDirection:'column',gap:5}}>
                         {pending.map(t=>(
                           <div key={t.id} style={{display:'flex',alignItems:'flex-start',gap:7}}>
-                            <span style={{display:'inline-block',flexShrink:0,fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',padding:'2px 6px',borderRadius:3,marginTop:1,background:statusBg[t.status]||'#F0EDE9',color:statusColor[t.status]||'var(--muted)'}}>
+                            <span style={{display:'inline-block',flexShrink:0,fontSize:'.58rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em',padding:'2px 6px',borderRadius:3,marginTop:1,background:statusBg[t.status]||'var(--neutral-bg)',color:statusColor[t.status]||'var(--muted)'}}>
                               {t.status}
                             </span>
                             <span style={{fontSize:'.78rem',color:'var(--text)',lineHeight:1.4}}>{t.text}</span>
@@ -3968,11 +4478,15 @@ const AddMentorInline=({onAdd})=>{
 const PTASK_STATUSES=['Pendente','Fazendo','Concluído','Atrasado'];
 const PTASK_NEXT={'Pendente':'Fazendo','Fazendo':'Concluído','Concluído':'Atrasado','Atrasado':'Pendente'};
 
+// M3: as barras do Gantt tinham a própria paleta, mais saturada que a das tags
+// para o mesmo estado — 'Fazendo' era #FEF3C7 aqui e #FEF9E7 na tag. Duas
+// paletas para o mesmo vocabulário divergem calado e dobram o trabalho do tema
+// escuro. Agora as duas leem as mesmas tríades.
 const GANTT_COLORS={
-  'Pendente': {bar:'#EDE8E1',text:'#6B6460',border:'#C8BEB4',dot:'#B5ABA0'},
-  'Fazendo':  {bar:'#FEF3C7',text:'#92700B',border:'#FCD34D',dot:'#F59E0B'},
-  'Concluído':{bar:'#D1FAE5',text:'#065F46',border:'#6EE7B7',dot:'#10B981'},
-  'Atrasado': {bar:'#FEE2E2',text:'#991B1B',border:'#FCA5A5',dot:'#EF4444'},
+  'Pendente': {bar:'var(--neutral-bg)',text:'var(--muted)',  border:'var(--border-2)',dot:'var(--border-2)'},
+  'Fazendo':  {bar:'var(--warn-bg)',   text:'var(--warn-fg)',border:'var(--warn-line)',dot:'var(--warn-strong)'},
+  'Concluído':{bar:'var(--ok-bg)',     text:'var(--ok-fg)',  border:'var(--ok-line)',  dot:'var(--ok-strong)'},
+  'Atrasado': {bar:'var(--danger-bg)', text:'var(--danger-fg)',border:'var(--danger-line)',dot:'var(--danger-strong)'},
 };
 
 const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
@@ -3985,10 +4499,10 @@ const deadlineInfo=deadline=>{
   if(!deadline)return null;
   const diff=daysBetween(todayISO(),deadline);
   const date=new Date(deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','');
-  if(diff<0)return{label:'atrasado '+Math.abs(diff)+'d',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
-  if(diff===0)return{label:'hoje!',date,color:'#9B1C1C',bg:'#FDEDED',urgent:true};
-  if(diff===1)return{label:'amanhã',date,color:'#92700b',bg:'#FEF9E7',urgent:true};
-  if(diff<=7)return{label:'em '+diff+'d',date,color:'#92700b',bg:'#FEF9E7',urgent:false};
+  if(diff<0)return{label:'atrasado '+Math.abs(diff)+'d',date,color:'var(--danger-fg)',bg:'var(--danger-bg)',urgent:true};
+  if(diff===0)return{label:'hoje!',date,color:'var(--danger-fg)',bg:'var(--danger-bg)',urgent:true};
+  if(diff===1)return{label:'amanhã',date,color:'var(--warn-fg)',bg:'var(--warn-bg)',urgent:true};
+  if(diff<=7)return{label:'em '+diff+'d',date,color:'var(--warn-fg)',bg:'var(--warn-bg)',urgent:false};
   return{label:'em '+diff+'d',date,color:'var(--muted)',bg:'var(--bg)',urgent:false};
 };
 const fmtShort=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});};
@@ -4143,7 +4657,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <input value={newTaskName} onChange={e=>setNewTaskName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addTask()}
             placeholder="Nome da tarefa..."
-            style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Figtree,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:160,transition:'border-color .2s'}}
+            style={{border:'1px solid var(--border)',borderRadius:7,padding:'5px 10px',fontSize:'.78rem',fontFamily:'Alegreya Sans,sans-serif',outline:'none',backgroundColor:'var(--bg)',color:'var(--text)',width:160,transition:'border-color .2s'}}
             onFocus={e=>e.target.style.borderColor='var(--text)'} onBlur={e=>e.target.style.borderColor='var(--border)'}/>
           <button onClick={addTask} className="btn btn-dark" style={{padding:'5px 12px',fontSize:'.78rem'}}><Icon name="plus" size={12}/> Adicionar</button>
         </div>
@@ -4262,8 +4776,8 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
 
             {/* Today line */}
             {todayOffset>=0&&todayOffset<=gridW&&(
-              <div style={{position:'absolute',left:todayOffset,top:0,bottom:0,width:2,background:'#EF4444',pointerEvents:'none',zIndex:10}}>
-                <div style={{position:'absolute',top:HEADER_H-18,left:'50%',transform:'translateX(-50%)',background:'#EF4444',color:'white',
+              <div style={{position:'absolute',left:todayOffset,top:0,bottom:0,width:2,background:'var(--danger-strong)',pointerEvents:'none',zIndex:10}}>
+                <div style={{position:'absolute',top:HEADER_H-18,left:'50%',transform:'translateX(-50%)',background:'var(--danger-strong)',color:'white',
                   fontSize:'.52rem',fontWeight:800,padding:'2px 5px',borderRadius:3,whiteSpace:'nowrap',letterSpacing:'.06em'}}>HOJE</div>
               </div>
             )}
@@ -4301,7 +4815,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
           <div style={{minWidth:130}}>
             <label style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',display:'block',marginBottom:5}}>Status</label>
             <select value={editDraft.status} onChange={e=>setEditDraft({...editDraft,status:e.target.value})}
-              style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
+              style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.85rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
               {PTASK_STATUSES.map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
@@ -4526,7 +5040,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             <button onClick={e=>{e.stopPropagation();onBack();}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.12)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.2)',color:'rgba(255,255,255,.9)',borderRadius:20,padding:isMobile?'8px 14px':'6px 14px',fontSize:isMobile?'.88rem':'.8rem',cursor:'pointer',pointerEvents:'all'}}>
               <Icon name="arrow-left" size={isMobile?16:13}/> {isMobile?'':'Voltar'}
             </button>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm('Mover projeto para a lixeira?')){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
+            <button onClick={async e=>{e.stopPropagation();if(await bhConfirm({message:'Mover projeto para a lixeira?',confirmLabel:'Mover'})){onSoftDelete();onBack();}}} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(180,30,30,.3)',backdropFilter:'blur(6px)',border:'1px solid rgba(255,100,100,.3)',color:'rgba(255,200,200,.95)',borderRadius:20,padding:isMobile?'5px 10px':'6px 14px',fontSize:'.8rem',cursor:'pointer',pointerEvents:'all'}}>
               <Icon name="trash-2" size={13}/>{isMobile?'':' Excluir Projeto'}
             </button>
           </div>
@@ -4535,7 +5049,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               <h1 className="serif" style={{fontSize:isMobile?'1.4rem':'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isMobile?'nowrap':'normal'}}>{local.title}</h1>
               {!isMobile&&<p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>}
             </div>
-            <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:isMobile?'5px 10px':'7px 14px',fontFamily:'Figtree,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all',flexShrink:0}}>
+            <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:isMobile?'5px 10px':'7px 14px',fontFamily:'Alegreya Sans,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all',flexShrink:0}}>
               <option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option>
             </select>
           </div>
@@ -4651,7 +5165,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           <div style={{display:'flex',flexDirection:'column',gap:16}}>
             <div className="card" style={{padding:'clamp(16px,2.5vh,32px)'}}>
               <span className="label" style={{display:'block',marginBottom:14}}>Notas & Direção de Arte</span>
-              <textarea style={{background:'transparent',outline:'none',resize:'vertical',fontFamily:'Figtree,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',minHeight:120,height:'auto',border:'none',width:'100%'}}
+              <textarea style={{background:'transparent',outline:'none',resize:'vertical',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.9rem',lineHeight:1.8,color:'var(--text)',minHeight:120,height:'auto',border:'none',width:'100%'}}
                 value={local.notes} onChange={e=>upd('notes',e.target.value)} placeholder="Notas de direção, referências, intenções narrativas..."/>
             </div>
             {/* Galeria atribuída */}
@@ -4694,7 +5208,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Inicio</div>
                   <label style={{display:'block',position:'relative',cursor:'pointer'}}>
                     <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
-                      <span style={{fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.startDate?'var(--text)':'var(--muted)'}}>
+                      <span style={{fontFamily:'Alegreya Sans,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.startDate?'var(--text)':'var(--muted)'}}>
                         {local.startDate?new Date(local.startDate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Selecionar data'}
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
@@ -4706,7 +5220,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',color:'var(--muted)',marginBottom:6}}>Deadline</div>
                   <label style={{display:'block',position:'relative',cursor:'pointer'}}>
                     <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',pointerEvents:'none'}}>
-                      <span style={{fontFamily:'Figtree,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.deadline?'var(--text)':'var(--muted)'}}>
+                      <span style={{fontFamily:'Alegreya Sans,sans-serif',fontSize:'.88rem',fontWeight:500,color:local.deadline?'var(--text)':'var(--muted)'}}>
                         {local.deadline?new Date(local.deadline+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Selecionar data'}
                       </span>
                       <Icon name="calendar-days" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
@@ -4731,9 +5245,9 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <input type="number" min="0" step="50" className="input-box" value={local.budget||''} onChange={e=>upd('budget',e.target.value)} placeholder="0" style={{width:'100%'}}/>
                 </div>
                 {Number(local.budget)>0&&(
-                  <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',fontSize:'.82rem',color:local.paid?'#276b3e':'var(--muted)',fontWeight:local.paid?600:400}}>
+                  <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',fontSize:'.82rem',color:local.paid?'var(--ok-fg)':'var(--muted)',fontWeight:local.paid?600:400}}>
                     <span style={{display:'flex',alignItems:'center',gap:6}}><Icon name={local.paid?'check-circle':'circle-dollar-sign'} size={13}/>{local.paid?'Recebido':'A receber'}</span>
-                    <div onClick={e=>{e.preventDefault();upd('paid',!local.paid);}} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:local.paid?'#48BB78':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
+                    <div onClick={e=>{e.preventDefault();upd('paid',!local.paid);}} style={{width:36,height:20,borderRadius:10,cursor:'pointer',background:local.paid?'var(--ok-strong)':'var(--border-2)',padding:2,transition:'background .2s',flexShrink:0}}>
                       <div style={{width:16,height:16,borderRadius:'50%',background:'white',transition:'transform .2s',transform:local.paid?'translateX(16px)':'translateX(0)'}}/>
                     </div>
                   </label>
@@ -4765,9 +5279,9 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                       </div>
                       <div>
                         <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',border:'1px solid var(--border)'}}>
-                          <div style={{height:'100%',width:pct+'%',background:pct===100?'#48BB78':'var(--text)',borderRadius:3,transition:'width .3s'}}/>
+                          <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--ok-strong)':'var(--text)',borderRadius:3,transition:'width .3s'}}/>
                         </div>
-                        <div style={{fontSize:'.68rem',color:pct===100?'#276b3e':'var(--muted)',marginTop:5,textAlign:'center',fontWeight:pct===100?600:400}}>
+                        <div style={{fontSize:'.68rem',color:pct===100?'var(--ok-fg)':'var(--muted)',marginTop:5,textAlign:'center',fontWeight:pct===100?600:400}}>
                           {pct===100?'✓ Storyboard completo!':pct+'% · faltam '+(total-done)}
                         </div>
                       </div>
@@ -4799,7 +5313,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                           border:`1.5px solid ${on?'var(--text)':'var(--border)'}`,
                           background:on?'var(--text)':'transparent',
                           color:on?'white':'var(--muted)',
-                          fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Figtree,sans-serif'}}>
+                          fontSize:'.8rem',fontWeight:500,cursor:'pointer',transition:'all .15s',fontFamily:'Alegreya Sans,sans-serif'}}>
                         <div style={{width:22,height:22,borderRadius:'50%',background:on?'rgba(255,255,255,.2)':'var(--bg)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Cormorant Garamond,serif',fontSize:'.85rem',fontWeight:500}}>
                           {m.photo?<Img src={m.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:m.name.charAt(0)}
                         </div>
@@ -4895,7 +5409,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                         );
                       })}
                       <button onClick={e=>{e.stopPropagation();setActiveMiniId(m.id);addInnerNote();if(!expandedMiniIds.has(m.id)){const s=new Set(expandedMiniIds);s.add(m.id);setExpandedMiniIds(s);}}}
-                        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:6,border:'1px dashed var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.74rem',color:'var(--muted)',transition:'all .15s',marginTop:2}}
+                        style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:6,border:'1px dashed var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.74rem',color:'var(--muted)',transition:'all .15s',marginTop:2}}
                         onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--text)';e.currentTarget.style.color='var(--text)';}}
                         onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--muted)';}}>
                         <Icon name="plus" size={10}/> Nova nota
@@ -4926,7 +5440,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     placeholder="Título da tarefa"/>
                   <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
                     <select value={activeMini.status} onChange={e=>updateMini('status',e.target.value)}
-                      style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
+                      style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.78rem',background:'var(--bg)',color:'var(--text)',outline:'none',cursor:'pointer'}}>
                       {MINI_STATUSES.map(s=><option key={s}>{s}</option>)}
                     </select>
                     <button onClick={()=>deleteMini(activeMini.id)} className="btn btn-ghost text-link-danger" style={{padding:6}}>
@@ -4936,7 +5450,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 </div>
                 <textarea value={activeMini.notes} onChange={e=>updateMini('notes',e.target.value)}
                   placeholder="Notas, intenções, referências para esta tarefa..."
-                  style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
+                  style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i,list)=>(
@@ -4970,12 +5484,12 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     <Icon name="link" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                     <input value={note.url||''} onChange={e=>updateInnerNote('url',e.target.value)}
                       placeholder="Link de referência (https://...)"
-                      style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
+                      style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
                     {note.url&&<a href={note.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} className="text-link"><Icon name="external-link" size={13}/></a>}
                   </div>
                   <textarea value={note.content||''} onChange={e=>updateInnerNote('content',e.target.value)}
                     placeholder="Notas, análises, referências..."
-                    style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
+                    style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                   {(note.images||[]).length>0&&(
                     <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                       {(note.images||[]).map((img,i,list)=>(
@@ -5051,12 +5565,12 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <Icon name="link" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
                   <input value={activeResearch.url||''} onChange={e=>updateResearch('url',e.target.value)}
                     placeholder="Link de referência (https://...)"
-                    style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
+                    style={{flex:1,background:'transparent',border:'none',outline:'none',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.83rem',color:'var(--text)'}}/>
                   {activeResearch.url&&<a href={activeResearch.url} target="_blank" rel="noreferrer" style={{flexShrink:0,color:'var(--muted)'}} className="text-link"><Icon name="external-link" size={13}/></a>}
                 </div>
                 <textarea ref={researchTextareaRef} value={activeResearch.content} onChange={e=>{updateResearch('content',e.target.value);}} onInput={e=>{e.target.style.height='auto';e.target.style.height=e.target.scrollHeight+'px'}}
                   placeholder="Notas, análises, referências..."
-                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,overflow:'hidden',marginBottom:16,width:'100%'}}/>
+                  style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,overflow:'hidden',marginBottom:16,width:'100%'}}/>
                 {/* Images - 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
                   <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
@@ -5149,7 +5663,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false,deletedAt:null}:f));
   const archiveFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,archived:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
   const unarchiveFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,archived:false}:f));
-  const hardDeleteFolder=id=>{if(window.confirm('Excluir pasta permanentemente?'))setFolders(p=>p.filter(f=>f.id!==id));};
+  const hardDeleteFolder=async id=>{if(await bhConfirm({message:'Excluir pasta permanentemente?',danger:true,confirmLabel:'Excluir'}))setFolders(p=>p.filter(f=>f.id!==id));};
   const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted&&!f.archived);const rest=prev.filter(f=>f.deleted||f.archived);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...rest];});};
 
   const [trash,setTrash]=useState(false);
@@ -5180,7 +5694,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
+  const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setPosts(p=>p.filter(x=>x.id!==id));}};
 
   // Keyboard escape for lightbox
   useEffect(()=>{
@@ -5214,7 +5728,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
             {FOLDERS.map(f=>(
               <button key={f.id} onClick={()=>upd('folder',f.id)}
-                style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--text)':'var(--border)'}`,background:selected.folder===f.id?'var(--text)':'transparent',color:selected.folder===f.id?'white':'var(--muted)',fontSize:'.75rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s'}}>
+                style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--text)':'var(--border)'}`,background:selected.folder===f.id?'var(--text)':'transparent',color:selected.folder===f.id?'white':'var(--muted)',fontSize:'.75rem',fontWeight:600,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',transition:'all .15s'}}>
                 {f.label}
               </button>
             ))}
@@ -5227,7 +5741,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
             style={{border:'1px solid var(--border)',borderRadius:8,padding:'6px 12px',fontSize:'.82rem',outline:'none',color:'var(--text)',backgroundColor:'var(--bg)',cursor:'pointer'}}/>
         </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
-          style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
+          style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i,list)=>(
             <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
@@ -5294,15 +5808,15 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
                     <input autoFocus value={editingLabel} onChange={e=>setEditingLabel(e.target.value)}
                       onBlur={()=>{renameFolder(f.id,editingLabel);setEditingFolderId(null);}}
                       onKeyDown={e=>{if(e.key==='Enter'||e.key==='Escape'){renameFolder(f.id,editingLabel);setEditingFolderId(null);}}}
-                      style={{background:'transparent',border:'none',outline:'none',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}
+                      style={{background:'transparent',border:'none',outline:'none',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.85rem',fontWeight:activeFolder===f.id?600:500,color:'var(--text)',width:Math.max(60,editingLabel.length*9)+'px',padding:'10px 0'}}
                     />
                     <button onMouseDown={e=>{e.preventDefault();renameFolder(f.id,editingLabel);archiveFolder(f.id);setEditingFolderId(null);}} title="Arquivar pasta"
                       style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:'4px 5px',borderRadius:5,lineHeight:0,transition:'color .12s'}}
                       onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}
                     ><Icon name="archive" size={13}/></button>
                     <button onMouseDown={e=>{e.preventDefault();trashFolder(f.id);setEditingFolderId(null);}} title="Mover para lixeira"
-                      style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',padding:'4px 5px',borderRadius:5,lineHeight:0,transition:'background .12s'}}
-                      onMouseEnter={e=>e.currentTarget.style.background='#FDEDED'} onMouseLeave={e=>e.currentTarget.style.background='none'}
+                      style={{background:'none',border:'none',cursor:'pointer',color:'var(--danger-fg)',padding:'4px 5px',borderRadius:5,lineHeight:0,transition:'background .12s'}}
+                      onMouseEnter={e=>e.currentTarget.style.background='var(--danger-bg)'} onMouseLeave={e=>e.currentTarget.style.background='none'}
                     ><Icon name="trash-2" size={13}/></button>
                   </>
                 : <button className="tab-btn" onClick={()=>setActiveFolder(f.id)}
@@ -5335,7 +5849,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
             <div key={f.id} style={{display:'flex',alignItems:'center',gap:4,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:'.78rem'}}>
               <span style={{color:'var(--text)'}}>{f.label}</span>
               <button onClick={()=>restoreFolder(f.id)} title="Restaurar" style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',lineHeight:0,padding:'0 2px'}}><Icon name="refresh-cw" size={11}/></button>
-              <button onClick={()=>hardDeleteFolder(f.id)} title="Excluir" style={{background:'none',border:'none',cursor:'pointer',color:'#991B1B',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
+              <button onClick={()=>hardDeleteFolder(f.id)} title="Excluir" style={{background:'none',border:'none',cursor:'pointer',color:'var(--danger-fg)',lineHeight:0,padding:'0 2px'}}><Icon name="trash-2" size={11}/></button>
             </div>
           ))}
         </div>
@@ -5349,13 +5863,13 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
               <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px 6px 12px'}}>
                 <span style={{color:'var(--text)',fontSize:'.85rem',flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.label}</span>
                 <button onClick={()=>unarchiveFolder(f.id)}
-                  style={{display:'flex',alignItems:'center',gap:5,background:'none',border:'1px solid var(--border)',borderRadius:6,cursor:'pointer',color:'var(--muted)',padding:'5px 10px',fontSize:'.74rem',fontFamily:'Figtree,sans-serif',whiteSpace:'nowrap',transition:'all .12s'}}
+                  style={{display:'flex',alignItems:'center',gap:5,background:'none',border:'1px solid var(--border)',borderRadius:6,cursor:'pointer',color:'var(--muted)',padding:'5px 10px',fontSize:'.74rem',fontFamily:'Alegreya Sans,sans-serif',whiteSpace:'nowrap',transition:'all .12s'}}
                   onMouseEnter={e=>{e.currentTarget.style.color='var(--text)';e.currentTarget.style.borderColor='var(--text)';}}
                   onMouseLeave={e=>{e.currentTarget.style.color='var(--muted)';e.currentTarget.style.borderColor='var(--border)';}}
                 ><Icon name="archive-restore" size={13}/>Desarquivar</button>
                 <button onClick={()=>trashFolder(f.id)} title="Mover para lixeira"
-                  style={{display:'flex',alignItems:'center',background:'none',border:'1px solid transparent',borderRadius:6,cursor:'pointer',color:'#991B1B',padding:'5px 9px',transition:'all .12s'}}
-                  onMouseEnter={e=>{e.currentTarget.style.background='#FDEDED';e.currentTarget.style.borderColor='rgba(153,24,27,.2)';}}
+                  style={{display:'flex',alignItems:'center',background:'none',border:'1px solid transparent',borderRadius:6,cursor:'pointer',color:'var(--danger-fg)',padding:'5px 9px',transition:'all .12s'}}
+                  onMouseEnter={e=>{e.currentTarget.style.background='var(--danger-bg)';e.currentTarget.style.borderColor='rgba(153,24,27,.2)';}}
                   onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.borderColor='transparent';}}
                 ><Icon name="trash-2" size={14}/></button>
               </div>
@@ -5598,7 +6112,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
         onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
         onPaste={handlePaste} onBlur={flushSave}
-        style={{flex:1,fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
+        style={{flex:1,fontSize:'.95rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
     </div>
   );
 });
@@ -5653,7 +6167,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const newGroup=()=>{const p={id:Date.now(),type:'project',title:'Novo Grupo',date:new Date().toLocaleDateString('pt-BR'),deleted:false,entries:[]};setNotes(prev=>[p,...prev]);setSelectedId(p.id);setActiveEntryId(null);setShowCreateMenu(false);};
   const trashItem=id=>{if(Date.now()-newNoteCooldownRef.current<600)return;setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n));if(selectedId===id)setSelectedId(null);};
   const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false,deletedAt:null}:n));
-  const hardDeleteItem=id=>{if(window.confirm('Excluir permanentemente?')){setNotes(p=>p.filter(n=>n.id!==id));if(selectedId===id)setSelectedId(null);}};
+  const hardDeleteItem=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setNotes(p=>p.filter(n=>n.id!==id));if(selectedId===id)setSelectedId(null);}};
 
   // ── SIDEBAR item ──
   const SidebarItem=({n,idx,selected,onClick})=>(
@@ -5692,8 +6206,8 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
               </button>
               {showCreateMenu&&(
                 <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:140,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:50}}>
-                  <button onClick={newNote} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="file-text" size={13}/> Nota</button>
-                  <button onClick={newGroup} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="folder" size={13}/> Grupo</button>
+                  <button onClick={newNote} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="file-text" size={13}/> Nota</button>
+                  <button onClick={newGroup} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.83rem',fontWeight:500,color:'var(--text)',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><Icon name="folder" size={13}/> Grupo</button>
                 </div>
               )}
             </div>
@@ -5755,7 +6269,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:6,paddingTop:8,borderTop:'1px solid var(--border)'}}>
                 <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',fontSize:'.78rem',padding:'6px 0'}} onClick={addEntry}><Icon name="plus" size={12}/> Adicionar</button>
-                <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'} onClick={()=>trashItem(selectedItem.id)}><Icon name="trash-2" size={11}/> Excluir grupo</button>
+                <button className="btn btn-ghost" style={{width:'100%',justifyContent:'center',fontSize:'.73rem',padding:'4px 0',color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger-strong)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'} onClick={()=>trashItem(selectedItem.id)}><Icon name="trash-2" size={11}/> Excluir grupo</button>
               </div>
             </div>
             <div className="card" style={{flex:1,padding:28,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
@@ -5766,7 +6280,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
                       style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
                     <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
                       <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{activeEntry.date}</span>
-                      <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
+                      <button onClick={()=>deleteEntry(activeEntry.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger-strong)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={15}/></button>
                     </div>
                   </div>
                   <RichEditor key={activeEntry.id} noteId={activeEntry.id} initialHTML={activeEntry.content||''} onSave={handleEntrySave}/>
@@ -5789,7 +6303,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
                 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.8rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0}}/>
               <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'center'}}>
                 <span style={{fontSize:'.72rem',color:'var(--muted)'}}>{selectedItem.date}</span>
-                <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+                <button onClick={()=>trashItem(selectedItem.id)} className="btn btn-ghost" style={{padding:6,color:'var(--muted)'}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger-strong)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
               </div>
             </div>
             <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
@@ -5823,8 +6337,8 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
               <button className="btn btn-dark" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>setShowCreateMenu(m=>!m)}><Icon name="plus" size={13}/> Criar</button>
               {showCreateMenu&&(
                 <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:130,boxShadow:'0 8px 24px rgba(0,0,0,.15)',zIndex:50}}>
-                  <button onClick={()=>{newNote();setMobileView('detail');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="file-text" size={13}/> Nota</button>
-                  <button onClick={()=>{newGroup();setMobileView('entries');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="folder" size={13}/> Grupo</button>
+                  <button onClick={()=>{newNote();setMobileView('detail');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="file-text" size={13}/> Nota</button>
+                  <button onClick={()=>{newGroup();setMobileView('entries');}} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',borderRadius:7,border:'none',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.85rem',fontWeight:500,color:'var(--text)'}}><Icon name="folder" size={13}/> Grupo</button>
                 </div>
               )}
             </div>
@@ -5868,7 +6382,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexShrink:0}}>
             <input value={localTitle} onChange={handleTitleChange} onBlur={handleTitleBlur}
               style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0,borderBottom:'1px solid var(--border)',paddingBottom:6}}/>
-            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+            <button onClick={()=>{trashItem(selectedItem.id);setMobileView('list');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger-strong)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
           </div>
           <RichEditor key={selectedItem.id} noteId={selectedItem.id} initialHTML={selectedItem.content||''} onSave={handleContentSave}/>
         </div>
@@ -5899,7 +6413,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexShrink:0}}>
             <input value={entryTitle} onChange={handleEntryTitleChange} onBlur={handleEntryTitleBlur}
               style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:400,background:'transparent',border:'none',outline:'none',color:'var(--text)',flex:1,minWidth:0,borderBottom:'1px solid var(--border)',paddingBottom:6}}/>
-            <button onClick={()=>{deleteEntry(activeEntry.id);setMobileView('entries');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='#DC2626'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
+            <button onClick={()=>{deleteEntry(activeEntry.id);setMobileView('entries');}} className="btn btn-ghost" style={{padding:6,color:'var(--muted)',flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color='var(--danger-strong)'} onMouseLeave={e=>e.currentTarget.style.color='var(--muted)'}><Icon name="trash-2" size={16}/></button>
           </div>
           <RichEditor key={activeEntry.id} noteId={activeEntry.id} initialHTML={activeEntry.content||''} onSave={handleEntrySave}/>
         </div>
@@ -5935,7 +6449,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
   const cancelEdit=()=>{setText('');setEditId(null);setPlatform('Instagram');};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setPosts(p=>p.filter(x=>x.id!==id));}};
+  const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setPosts(p=>p.filter(x=>x.id!==id));}};
   const changePostPlatform=(id,pl)=>setPosts(p=>p.map(x=>x.id===id?{...x,platform:pl}:x));
   const displayed=trash?trashedPosts:activePosts;
 
@@ -5990,17 +6504,17 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 260px',gap:isMobile?16:20,marginBottom:isMobile?16:20,width:'100%',minWidth:0}}>
           {/* Composer */}
           <div className="card" style={{padding:isMobile?16:24,display:'flex',flexDirection:'column',boxSizing:'border-box',width:'100%',minWidth:0}}>
-            {editId&&<div style={{fontSize:'.75rem',color:'#92700b',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-              <Icon name="pencil" size={11}/> Editando post — <button onClick={cancelEdit} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',fontFamily:'Figtree,sans-serif',fontSize:'.75rem',padding:0}}>cancelar</button>
+            {editId&&<div style={{fontSize:'.75rem',color:'var(--warn-fg)',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+              <Icon name="pencil" size={11}/> Editando post — <button onClick={cancelEdit} style={{background:'none',border:'none',cursor:'pointer',color:'var(--danger-strong)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.75rem',padding:0}}>cancelar</button>
             </div>}
-            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:180,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Figtree,sans-serif',lineHeight:1.8,color:'var(--text)',width:'100%',boxSizing:'border-box'}}/>
+            <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Escreva seu post..." style={{flex:1,minHeight:180,resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.95rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',width:'100%',boxSizing:'border-box'}}/>
             <div style={{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:8,display:'flex',flexDirection:'column',gap:10}}>
               {/* Platform selector */}
               {isMobile?(
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <span className="label" style={{flexShrink:0}}>Plataforma</span>
                   <select value={platform} onChange={e=>setPlatform(e.target.value)}
-                    style={{flex:1,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',fontFamily:'Figtree,sans-serif',fontSize:'16px',color:'var(--text)',outline:'none',cursor:'pointer',minHeight:44}}>
+                    style={{flex:1,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',fontFamily:'Alegreya Sans,sans-serif',fontSize:'16px',color:'var(--text)',outline:'none',cursor:'pointer',minHeight:44}}>
                     {SOCIAL_PLATFORMS.map(pl=><option key={pl}>{pl}</option>)}
                   </select>
                 </div>
@@ -6009,7 +6523,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
                   <span className="label" style={{flexShrink:0}}>Plataforma</span>
                   {SOCIAL_PLATFORMS.map(pl=>(
                     <button key={pl} onClick={()=>setPlatform(pl)}
-                      style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.74rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .15s',flexShrink:0,whiteSpace:'nowrap'}}>
+                      style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${platform===pl?platformColor(pl):'var(--border)'}`,background:platform===pl?platformColor(pl):'transparent',color:platform===pl?'white':'var(--muted)',fontSize:'.74rem',fontWeight:600,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',transition:'all .15s',flexShrink:0,whiteSpace:'nowrap'}}>
                       {pl}
                     </button>
                   ))}
@@ -6032,7 +6546,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
                 <div key={i} style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',transition:'border-color .15s',position:'relative',minWidth:0,overflow:'hidden'}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-2)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
-                    <button onClick={()=>setText(t.text)} style={{fontWeight:600,fontSize:'.82rem',background:'none',border:'none',cursor:'pointer',fontFamily:'Figtree,sans-serif',color:'var(--text)',padding:0,textAlign:'left'}}>{t.label}</button>
+                    <button onClick={()=>setText(t.text)} style={{fontWeight:600,fontSize:'.82rem',background:'none',border:'none',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',color:'var(--text)',padding:0,textAlign:'left'}}>{t.label}</button>
                     <div style={{display:'flex',gap:2,flexShrink:0}}>
                       <button className="btn btn-ghost" style={{padding:'2px 5px'}} onClick={()=>openEditTpl(i)} title="Editar"><Icon name="pencil" size={12}/></button>
                       <button className="btn btn-ghost text-link-danger" style={{padding:'2px 5px'}} onClick={()=>deleteTpl(i)} title="Excluir"><Icon name="x" size={12}/></button>
@@ -6059,14 +6573,14 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
                     {!trash?(
                       isMobile?(
                         <select value={p.platform||'Instagram'} onChange={e=>changePostPlatform(p.id,e.target.value)}
-                          style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:20,padding:'4px 10px',fontFamily:'Figtree,sans-serif',fontSize:'.78rem',fontWeight:600,color:'var(--text)',outline:'none',cursor:'pointer',maxWidth:'100%'}}>
+                          style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:20,padding:'4px 10px',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.78rem',fontWeight:600,color:'var(--text)',outline:'none',cursor:'pointer',maxWidth:'100%'}}>
                           {SOCIAL_PLATFORMS.map(pl=><option key={pl}>{pl}</option>)}
                         </select>
                       ):(
                         <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                           {SOCIAL_PLATFORMS.map(pl=>(
                             <button key={pl} onClick={()=>changePostPlatform(p.id,pl)}
-                              style={{padding:'3px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Figtree,sans-serif',transition:'all .12s',flexShrink:0}}>
+                              style={{padding:'3px 9px',borderRadius:20,border:`1px solid ${(p.platform||'Instagram')===pl?platformColor(pl):'var(--border)'}`,background:(p.platform||'Instagram')===pl?platformColor(pl):'transparent',color:(p.platform||'Instagram')===pl?'white':'var(--muted)',fontSize:'.68rem',fontWeight:600,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',transition:'all .12s',flexShrink:0}}>
                               {pl}
                             </button>
                           ))}
@@ -6145,7 +6659,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   const save=form=>{setClients(p=>p.map(c=>c.id===form.id?form:c));setSelected(null);};
   const softDelete=()=>{setClients(p=>p.map(c=>c.id===selected.id?{...c,deleted:true,deletedAt:new Date().toISOString()}:c));setSelected(null);};
   const restore=id=>setClients(p=>p.map(c=>c.id===id?{...c,deleted:false,deletedAt:null}:c));
-  const hardDelete=id=>{if(window.confirm('Excluir permanentemente?')){setClients(p=>p.filter(c=>c.id!==id));}}
+  const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setClients(p=>p.filter(c=>c.id!==id));}}
   const add=()=>{const n={id:Date.now(),name:'Novo Cliente',company:'',email:'',role:'',status:'Lead',notes:'',photo:'',deleted:false};setClients(p=>[n,...p]);setSelected(n);};
   const visible=clients.filter(c=>trash?c.deleted:!c.deleted);
   const dragIdxRef=useRef(null);
@@ -6250,11 +6764,12 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   const refreshHistory=()=>{bhHistoryInit().then(()=>setBackupHistory(bhHistoryMeta().slice()));};
   useEffect(()=>{refreshHistory();},[]);
 
-  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login'};
+  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login','remoto-concorrente':'Nuvem (edição simultânea)'};
   const handleRestoreFromHistory=async(entry)=>{
     const dt=new Date(entry.at).toLocaleString('pt-BR');
     const c=entry.counts||{};
-    if(!window.confirm(`Restaurar o backup de ${dt}?\n(${c.projects??'?'} projetos · ${c.notes??'?'} notas · ${c.clients??'?'} clientes)\n\nSeus dados atuais serão salvos no histórico antes — dá pra desfazer.`))return;
+    if(!await bhConfirm({title:'Restaurar backup',confirmLabel:'Restaurar',
+      message:`Restaurar o backup de ${dt}?\n(${c.projects??'?'} projetos · ${c.notes??'?'} notas · ${c.clients??'?'} clientes)\n\nSeus dados atuais serão salvos no histórico antes — dá pra desfazer.`}))return;
     // F1: o state vem do IDB agora. Se a leitura falhar, ABORTA antes de tocar
     // no estado atual — restaurar um snapshot que não carregou seria trocar
     // dados bons por nada.
@@ -6282,14 +6797,15 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   };
 
   const signOut=async()=>{
-    if(!window.confirm('Sair? Seus dados continuarão salvos localmente.'))return;
+    if(!await bhConfirm({title:'Sair da conta',message:'Sair? Seus dados continuarão salvos localmente.',confirmLabel:'Sair'}))return;
     await _fbAuth.signOut();
     showStatus('ok','Desconectado.');
   };
 
   const handleManualPush=async()=>{
     if(!fbUser){showStatus('err','Faça login com Google primeiro.');return;}
-    if(!window.confirm('Forçar sync vai enviar seus dados locais para a nuvem, sobrescrevendo qualquer versão mais recente no Firestore. Continuar?'))return;
+    if(!await bhConfirm({title:'Forçar sync',danger:true,confirmLabel:'Enviar mesmo assim',
+      message:'Forçar sync vai enviar seus dados locais para a nuvem, sobrescrevendo qualquer versão mais recente no Firestore. Continuar?'}))return;
     setLoading(true);
     try{
       await onManualPush();
@@ -6297,8 +6813,9 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
     }catch(e){showStatus('err','Falha: '+e.message);}
     finally{setLoading(false);}
   };
-  const handleDiscardLocal=()=>{
-    if(!window.confirm('Descartar as alterações locais não enviadas e puxar a versão da nuvem?\n\nSuas alterações atuais serão guardadas no Histórico de Backups antes — dá pra desfazer.'))return;
+  const handleDiscardLocal=async()=>{
+    if(!await bhConfirm({title:'Descartar alterações locais',danger:true,confirmLabel:'Descartar e puxar',
+      message:'Descartar as alterações locais não enviadas e puxar a versão da nuvem?\n\nSuas alterações atuais serão guardadas no Histórico de Backups antes — dá pra desfazer.'}))return;
     const ok=onDiscardLocal();
     if(ok){showStatus('ok','✓ Dados da nuvem aplicados. As alterações locais estão no histórico.');refreshHistory();}
     else showStatus('err','Ainda não recebi nada da nuvem nesta sessão — nada para puxar.');
@@ -6307,7 +6824,8 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   const handleReupload=async()=>{
     const keys=[...collectIdbKeys(appState)];
     if(keys.length===0){showStatus('ok','✓ Nenhuma imagem local — tudo já está na nuvem!');return;}
-    if(!fbUser&&!window.confirm(`${keys.length} imagem(ns) local(is). Sem login ativo, serão enviadas ao Imgur. Continuar?`))return;
+    if(!fbUser&&!await bhConfirm({title:'Enviar ao Imgur',confirmLabel:'Enviar',
+      message:`${keys.length} imagem(ns) local(is). Sem login ativo, serão enviadas ao Imgur. Continuar?`}))return;
     setLoading(true);
     setReuploadProgress({done:0,total:keys.length});
     try{
@@ -6350,7 +6868,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
     {label:'Posts',value:(appState.socialPosts||[]).filter(p=>!p.deleted).length},
   ];
 
-  const syncColor={'synced':'#276b3e','syncing':'#92700b','error':'#9B1C1C','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
+  const syncColor={'synced':'var(--ok-fg)','syncing':'var(--warn-fg)','error':'var(--danger-fg)','idle':'var(--muted)'}[syncStatus]||'var(--muted)';
   const syncLabel={'synced':'Sincronizado ✓','syncing':'Sincronizando...','error':'Erro de sincronização — alterações locais preservadas','idle':fbUser?'Aguardando alterações':'Faça login para sincronizar'}[syncStatus]||'';
   const syncIcon={'synced':'check-circle','syncing':'loader','error':'alert-circle','idle':'cloud'}[syncStatus]||'cloud';
 
@@ -6369,8 +6887,8 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
       </div>
 
       {localImgCount>0&&(
-        <div style={{background:'#FEF9E7',border:'1px solid #fde68a',borderRadius:10,padding:'8px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-          <Icon name="image" size={14} style={{color:'#92700b',flexShrink:0}}/>
+        <div style={{background:'var(--warn-bg)',border:'1px solid #fde68a',borderRadius:10,padding:'8px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <Icon name="image" size={14} style={{color:'var(--warn-fg)',flexShrink:0}}/>
           <div style={{flex:1,fontSize:'.8rem',color:'#78350F'}}>
             <strong>{localImgCount} imagem(ns)</strong> apenas localmente. Use <strong>"Re-enviar Imagens"</strong> abaixo.
           </div>
@@ -6378,7 +6896,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
       )}
 
       {status&&(
-        <div style={{padding:'8px 14px',borderRadius:10,marginBottom:10,background:status.type==='ok'?'#E8F5EC':'#FDEDED',border:`1px solid ${status.type==='ok'?'#bbf7d0':'#FECACA'}`,color:status.type==='ok'?'#276b3e':'#9B1C1C',fontSize:'.82rem',display:'flex',alignItems:'center',gap:10}}>
+        <div style={{padding:'8px 14px',borderRadius:10,marginBottom:10,background:status.type==='ok'?'var(--ok-bg)':'var(--danger-bg)',border:`1px solid ${status.type==='ok'?'#bbf7d0':'var(--danger-line)'}`,color:status.type==='ok'?'var(--ok-fg)':'var(--danger-fg)',fontSize:'.82rem',display:'flex',alignItems:'center',gap:10}}>
           <Icon name={status.type==='ok'?'check-circle':'alert-circle'} size={15}/>{status.msg}
           <button onClick={()=>setStatus(null)} title="Fechar aviso" aria-label="Fechar aviso" style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'inherit',padding:2}}><Icon name="x" size={13}/></button>
         </div>
@@ -6418,7 +6936,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
                 <div style={{fontSize:'.78rem',color:syncColor,display:'flex',alignItems:'center',gap:5}}>
                   <Icon name={syncIcon} size={12}/>{syncLabel}
                 </div>
-                {syncStatus==='error'&&syncDetail&&<div style={{fontSize:'.7rem',color:'#9B1C1C',marginTop:3,lineHeight:1.4,wordBreak:'break-word'}}>{syncDetail}</div>}
+                {syncStatus==='error'&&syncDetail&&<div style={{fontSize:'.7rem',color:'var(--danger-fg)',marginTop:3,lineHeight:1.4,wordBreak:'break-word'}}>{syncDetail}</div>}
               </div>
             </div>
             <div style={{display:'flex',gap:8,width:'100%'}}>
@@ -6448,7 +6966,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
               display:'flex',alignItems:'center',justifyContent:'center',gap:10,
               width:'100%',maxWidth:320,padding:'13px 20px',borderRadius:10,
               border:'1px solid var(--border)',background:'white',cursor:'pointer',
-              fontFamily:'Figtree,sans-serif',fontSize:'.95rem',fontWeight:600,color:'#1C1917',
+              fontFamily:'Alegreya Sans,sans-serif',fontSize:'.95rem',fontWeight:600,color:'#1C1917',
               boxShadow:'0 1px 4px rgba(0,0,0,.08)',transition:'box-shadow .15s',
             }}
             onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'}
@@ -6477,12 +6995,12 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
             {backupHistory.map((entry,i)=>{
               const c=entry.counts||{};
               return (
-                <div key={entry.at+i} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid var(--border)',background:i===0?'#F0FBF3':'var(--bg)',display:'flex',alignItems:'center',gap:10}}>
+                <div key={entry.at+i} style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid var(--border)',background:i===0?'var(--ok-bg)':'var(--bg)',display:'flex',alignItems:'center',gap:10}}>
                   <Icon name={entry.reason==='daily'?'calendar-check':entry.reason==='pre-sync'?'cloud':entry.reason==='pre-restore'?'undo-2':'clock'} size={14} style={{color:'var(--muted)',flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:'.76rem',fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                       {new Date(entry.at).toLocaleString('pt-BR')}
-                      <span style={{fontSize:'.62rem',fontWeight:500,color:entry.reason==='daily'?'#276b3e':'var(--muted)',border:'1px solid '+(entry.reason==='daily'?'#A8D5B5':'var(--border)'),borderRadius:4,padding:'1px 5px',background:entry.reason==='daily'?'#F0FBF3':'transparent'}}>
+                      <span style={{fontSize:'.62rem',fontWeight:500,color:entry.reason==='daily'?'var(--ok-fg)':'var(--muted)',border:'1px solid '+(entry.reason==='daily'?'var(--ok-line)':'var(--border)'),borderRadius:4,padding:'1px 5px',background:entry.reason==='daily'?'var(--ok-bg)':'transparent'}}>
                         {entry.reason==='daily'
                           ?'Diário · '+new Date(entry.at).toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','')
                           :(BH_REASON_LABEL[entry.reason]||entry.reason)}
@@ -6525,7 +7043,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
 
       {/* Danger zone */}
       <div style={{borderTop:'1px solid var(--border)',paddingTop:12}}>
-        <span className="label" style={{display:'block',marginBottom:8,color:'#9B1C1C'}}>Zona Perigosa</span>
+        <span className="label" style={{display:'block',marginBottom:8,color:'var(--danger-fg)'}}>Zona Perigosa</span>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button className="btn btn-outline" onClick={onResetIdentity} style={{fontSize:'.82rem'}}>
             <Icon name="pencil" size={13}/> Renomear Hub
@@ -6536,13 +7054,14 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
           <button className="btn btn-outline" style={{fontSize:'.82rem'}}
             title={'Recompila o app do zero no próximo carregamento. Origem deste boot: '+bundleSource}
             onClick={async()=>{
-              if(!window.confirm('Limpar o cache do app compilado? O próximo carregamento vai recompilar do zero (mais lento uma vez). Nenhum dado é afetado.'))return;
+              if(!await bhConfirm({title:'Limpar cache do app',confirmLabel:'Limpar',
+                message:'Limpar o cache do app compilado? O próximo carregamento vai recompilar do zero (mais lento uma vez). Nenhum dado é afetado.'}))return;
               try{await window.__bhBundleCache?.clear?.();}catch{}
               location.reload();
             }}>
             <Icon name="refresh-cw" size={13}/> Limpar cache do app ({bundleSource})
           </button>
-          <button className="btn btn-danger" onClick={()=>{if(window.confirm('Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'))onClearSave();}}>
+          <button className="btn btn-danger" onClick={async()=>{if(await bhConfirm({title:'Resetar tudo',danger:true,confirmLabel:'Resetar',message:'Resetar todos os dados para o estado inicial? Esta ação não pode ser desfeita.'}))onClearSave();}}>
             <Icon name="alert-triangle" size={14}/> Resetar tudo
           </button>
         </div>
@@ -6606,7 +7125,7 @@ const MentorModal=({mentor,onClose,onSave,onDelete})=>{
         </div>
         <div style={{marginBottom:12}}>
           <button onClick={()=>set('main',!form.main)}
-            style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 14px',borderRadius:10,border:'1.5px solid '+(form.main?'#92700b':'var(--border)'),background:form.main?'#FEF9E7':'transparent',color:form.main?'#92700b':'var(--muted)',cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.82rem',fontWeight:600,transition:'all .15s'}}>
+            style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 14px',borderRadius:10,border:'1.5px solid '+(form.main?'var(--warn-fg)':'var(--border)'),background:form.main?'var(--warn-bg)':'transparent',color:form.main?'var(--warn-fg)':'var(--muted)',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.82rem',fontWeight:600,transition:'all .15s'}}>
             <Icon name="star" size={14}/>
             {form.main?'Mentor Principal (ativo)':'Marcar como Principal'}
           </button>
@@ -6696,14 +7215,14 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
   const save=form=>{
     if(form.main){
       const mainCount=mentors.filter(m=>!m.deleted&&m.main&&m.id!==form.id).length;
-      if(mainCount>=3){alert('Voce ja tem 3 mentores principais.');return;}
+      if(mainCount>=3){bhAlert('Você já tem 3 mentores principais.');return;}
     }
     setMentors(p=>p.map(m=>m.id===form.id?form:m));
     setSelected(null);
   };
 
-  const del=()=>{
-    if(!window.confirm('Excluir mentor permanentemente?'))return;
+  const del=async()=>{
+    if(!await bhConfirm({message:'Excluir mentor permanentemente?',danger:true,confirmLabel:'Excluir'}))return;
     setMentors(p=>p.filter(m=>m.id!==selected.id));
     setSelected(null);
   };
@@ -6768,8 +7287,8 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
                 <div className="compact-row-meta">{m.area}{m.medium?' · '+m.medium:''}{m.year?' · '+m.year:''}</div>
               </div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
-                <span style={{fontSize:'.6rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'2px 6px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
-                {m.main&&<Icon name="star" size={11} style={{color:'#92700b'}}/>}
+                <span style={{fontSize:'.6rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',padding:'2px 6px',borderRadius:4,background:m.active?'var(--ok-bg)':'var(--neutral-bg)',color:m.active?'var(--ok-fg)':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                {m.main&&<Icon name="star" size={11} style={{color:'var(--warn-fg)'}}/>}
               </div>
             </div>
           ))}
@@ -6803,8 +7322,8 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
                 </div>
                 {m.notes&&<p style={{fontSize:'.76rem',color:'var(--muted)',margin:0,lineHeight:1.55,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{m.notes}</p>}
                 <div style={{marginTop:10,display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
-                  <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'#E8F5EC':'#F0EDE9',color:m.active?'#276b3e':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
-                  {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'#FEF9E7',color:'#92700b',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
+                  <span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:m.active?'var(--ok-bg)':'var(--neutral-bg)',color:m.active?'var(--ok-fg)':'var(--muted)'}}>{m.active?'Ativo':'Inativo'}</span>
+                  {m.main&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'var(--warn-bg)',color:'var(--warn-fg)',display:'flex',alignItems:'center',gap:3}}><Icon name="star" size={9}/> Principal</span>}
                   {m.year&&<span style={{fontSize:'.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',padding:'2px 7px',borderRadius:4,background:'var(--bg)',color:'var(--muted)'}}>{m.year}</span>}
                 </div>
               </div>
@@ -6856,7 +7375,7 @@ const ShortcutsModal=({onClose})=>{
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
         {rows.map(([k,d])=>(
           <div key={k} style={{display:'flex',alignItems:'center',gap:12}}>
-            <kbd style={{fontFamily:'Figtree,sans-serif',fontSize:'.72rem',fontWeight:600,background:'var(--bg)',border:'1px solid var(--border-2)',borderBottomWidth:2,borderRadius:6,padding:'3px 8px',minWidth:78,textAlign:'center',flexShrink:0}}>{k}</kbd>
+            <kbd style={{fontFamily:'Alegreya Sans,sans-serif',fontSize:'.72rem',fontWeight:600,background:'var(--bg)',border:'1px solid var(--border-2)',borderBottomWidth:2,borderRadius:6,padding:'3px 8px',minWidth:78,textAlign:'center',flexShrink:0}}>{k}</kbd>
             <span style={{fontSize:'.82rem',color:'var(--text)'}}>{d}</span>
           </div>
         ))}
@@ -6878,9 +7397,9 @@ class ErrorBoundary extends React.Component{
       return React.createElement('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',padding:24}},
         React.createElement('div',{style:{maxWidth:440,textAlign:'center',display:'flex',flexDirection:'column',gap:14}},
           React.createElement('div',{style:{fontFamily:'Cormorant Garamond,serif',fontSize:'2.2rem',fontWeight:500,color:'var(--text)'}},'BoardHub'),
-          React.createElement('div',{style:{fontSize:'.9rem',color:'#9B1C1C',lineHeight:1.6}},'Algo quebrou na interface: '+(this.state.error&&this.state.error.message||'erro desconhecido')),
+          React.createElement('div',{style:{fontSize:'.9rem',color:'var(--danger-fg)',lineHeight:1.6}},'Algo quebrou na interface: '+(this.state.error&&this.state.error.message||'erro desconhecido')),
           React.createElement('div',{style:{fontSize:'.8rem',color:'var(--muted)',lineHeight:1.6}},'Seus dados locais e o histórico de backups estão preservados. Recarregue para continuar; se o erro persistir após um import, restaure um backup na tela Sincronizar.'),
-          React.createElement('button',{onClick:()=>location.reload(),style:{margin:'6px auto 0',padding:'10px 24px',background:'var(--text)',color:'white',border:'none',borderRadius:8,cursor:'pointer',fontFamily:'Figtree,sans-serif',fontSize:'.9rem'}},'Recarregar')
+          React.createElement('button',{onClick:()=>location.reload(),style:{margin:'6px auto 0',padding:'10px 24px',background:'var(--text)',color:'white',border:'none',borderRadius:8,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.9rem'}},'Recarregar')
         )
       );
     }
@@ -7020,7 +7539,19 @@ const App=()=>{
   })());
   // Which account this device has already completed a sync with ('' = none).
   const _deviceSyncedUid=useRef((()=>{try{return localStorage.getItem(SYNCED_UID_KEY)||'';}catch{return '';}})());
+  // M3: o tema já foi aplicado ao <html> pelo script do <head> antes do primeiro
+  // paint; aqui o React só passa a conhecer o valor para desenhar o botão certo.
+  const [theme,setTheme]=useState(themeLoad);
+  const toggleTheme=useCallback(()=>{
+    setTheme(t=>{const n=t==='notturno'?'papel':'notturno';themeApply(n);return n;});
+  },[]);
   const _didInitialReconcile=useRef(false);
+  // F2(A): assinatura do último estado remoto arquivado por conflito. O listener
+  // reentrega o mesmo documento em várias situações (reconexão, mudança de
+  // metadata); sem isto, cada reentrega viraria um snapshot novo e o histórico
+  // encheria de cópias do mesmo estado. Zerada sempre que este dispositivo volta
+  // a estar em dia com a nuvem, para que um conflito FUTURO seja arquivado.
+  const _lastRemoteArchivedSig=useRef('');
   const _hasRemoteData=useRef(false);      // true once the listener has seen a real 'state' doc
   const _applyMergedRef=useRef(null);      // lets "discard local & pull" re-run the merge on demand
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
@@ -7107,7 +7638,11 @@ const App=()=>{
               ? true // can't compare → preserve local real data (previous safe default)
               : new Date(localAt).getTime()+SKEW_MS>=new Date(remoteAt).getTime();
             if(localWins){
-              try{const{_updated,...cloudSnap}=data;bhCapture(cloudSnap,'cloud-superseded');}catch{}
+              // F3: se este arquivamento falhar, o estado da nuvem é preterido
+              // pelo local SEM cópia — o mesmo buraco que a F2(A) fechou no ramo
+              // vizinho. Não dá para abortar o reconcile por causa disso, mas dá
+              // para não fingir que aconteceu.
+              try{const{_updated,...cloudSnap}=data;bhCapture(cloudSnap,'cloud-superseded');}catch(e){bhLog('reconcile.arquivarNuvem',e,'a nuvem foi preterida sem cópia no histórico');}
               _hasPendingLocalEdit.current=true;
               try{localStorage.setItem(DIRTY_KEY,'1');}catch{}
               setSyncStatus('synced');
@@ -7121,6 +7656,24 @@ const App=()=>{
         // Live local edits not yet pushed — a snapshot must never overwrite them.
         // The push retry chain keeps the flag until the data is safely in the
         // cloud; the server echo of that push brings us back in sync afterwards.
+        //
+        // F2(A): não sobrescrever é metade da resposta. A outra metade é o que
+        // acontece com o estado que chegou. Antes ele era simplesmente
+        // descartado — e o push seguinte deste dispositivo passava por cima da
+        // nuvem, então o que o OUTRO dispositivo salvou desaparecia sem cópia
+        // em lugar nenhum. Agora ele vai para o histórico antes de ser
+        // preterido. Arquivar ANTES do return: depois não existe depois.
+        try{
+          const{_updated,...cloudSnap}=data;
+          const remoteSig=bhSig(cloudSnap);
+          let localSig='';try{const c=_latestState.current;if(c)localSig=bhSig(c);}catch{}
+          if(bhConcurrentDecision({localSig,remoteSig,lastArchivedSig:_lastRemoteArchivedSig.current,
+                                   remoteHasData:bhStateHasData(cloudSnap)})==='arquivar'){
+            _lastRemoteArchivedSig.current=remoteSig;
+            bhCapture(cloudSnap,'remoto-concorrente');
+            setSyncNotice('Outro dispositivo salvou alterações enquanto você editava aqui. Suas edições locais foram mantidas, e a versão que veio da nuvem está no Histórico de Backups.');
+          }
+        }catch{}
         return;
       }
       const isArr2=v=>Array.isArray(v);
@@ -7129,6 +7682,9 @@ const App=()=>{
         if(cur)bhCapture(cur,'pre-sync');
       }catch(e){}
       _hasPendingLocalEdit.current=false;
+      // F2(A): a partir daqui este dispositivo espelha a nuvem, então a
+      // assinatura arquivada por conflito não vale mais como "já guardei este".
+      _lastRemoteArchivedSig.current='';
       _remoteApplyId.current=_remoteApplyId.current+1;
       if(data.projects&&isArr2(data.projects)){
         setProjects(data.projects);
@@ -7146,7 +7702,7 @@ const App=()=>{
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       // This device now mirrors this account: record it so later boots use
       // last-write-wins instead of the first-contact rule, and drop the seed mark.
-      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'o dispositivo pode repetir o reconcile de 1º contato no próximo boot');}
       _deviceSyncedUid.current=fbUser.uid;
       setSyncDetail('');
       setSyncStatus('synced');
@@ -7193,7 +7749,12 @@ const App=()=>{
       try{
         localStorage.setItem(DIRTY_KEY,'1');
         localStorage.setItem(LAST_EDIT_KEY,new Date().toISOString()); // feeds last-write-wins
-      }catch{}
+      }catch(e){
+        // F3: sem estas duas chaves o last-write-wins fica cego — o reconcile do
+        // próximo boot não sabe que havia edição local nem quando ela foi feita,
+        // e o lado remoto ganha por padrão. Silêncio aqui é perda de dados adiada.
+        bhLog('sync.marcarSujo',e,'last-write-wins vai comparar sem o carimbo local');
+      }
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
@@ -7232,7 +7793,7 @@ const App=()=>{
           _pushAttempt.current=0;
           _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
           // cloud now has the latest local data; this device is in sync with this account
-          try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+          try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'o dispositivo pode repetir o reconcile de 1º contato no próximo boot');}
           _deviceSyncedUid.current=fbUser.uid;
           clearTimeout(_retryTimer.current);
           setSyncDetail('');
@@ -7273,7 +7834,7 @@ const App=()=>{
   const _latestState=useRef(null);
   _latestState.current={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
   useEffect(()=>{
-    const flush=()=>{try{if(_latestState.current)lsSave(_latestState.current);}catch(e){}};
+    const flush=()=>{try{if(_latestState.current)lsSave(_latestState.current);}catch(e){bhLog('flushAoSair',e);}};
     const onVis=()=>{if(document.visibilityState==='hidden')flush();};
     window.addEventListener('pagehide',flush);
     document.addEventListener('visibilitychange',onVis);
@@ -7344,7 +7905,7 @@ const App=()=>{
       await pushState(_latestState.current,fbUser.uid);
       _pushAttempt.current=0;
       _hasPendingLocalEdit.current=false;
-      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch{}
+      try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'o dispositivo pode repetir o reconcile de 1º contato no próximo boot');}
       _deviceSyncedUid.current=fbUser.uid;
       clearTimeout(_retryTimer.current);
       setSyncDetail('');
@@ -7369,8 +7930,9 @@ const App=()=>{
     return true;
   },[]);
 
-  const clearSave=()=>{
-    if(!window.confirm('⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'))return;
+  const clearSave=async()=>{
+    if(!await bhConfirm({title:'Apagar tudo',danger:true,confirmLabel:'Apagar tudo',
+      message:'⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'}))return;
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);
     setNoteGroups(DEFAULT_NOTE_GROUPS);
@@ -7446,8 +8008,8 @@ const App=()=>{
       {showShortcuts&&<ShortcutsModal onClose={()=>setShowShortcuts(false)}/>}
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={handleCloseNewProject} isMobile={isMobile}/>}
       {isMobile
-        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)}/>
-        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject}/>
+        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
+        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
       }
       <main key={view} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
@@ -7466,7 +8028,10 @@ const App=()=>{
 // Mount immediately — first paint is not blocked by any image I/O. Images resolve
 // on demand: grids/covers are viewport-gated (<Img>/<BgImg>), opening a card warms
 // a bounded prefix of thumbnails, and full-res is fetched only in the lightbox.
-ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
+// F3.2: o ConfirmHost fica FORA do App, irmão dele. Dentro, qualquer re-render
+// ou desmontagem de subárvore levaria junto um diálogo aberto — e uma promessa
+// pendente resolvida como cancelamento no meio de uma ação do usuário.
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/><ConfirmHost/></ErrorBoundary>);
 // Pre-warm THUMBNAILS (not originals) during idle, once the first view has
 // settled — so navigating to a post finds its images already in memory.
 setTimeout(()=>_idleCb(warmThumbCache),1200);
