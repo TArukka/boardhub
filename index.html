@@ -63,6 +63,190 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.32 — end-of-focus lands with weight (aug/2026)
+  Fourth pass, and a one-line brief: "the end of focus should end on a heavier
+  note." Only that cue, only its last beat.
+  D3 RETURNS — but the distinction that matters is WHERE it sits. Two versions
+  ago the final beat was D3 A3 D4: a bare fifth in the bottom octave, which read
+  as funereal and was the reason that pass was rejected. Now the same low D sits
+  UNDERNEATH the full Dm add9, third and ninth untouched. A low octave beneath a
+  warm voicing is weight; a hollow fifth in the same register is a funeral bell.
+  Same note, opposite effect — the fault was never the pitch, it was the empty
+  chord above it.
+  Three smaller dials on that beat alone, so the cue DARKENS as it settles
+  rather than being uniformly heavy: 4.4s decay instead of 3.4, slightly louder
+  (0.17), rolled a touch wider (0.035) so the low D speaks fractionally ahead of
+  the rest — a left hand landing before the right — and the octave partial
+  dimmed to 0.42 while the first two beats stay at 0.55.
+  THE TEST ABSORBED IT WITHOUT A LINE CHANGING, and that is the first evidence
+  that the rewrite in v23.31 was the right shape. Its two earlier versions would
+  BOTH have gone red here: v1 wanted extended jazz voicings, v2 required staying
+  above the register this change deliberately re-enters. The version that pins
+  only structure — minor third present, ending settles rather than climbs,
+  nothing below D3 — let the owner move the weight dial back without a test
+  standing in the way. That was the whole point of rewriting it, and it held on
+  the first opportunity to be tested.
+  116 tests, 116 green.
+  HONEST COST: still unheard by me, and this is the fourth pass on the same two
+  sounds. Each has been a smaller correction than the last — jazz, then grave,
+  then lighter, now heavier on one beat — which suggests convergence rather than
+  thrashing, but I cannot verify that from here either. The rest of the cue is
+  untouched; if the weight is right but something else is now off, the two
+  earlier beats have not moved since v23.31.
+  ──────
+  BoardHub v23.31 — the middle term, on the serious side (aug/2026)
+  Third pass on the same two cues, and the last one should be the owner's ear
+  rather than my arithmetic: "a little too serious now, look for a middle term
+  but on the serious side."
+  DIAGNOSIS — I overshot, and v23.30's own HONEST COST predicted exactly this:
+  "whether that lands as 'serious' or as 'funereal' is a line I cannot locate
+  from here". It landed funereal. Two specific things did it:
+  • THE SUB-BASS. Both cues put the root at D3, the bottom octave. That is the
+    register of a tolling bell, not of a work sound.
+  • THE BARE FIFTH ENDING. work_end finished on D3-A3-D4 with no third at all.
+    A hollow fifth is the oldest "finished" sound there is — which is why I used
+    it — but hollow reads as empty, and empty reads as grief.
+  FIX — three dials, no structural change. They still fall and are still minor.
+  • THE SUB-BASS IS GONE. The floor is now D4, above middle C.
+  • THE FINAL CHORD REGAINS ITS THIRD AND GAINS A NINTH (Dm add9). A ninth is
+    WARMTH, not brightness: it colours a chord without lifting it. And it is not
+    a guess — the owner already approved a Dm9 for the pause cue, so the flavour
+    is a known quantity in his ear.
+  • THE OCTAVE PARTIAL goes 0.35 → 0.55: half way back toward the original
+    shine rather than all the way.
+  A TEST I HAD TO REWRITE FOR THE SECOND TIME, and the reason is the lesson.
+  Its v1 asserted extended jazz voicings; he said too upbeat. Its v2 asserted
+  "reaches below middle C", encoding MY GUESS that serious means low; he said
+  too serious. Both times the test was pinning a DIAL HE WAS STILL TURNING, so
+  it went red on a correct change and had to be edited before his own
+  instruction could land. A test that must be rewritten every time the owner
+  refines his taste is not protecting anything — it is in the way.
+  It now pins only what survived all three rounds and is structural rather than
+  tuned: the third is MINOR, end-of-focus SETTLES rather than climbing, and
+  nothing goes below D3. Register above that floor, partial brightness and the
+  exact voicings are his to move, and moving them turns nothing red.
+  116 tests, 116 green.
+  HONEST COST: unchanged and unavoidable — I still have not heard a note of it.
+  What is different this time is that the previous version's failure mode was
+  correctly predicted in writing, which is weak evidence that the model of "what
+  makes this sound heavy" is roughly right. It is not evidence that this pass
+  landed. If it is still off, the useful words are which direction and how far:
+  "heavier", "lighter", "shorter", "less bright" all map onto single numbers.
+  ──────
+  BoardHub v23.30 — two cues get graver; papel becomes mattinata (aug/2026)
+  The owner listened to v23.29 on a comparison page and came back with the most
+  useful kind of note: which two he liked, which two he did not, and the shape
+  he wanted instead.
+  KEPT, UNTOUCHED: pause and break_end. Approved as they are. A test now pins
+  their exact pitch content — reworking two neighbours through the SAME helpers
+  is precisely how an approved sound drifts without anyone deciding to change it.
+  REDONE: start and work_end. "Too upbeat, needs to be a little more serious."
+  • WHAT MADE THEM UPBEAT, since taste has to become numbers before it can be
+    edited: they ROSE, they were MAJOR, and each voice carried a bright octave
+    partial on top. All three reversed — they now fall, they are minor, and the
+    partial is scaled to 0.35 by a new `bright` argument on the voice. Same
+    instrument, less shine; the default leaves the two approved cues identical.
+  • THE COUNT WAS HIS, AND IT CHANGED MID-REQUEST. He first asked for "2 notes"
+    and "3 notes", then corrected: "i dont really understand music theory, so I
+    mean two beats and three beats". That is a better brief than the first one —
+    a beat can be a whole chord, so the cues stay full instead of thin. Start is
+    2 beats, work_end is 3.
+  • START — a bare open fifth (A3 E4), then D minor under it (D3 A3 F4). A fifth
+    with NO THIRD is ambiguous by construction: neither major nor minor, so it
+    reads as attention rather than mood. The third arrives only on the second
+    beat, minor and low. That is beginning work rather than announcing it.
+  • WORK_END — F4 A4 D5 → D4 F4 A4 → D3 A3 D4, descending D minor. The last beat
+    DROPS THE THIRD: a bare fifth and octave is the oldest "finished" sound
+    there is, and it is what keeps a minor ending from sounding merely sad.
+  • ONE KEY NOW. All four cues sit in D minor, where before the set was in C.
+    The two approved ones were already there — the rewrite moved the other two
+    to join them rather than the reverse.
+  ── AND: papel → MATTINATA ──
+  The owner spotted that the theme pair was mismatched, and it was worse than
+  language: notturno names a musical FORM after a time of day, papel names a
+  material. Mattinata is the true Italian counterpart — a morning song, a real
+  form, named for a time exactly as notturno is.
+  NO MIGRATION, and it is worth saying why it looked like one was needed:
+  'papel' IS written to boardhub_theme on disk. It is not load-bearing —
+  themeLoad only ever tests `=== 'notturno'` and treats anything else as light,
+  so an old profile falls straight through to the new default. **'notturno' is
+  the one string that could not change**: it is the persisted value AND the
+  data-theme attribute that both the CSS and the pre-paint boot script match on.
+  MEASURED: 116 tests, 116 green (was 114). Three new — the beat COUNT of each
+  revised cue (onsets clustered at 150ms, since notes inside a beat are ~20ms
+  apart and beats ~450ms), the exact pitch content of the two approved cues, and
+  that the revised pair reaches below middle C and ends lower than it starts.
+  A TEST WAS REWRITTEN, NOT DELETED: 'the session cues are extended jazz
+  voicings' asserted the opposite of what the owner now wants for these two. It
+  was correct until he heard it. It became a guard on register and direction —
+  the drift it protects against is real in both directions.
+  HONEST COST: still never heard by me. The numbers say low, falling, minor,
+  dimmer; whether that lands as "serious" or as "funereal" is a line I cannot
+  locate from here, and a start-of-work sound that feels like a dirge would be
+  worse than one that is too cheerful. If it is too heavy, the fix is small:
+  raise the whole cue a tone, or drop the lowest voice (D3) and let it sit an
+  octave up.
+  ──────
+  BoardHub v23.29 — the session cues learn some harmony (aug/2026)
+  The owner asked for something "classy, jazzy", and asked for the study first.
+  THE STUDY, because the word "jazzy" has to become something measurable before
+  it can be built. The old cues were TRIADS — C-E-G rising, a plain descending
+  arpeggio, a bare fifth. A triad is the sound of a notification: it is what
+  every app ships, precisely because it is neutral and unambiguous. Four things
+  move it into a jazz vocabulary, and all four were cheap because the engine
+  already had a reverb bus and a soft-attack envelope:
+  1. EXTENDED HARMONY, NOT TRIADS — 7ths, 9ths, 13ths. A major 6/9 is the
+     canonical "arrived, nothing more to say" chord; a major triad in the same
+     place is a doorbell.
+  2. ROOTLESS VOICINGS — pianists drop the root and stack the 3rd, 7th and the
+     extensions in the middle register. Losing the root removes the blunt "here
+     is the key" quality that makes a triad sound literal.
+  3. ii–V–I — the defining cadence of the idiom, recognisable as jazz even to
+     people who cannot name it.
+  4. SWING AND ROLL — even spacing is mechanical. Chords now arrive long–short
+     (a triplet feel) and each voicing is ROLLED tens of ms per note, like a
+     hand on keys instead of a block triggered at once.
+  TIMBRE COUNTED AS MUCH AS THE NOTES. One triangle wave is a buzzer. Each voice
+  is now a sine fundamental (body) + a slightly detuned triangle (the tine bite
+  of an electric piano) + a quiet octave partial (bell) — a Rhodes impression in
+  three cheap oscillators. No samples, no new dependency (protocol #7).
+  WHAT EACH CUE SAYS, which is why they are not interchangeable:
+    start ....... Dm9 → G13 → Cmaj9, swung. A phrase that goes somewhere.
+    work_end .... G13 → C6/9, rolled wide. The arrival, and the reward.
+    pause ....... Dm9 falling, DELIBERATELY unresolved — the ear waits for a V
+                  that never comes. That is "suspended". The old bare fifth
+                  said "stopped", which is a different thing.
+    break_end ... a short rootless 6/9 stab, upper-mid. Audible from the next
+                  room without announcing a full cadence for a 5-minute break.
+  MEASURED, by spying on every oscillator actually scheduled, because nothing in
+  this environment can listen. The pitches come out exactly as voiced:
+    start ..... F4 A4 C5 E5 · F4 B4 E5 · E4 G4 B4 D5
+    work_end .. F4 B4 E5 · C4 E4 G4 A4 D5
+    pause ..... E5 C5 A4 F4
+    break_end . A4 D5 E5 G5
+  (each with its octave partial, from the Rhodes voice.)
+  Master bus trimmed to 0.5 for headroom: three oscillators per voice and up to
+  five voices means the old gain staging would have clipped.
+  A TRAP IN MY OWN TEST, worth writing down because it looked like a code
+  bug: the first version read `osc.frequency.value` straight after
+  setValueAtTime(v, futureTime). That returns the CURRENT value — the 440Hz
+  default — for every oscillator, so the probe "found" only 440 and reported the
+  chord as a plain triad. The code was right the whole time; the measurement was
+  reading a property that had not happened yet. It now records the value passed
+  to setValueAtTime.
+  114 tests, 114 green (was 112). Two new: the pitch content of the start cue
+  (it must keep the 7ths, the 9th and the 13th, and must not collapse back to
+  C-E-G octaves), and that a MUTED session creates zero oscillators — the mute
+  must stop the sound being built, not merely turned down.
+  HONEST COST: I have never heard these. Not once. Every claim above is about
+  scheduled frequencies, timings and gains — the harmony is provably what was
+  intended, and whether it is PLEASANT is entirely unverified. Specific risks I
+  would listen for: the work_end roll is 5 voices over ~275ms and may sound
+  cluttered rather than lush; break_end at 0.03 spread is nearly a block chord
+  and may be harsher than the old single ding; and the whole set sits in C with
+  the tier cadences, which could be monotonous across a day. All of it is
+  numbers in a table — say the word and any of them moves.
+  ──────
   BoardHub v23.28 — the pendulum always swings; ♪ becomes sound (aug/2026)
   Three things the owner asked for on 2026-08-03, after seeing a still metronome
   in his own screenshot.
@@ -1915,11 +2099,11 @@ const bhLogClear=()=>{
 };
 
 // - M3: THEME -
-// 'papel' (the default) and 'notturno'. The default is the warm paper by your
+// 'mattinata' (the default) and 'notturno'. The default is the warm paper by your
 // decision, not by system preference: the app has an identity and it is light.
 // Whoever wants the dark one switches it on, and the choice persists.
 const THEME_KEY='boardhub_theme';
-const themeLoad=()=>{try{return localStorage.getItem(THEME_KEY)==='notturno'?'notturno':'papel';}catch{return 'papel';}};
+const themeLoad=()=>{try{return localStorage.getItem(THEME_KEY)==='notturno'?'notturno':'mattinata';}catch{return 'mattinata';}};
 const themeApply=t=>{
   try{
     if(t==='notturno')document.documentElement.setAttribute('data-theme','notturno');
@@ -3892,10 +4076,10 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
       {/* M3: the label says what the click DOES, not which state you are in — a
           "Notturno" button on the light theme is ambiguous under both readings. */}
       <button onClick={onToggleTheme} className="hover-border-text hover-text"
-        title={theme==='notturno'?'Voltar ao tema papel':'Mudar para o tema notturno'}
-        aria-label={theme==='notturno'?'Voltar ao tema papel':'Mudar para o tema notturno'}
+        title={theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
+        aria-label={theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
         style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
-        <Icon name={theme==='notturno'?'sun':'moon'} size={12}/> {theme==='notturno'?'Papel':'Notturno'}
+        <Icon name={theme==='notturno'?'sun':'moon'} size={12}/> {theme==='notturno'?'Mattinata':'Notturno'}
       </button>
       {/* F5: polite, not assertive — this flips on every autosave (~2.5s while
           editing), and an assertive region would interrupt the screen reader
@@ -3977,7 +4161,7 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hub
               <button onClick={()=>{onToggleTheme();setMoreOpen(false);}}
                 className="more-sheet-item"
                 style={{color:'var(--muted)',fontSize:'.88rem'}}>
-                <Icon name={theme==='notturno'?'sun':'moon'} size={18}/> {theme==='notturno'?'Tema papel':'Tema notturno'}
+                <Icon name={theme==='notturno'?'sun':'moon'} size={18}/> {theme==='notturno'?'Tema mattinata':'Tema notturno'}
               </button>
               <div role="status" aria-live="polite" style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
                 <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
@@ -4181,22 +4365,57 @@ const playPomoSound = (type) => {
     // the session cues.
     bus.gain.value = 0.5;   // headroom: 3 oscillators per voice, up to 5 voices
 
-    const voice = (freq, t, vol, decay) => {
-      note(freq,     t, vol,        decay,        'sine');
-      note(freq,     t, vol * 0.45, decay * 0.75, 'triangle', 6);
-      note(freq * 2, t, vol * 0.07, decay * 0.45, 'sine');
+    // `bright` scales only the octave partial — the bell on top. Dropping it is
+    // what separates the two GRAVE cues from the two bright ones: same
+    // instrument, less shine. The default keeps pause and break_end exactly as
+    // they were, which matters because those two were approved as they are.
+    const voice = (freq, t, vol, decay, bright = 1) => {
+      note(freq,     t, vol,                  decay,        'sine');
+      note(freq,     t, vol * 0.45,           decay * 0.75, 'triangle', 6);
+      note(freq * 2, t, vol * 0.07 * bright,  decay * 0.45, 'sine');
     };
-    const roll = (freqs, t, vol, decay, spread = 0.045) =>
-      freqs.forEach((f, i) => voice(f, t + i * spread, vol, decay));
+    const roll = (freqs, t, vol, decay, spread = 0.045, bright = 1) =>
+      freqs.forEach((f, i) => voice(f, t + i * spread, vol, decay, bright));
 
     const T = ctx.currentTime;
 
     if (type === 'work_end') {
-      // The arrival. G13 (rootless: 7th, 3rd, 13th) leaning into C6/9 — the
-      // 6th and 9th instead of a plain triad are what make it sound settled
-      // rather than merely finished.
-      roll([349.23, 493.88, 659.25], T, 0.16, 1.5);
-      roll([261.63, 329.63, 392.00, 440.00, 587.33], T + 0.34, 0.19, 3.0, 0.055);
+      // THREE BEATS, to the owner's count (2026-08-03), descending D minor:
+      // Dm/F high → Dm low → a bare open D at the bottom.
+      //
+      // The rolled C6/9 that stood here was rejected as too upbeat, and the
+      // reason is structural rather than taste: it ROSE, it was MAJOR, and five
+      // notes inside a quarter second read as a flourish. All three reversed.
+      // Falling and minor is the sound of setting something down. The last beat
+      // drops the third entirely — a bare fifth and octave is the oldest
+      // "finished" sound there is, and it is what keeps this from sounding
+      // merely sad rather than concluded.
+      // Beats 0.45s apart so three separate events are heard, not one gesture.
+      //
+      // TUNED BACK on 2026-08-03 — "a little too serious now, look for a middle
+      // term but on the serious side." The first grave version ended on a bare
+      // D3-A3-D4: no third, bottom octave, which read as funereal rather than
+      // finished. Three dials moved, none of them the structure:
+      //   • the sub-bass D3 is gone — the floor is now D4, above middle C;
+      //   • the last beat regains a third AND a ninth (Dm add9). A ninth is
+      //     warmth, not brightness: it colours the chord without lifting it,
+      //     and he already approved a Dm9 for the pause cue, so it is a known
+      //     quantity rather than a guess;
+      //   • the octave partial goes 0.35 → 0.55, half way back toward the
+      //     original shine instead of all the way.
+      // It still falls, and it is still minor. Only the weight changed.
+      // THE LAST BEAT CARRIES WEIGHT (owner, 2026-08-03: "should end on a
+      // heavier note"). D3 returns — but underneath the FULL chord, not as the
+      // bare fifth that read as funereal two versions ago. That is the whole
+      // distinction: a low octave beneath a warm voicing is weight, a hollow
+      // fifth in the same register is a funeral bell. The third and the ninth
+      // stay exactly where they are.
+      // Also longer (4.4s), a little louder, rolled slightly wider so the low D
+      // speaks fractionally first — a left hand landing ahead of the right —
+      // and dimmer on this beat alone, so the cue darkens as it settles.
+      roll([440.00, 587.33, 698.46],                 T,        0.13, 2.0, 0.022, 0.55);
+      roll([349.23, 440.00, 587.33],                 T + 0.45, 0.14, 2.4, 0.022, 0.55);
+      roll([146.83, 293.66, 349.23, 440.00, 659.25], T + 0.90, 0.17, 4.4, 0.035, 0.42);
     } else if (type === 'break_end') {
       // Short 6/9 stab, upper-mid, no root: bright enough to notice from
       // another room, but it does not announce a full cadence for a 5-minute
@@ -4208,12 +4427,24 @@ const playPomoSound = (type) => {
       // what a pause is. The old bare fifth said "stopped".
       roll([659.25, 523.25, 440.00, 349.23], T, 0.14, 1.6, 0.07);
     } else if (type === 'start') {
-      // ii–V–I, swung: Dm9 → G13 → Cmaj9. The 0.26 / 0.17 split is the long–
-      // short triplet feel; spacing them evenly is what would make it sound
-      // like a scale exercise instead of a phrase.
-      roll([349.23, 440.00, 523.25, 659.25], T,        0.13, 1.1, 0.035);
-      roll([349.23, 493.88, 659.25],         T + 0.26, 0.13, 1.1, 0.035);
-      roll([329.63, 392.00, 493.88, 587.33], T + 0.43, 0.17, 2.2, 0.045);
+      // TWO BEATS, to the owner's count: a bare open fifth, then D minor
+      // underneath it.
+      //
+      // The swung ii–V–I here was the most upbeat thing in the app, and
+      // deliberately so — which was the complaint. A fifth with NO THIRD is
+      // ambiguous by construction: it commits to neither major nor minor, so it
+      // reads as attention rather than mood. The third only arrives on the
+      // second beat, and it arrives minor, low, and settled. That is the shape
+      // of beginning work rather than announcing it.
+      // Same tonic (D) as the pause and end-of-focus cues, so the four sounds
+      // of a session belong to one key.
+      // TUNED BACK on 2026-08-03, same note as work_end. The open fifth stays —
+      // it was doing its job. What changed is the second beat: D3 A3 F4 put the
+      // root in the bottom octave and made the whole cue sound like a door
+      // closing rather than opening. Now D4 F4 A4 — the same D minor, in a
+      // register you would actually play it in, with the partial half restored.
+      roll([220.00, 329.63],         T,        0.15, 2.2, 0.02,  0.55);
+      roll([293.66, 349.23, 440.00], T + 0.50, 0.16, 3.0, 0.025, 0.55);
     }
   } catch(e) {/*silent-ok: AudioContext is blocked until a user gesture and may be unavailable entirely; sound is ornament, never state*/}
 };
@@ -8454,7 +8685,7 @@ const App=()=>{
   // right button.
   const [theme,setTheme]=useState(themeLoad);
   const toggleTheme=useCallback(()=>{
-    setTheme(t=>{const n=t==='notturno'?'papel':'notturno';themeApply(n);return n;});
+    setTheme(t=>{const n=t==='notturno'?'mattinata':'notturno';themeApply(n);return n;});
   },[]);
   const _didInitialReconcile=useRef(false);
   // F2(A): signature of the last remote state archived because of a conflict. The
