@@ -63,6 +63,92 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.34 — the tier landing gets its glint (aug/2026)
+  "In the end, the last beat, should have some sparkly sounds that ramp up."
+  A rising glint over the tier arrival chord — high D minor, PURE SINE with no
+  tine bite, because a triangle up there is a whistle rather than a shimmer.
+  • IT ACCELERATES. Each gap is 15% shorter than the one before, so it reads as
+    ramping up rather than as an evenly spaced scale. Measured: 55 → 47 → 39 →
+    34 → 29 ms.
+  • IT GETS LOUDER AS IT RISES, which is the opposite of a natural decay. That
+    inversion is what makes it sound like something ARRIVING instead of fading.
+  • ITS LENGTH IS THE RUN'S LENGTH — 2 notes at Andante, 6 at Vivace. A bigger
+    achievement gets a bigger glint for free, reinforcing the between-tier
+    contrast rather than adding a separate thing to keep in step with it.
+  NOT APPLIED TO THE SESSION CUES, deliberately. End-of-focus took four rounds
+  to settle at grave, and sparkle on it would undo precisely that. This is the
+  reward sound; that one is the full stop.
+  119 tests, 119 green.
+  THE TEST FAILED, AND FOR THE MOST INSTRUCTIVE REASON YET. It filtered "notes
+  above 1150Hz" to find the glint. But the Rhodes voice doubles every note an
+  octave up, and the RUN climbs the same D minor ladder the sparkle does — so
+  the run's own octave partials ARE the sparkle pitches, arriving one per beat.
+  The probe saw 1175→2093 (the run) and then 1175 again (the glint) and reported
+  "stops ascending". Nothing had gone wrong: two different things were
+  indistinguishable by the one property being measured.
+  Fixed by adding TIME as the discriminator — the landing chord is the only
+  place D4 is struck, so its onset marks where the run ends and the glint
+  begins. Worth recording because the lesson is not "that regex was wrong": it
+  is that a measurement has to be able to tell its subject apart from everything
+  else in the signal, and frequency alone could not.
+  HONEST COST: unheard. And the specific risk here is real — high sine tones at
+  2.3kHz are where "sparkle" and "piercing" live next to each other, and the
+  volume RISES into that range on purpose. If it stings, the fix is the top of
+  the ladder, not the idea: dropping the last one or two entries lowers the
+  ceiling without touching the shape.
+  ──────
+  BoardHub v23.33 — the day tiers join the same key (aug/2026)
+  The owner asked whether 2h/4h/6h/8h have sounds. They always have — since M1
+  named the tiers and M2 gave each a cadence at its own BPM. What they had NOT
+  done is follow the session cues into the voice those cues arrived at over four
+  rounds of his listening.
+  THE DRIFT, and it is the kind that happens without anybody deciding it:
+    key ......... C major pentatonic, against D minor everywhere else
+    landing ..... a plain C major triad — the same "doorbell" removed from the
+                  session cues for sounding like a generic notification
+    instrument .. dry triangle straight to the destination, while the session
+                  cues went through a reverb bus with a layered Rhodes voice
+  They were simply older code that stayed put while everything around it moved.
+  ONE SYNTH NOW, not two. _bhVoiceRig holds the wet/dry chain, the Rhodes voice
+  and the roll; both playPomoSound and playTempoSound take it. Two copies of a
+  synth is the same failure as DAY_TIERS and TEMPO_BPM before M2 — two tables of
+  the same thing, diverging quietly, until the app showed one tempo and played
+  another.
+  HIS THREE NOTES, all applied:
+  • ONE BEAT OFF EACH: 3/4/5/7 became 2/3/4/6.
+  • MORE CONTRAST BETWEEN TIERS. This was the real problem. All four began on
+    the SAME note and differed only in length and speed — audible if you are
+    listening for it, not if you are working. Each tier now starts a degree
+    higher than the last (D4 / F4 / A4 / C5), so 2h and 8h are different events
+    rather than the same event at different lengths. The runs are written out
+    per tier instead of sliced from one scale, because the starting degree is
+    the thing that distinguishes them and it should be visible as such.
+  • A GRAVER LANDING: the arrival chord sits at bright 0.42 against the run's
+    0.6, and rings longer. It rises to something that settles, rather than
+    rising to something brighter than it started from.
+  EVERY TIER LANDS ON THE SAME CHORD — Dm add9, the one that ends a focus
+  session. The contrast lives in the approach, not the destination: four
+  different achievements resolving to one home. A tier-specific landing would
+  have made them four unrelated sounds instead of one family.
+  ADAGIO STAYS SILENT. It is where every day starts, and a chime for "you have
+  done zero hours" is a notification, not a reward — it would fire every morning.
+  118 tests, 118 green (was 116). Two new: each tier must start higher than the
+  one before (the contrast, measured on the first onset's fundamental), and the
+  base tier must schedule ZERO oscillators.
+  A SOURCE GUARD BROKE, AND IT WAS THE TEST — the fourth time in this session
+  and the third rewrite of this particular one. It pinned the literal
+  `level === 'adagio') return`. The guard became "adagio has no run to play",
+  which is the same silence expressed differently, and the test went red on code
+  that had not regressed. Its two earlier versions died the same way: v1 required
+  an if/else chain, v2 required a `passos` step-count table. Each version named
+  the SHAPE of the implementation. The silence is now asserted by BEHAVIOUR —
+  adagio creates no oscillators — which survives however the guard is written.
+  HONEST COST: unheard, as always. And one thing was NOT done: the tier cadences
+  are still not gated by the ♪ toggle, so muting the session sounds leaves them
+  playing. That was deliberate in v23.28 (they are the reward, not the metronome)
+  and the owner has not asked otherwise, but it is now the only sound in the app
+  the mute does not reach.
+  ──────
   BoardHub v23.32 — end-of-focus lands with weight (aug/2026)
   Fourth pass, and a one-line brief: "the end of focus should end on a heavier
   note." Only that cue, only its last beat.
@@ -4254,19 +4340,11 @@ const _getAudioCtx = () => {
     return _sharedAudioCtx;
   } catch(e) { return null; }
 };
-// _playNote used by medal sounds (routes to ctx.destination directly)
-const _playNote = (ctx, freq, startT, vol, decay, type='triangle', detune=0) => {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain); gain.connect(ctx.destination);
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, startT);
-  if(detune) osc.detune.setValueAtTime(detune, startT);
-  gain.gain.setValueAtTime(0, startT);
-  gain.gain.linearRampToValueAtTime(vol, startT + 0.018);
-  gain.gain.exponentialRampToValueAtTime(0.001, startT + decay);
-  osc.start(startT); osc.stop(startT + decay + 0.05);
-};
+// _playNote is GONE. It was the dry oscillator that went straight to
+// ctx.destination, and the tier cadences were its last caller — its comment
+// still said "used by medal sounds", a name that stopped existing at M1. Every
+// sound now goes through _bhVoiceRig, which is the point: one instrument, one
+// reverb, one place to change the voice.
 
 // Convolution reverb — creates a warm, roomy ambience
 const _makeReverb = (ctx, secs=1.8) => {
@@ -4302,39 +4380,60 @@ let _pomoSoundOn = pomoSoundLoad();
 const setPomoSoundOn = v => { _pomoSoundOn = v; pomoSoundSave(v); };
 const pomoSoundOn = () => _pomoSoundOn;
 
+// THE ONE VOICE, shared by every sound the app makes.
+//
+// Extracted on 2026-08-03, when the tier cadences moved into the same world as
+// the session cues. Before that they were two synths: these went through a
+// reverb bus with a layered Rhodes voice, the cadences went dry and straight to
+// the destination. Keeping two copies is exactly the failure DAY_TIERS and
+// TEMPO_BPM had before M2 — two tables of the same thing, diverging quietly,
+// until the app showed one tempo and played another.
+//
+// `bright` scales only the octave partial — the bell on top. It is the dial that
+// separates a grave cue from a bright one without changing instrument.
+const _bhVoiceRig = ctx => {
+  const reverb = _makeReverb(ctx);
+  const dryBus = ctx.createGain();
+  const wetBus = ctx.createGain();
+  dryBus.gain.value = 0.62;
+  wetBus.gain.value = 0.42;
+  reverb.connect(wetBus);
+  wetBus.connect(ctx.destination);
+  dryBus.connect(ctx.destination);
+  // Everything feeds this bus → split to dry + reverb. Trimmed for headroom:
+  // three oscillators per voice and up to five voices would clip at unity.
+  const bus = ctx.createGain();
+  bus.gain.value = 0.5;
+  bus.connect(dryBus);
+  bus.connect(reverb);
+  const note = (freq, t, vol, decay, type='triangle', detune=0) => {
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(bus);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if(detune) osc.detune.setValueAtTime(detune, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.04);   // soft mallet attack
+    gain.gain.exponentialRampToValueAtTime(0.001, t + decay);
+    osc.start(t); osc.stop(t + decay + 0.15);
+  };
+  const voice = (freq, t, vol, decay, bright = 1) => {
+    note(freq,     t, vol,                 decay,        'sine');
+    note(freq,     t, vol * 0.45,          decay * 0.75, 'triangle', 6);
+    note(freq * 2, t, vol * 0.07 * bright, decay * 0.45, 'sine');
+  };
+  const roll = (freqs, t, vol, decay, spread = 0.045, bright = 1) =>
+    freqs.forEach((f, i) => voice(f, t + i * spread, vol, decay, bright));
+  return { note, voice, roll };
+};
+
 const playPomoSound = (type) => {
   if (!_pomoSoundOn) return;
   try {
     const ctx = _getAudioCtx();
     if (!ctx) return;
-
-    // Reverb wet/dry chain
-    const reverb   = _makeReverb(ctx);
-    const dryBus   = ctx.createGain();
-    const wetBus   = ctx.createGain();
-    dryBus.gain.value = 0.62;
-    wetBus.gain.value = 0.42;
-    reverb.connect(wetBus);
-    wetBus.connect(ctx.destination);
-    dryBus.connect(ctx.destination);
-
-    // All notes feed into this bus → split to dry + reverb
-    const bus = ctx.createGain();
-    bus.connect(dryBus);
-    bus.connect(reverb);
-
-    const note = (freq, t, vol, decay, type='triangle', detune=0) => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(bus);
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, t);
-      if(detune) osc.detune.setValueAtTime(detune, t);
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(vol, t + 0.04);   // soft mallet attack
-      gain.gain.exponentialRampToValueAtTime(0.001, t + decay);
-      osc.start(t); osc.stop(t + decay + 0.15);
-    };
+    const { voice, roll } = _bhVoiceRig(ctx);
 
     // ── WHAT MAKES THESE READ AS JAZZ (the study, 2026-08-03) ──────────────
     // The old cues were built from TRIADS — C-E-G rising, a plain descending
@@ -4359,24 +4458,11 @@ const playPomoSound = (type) => {
     // `voice` stacks a sine fundamental (body), a slightly detuned triangle
     // (the tine bite of an electric piano) and a quiet octave partial (bell).
     // That is a Rhodes impression in three cheap oscillators — no samples, no
-    // new dependency (protocol #7).
+    // new dependency (protocol #7). It lives in _bhVoiceRig now, shared with the
+    // tier cadences.
     //
-    // Everything stays in C, as before, so the tier cadences still agree with
-    // the session cues.
-    bus.gain.value = 0.5;   // headroom: 3 oscillators per voice, up to 5 voices
-
-    // `bright` scales only the octave partial — the bell on top. Dropping it is
-    // what separates the two GRAVE cues from the two bright ones: same
-    // instrument, less shine. The default keeps pause and break_end exactly as
-    // they were, which matters because those two were approved as they are.
-    const voice = (freq, t, vol, decay, bright = 1) => {
-      note(freq,     t, vol,                  decay,        'sine');
-      note(freq,     t, vol * 0.45,           decay * 0.75, 'triangle', 6);
-      note(freq * 2, t, vol * 0.07 * bright,  decay * 0.45, 'sine');
-    };
-    const roll = (freqs, t, vol, decay, spread = 0.045, bright = 1) =>
-      freqs.forEach((f, i) => voice(f, t + i * spread, vol, decay, bright));
-
+    // The key is D MINOR. It started in C; the two cues the owner approved sat
+    // in D minor, and the rest followed them rather than the reverse.
     const T = ctx.currentTime;
 
     if (type === 'work_end') {
@@ -4468,33 +4554,70 @@ const TEMPO_BPM = { adagio:66, andante:76, moderato:108, allegro:132, vivace:160
 // touches storage to tidy a preference is more risk than the tidiness is worth.
 // The sound preference lives in its own key — see POMO_SOUND_LS above.
 
+// Each tier's run, written out rather than sliced from one scale, because the
+// STARTING DEGREE is what tells them apart (owner, 2026-08-03: "more contrast
+// between each tier"). Before, all four began on the same note and differed only
+// in length and speed — audible if you were listening for it, not if you were
+// working. Now every tier begins higher than the last, so 2h and 8h are
+// different events rather than the same event at different lengths.
+//
+// D minor pentatonic, and one beat shorter than before on his instruction:
+// 3/4/5/7 became 2/3/4/6.
+const TEMPO_RUN = {
+  andante:  [293.66, 349.23],                                   // D4 F4
+  moderato: [349.23, 440.00, 523.25],                           // F4 A4 C5
+  allegro:  [440.00, 523.25, 587.33, 698.46],                   // A4 C5 D5 F5
+  vivace:   [523.25, 587.33, 698.46, 783.99, 880.00, 1046.50],  // C5 D5 F5 G5 A5 C6
+};
 const playTempoSound = (level) => {
   try {
     const ctx = _getAudioCtx();
     if (!ctx) return;
     const bpm = TEMPO_BPM[level];
-    if (!bpm || level === 'adagio') return;  // the base tier announces nothing
-    const t0   = ctx.currentTime;
-    const beat = 60 / bpm;                  // crotchet duration AT THIS tempo
-    const ring = beat * 2.4;                // a slow tempo lets the note ring longer
+    const run = TEMPO_RUN[level];
+    if (!bpm || !run) return;   // adagio has no run: the base tier announces nothing
+    const { note, voice, roll } = _bhVoiceRig(ctx);
+    const t0    = ctx.currentTime;
+    const beat  = 60 / bpm;                    // crotchet duration AT THIS tempo
+    const salto = level === 'vivace' ? 0.5 : 1; // Vivace runs in quavers
+    const ring  = beat * 2.6;                  // a slow tempo lets a note ring longer
 
-    // C pentatonic. The number of degrees grows with the tempo's hurry, and
-    // Vivace runs in quavers — it is the same figure, ever tighter.
-    const ESCALA = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51];
-    const passos = { andante:3, moderato:4, allegro:5, vivace:7 }[level];
-    const salto  = level === 'vivace' ? 0.5 : 1;
+    run.forEach((f, i) => voice(f, t0 + i * beat * salto, 0.15, ring, 0.6));
 
-    for (let i = 0; i < passos; i++) {
-      const t = t0 + i * beat * salto;
-      _playNote(ctx, ESCALA[i], t, 0.26, ring, 'triangle');
-      if (level !== 'andante') _playNote(ctx, ESCALA[i], t, 0.09, ring * 0.75, 'sine', 5);
+    // EVERY TIER LANDS ON THE SAME CHORD — Dm add9, the one that ends a focus
+    // session. The contrast lives in the approach, not the destination: same
+    // cadence, different climb, so four different achievements still resolve to
+    // one home. A tier-specific landing would make them four unrelated sounds.
+    // Slightly graver than the run above it (bright 0.42 against 0.6, and a
+    // longer ring), on his note that the last beat could be a little more
+    // serious — rising to something that settles, rather than rising to a
+    // brighter thing than it started from.
+    const fim = t0 + run.length * beat * salto;
+    roll([293.66, 349.23, 440.00, 659.25], fim, 0.16, ring * 2.1, 0.028, 0.42);
+
+    // THE SPARKLE (owner, 2026-08-03: "the last beat should have some sparkly
+    // sounds that ramp up"). A rising glint over the landing chord — high D
+    // minor, pure sine with no tine bite, because a triangle up here is a
+    // whistle rather than a shimmer.
+    //
+    // It ACCELERATES: each gap is 15% shorter than the one before, so it reads
+    // as ramping up rather than as an evenly-spaced scale. Volume climbs as it
+    // rises, which is the opposite of what a natural decay would do — that is
+    // what makes it sound like something arriving rather than fading.
+    //
+    // ITS LENGTH IS THE RUN'S LENGTH, so a bigger tier gets a bigger glint for
+    // free: 2 notes at Andante, 6 at Vivace. That reinforces the contrast
+    // between tiers instead of adding a separate thing to keep in sync.
+    //
+    // Deliberately NOT applied to the session cues: end-of-focus was tuned over
+    // four rounds to be grave, and sparkle on it would undo exactly that.
+    const SPARK = [1174.66, 1396.91, 1567.98, 1760.00, 2093.00, 2349.32]; // D6..D7
+    let dt = 0.05;
+    for (let i = 0; i < run.length && i < SPARK.length; i++) {
+      note(SPARK[i], fim + dt, 0.045 + i * 0.005, 1.9 - i * 0.09, 'sine');
+      dt += 0.055 * Math.pow(0.85, i);
     }
-    // Arrival chord, one crotchet after the last note.
-    const fim = t0 + passos * beat * salto;
-    [523.25, 659.25, 783.99].forEach((f, i) => {
-      _playNote(ctx, f * (level === 'vivace' ? 2 : 1), fim + i * 0.05, 0.15, ring * 1.6, 'triangle');
-    });
-  } catch(e) {/*silent-ok: same as the tier cadence — a silent tier change is a cosmetic loss, not a data one*/}
+  } catch(e) {/*silent-ok: a silent tier change is a cosmetic loss, not a data one*/}
 };
 
 // M2.1 — the metronome's audible click was REMOVED. It beat ~2×/s for the whole
