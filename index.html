@@ -63,6 +63,81 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.36 — the glint rebuilt from the level-up's shape (aug/2026)
+  "There's a note where the pitch is too high", plus: model the glint on the
+  Minecraft level-up sound — look up its structure first.
+  WHAT THE LOOK-UP FOUND: no note-for-note transcription of that chime is
+  published, but its structure is consistent across sources — a SHORT ASCENDING
+  BELL/MALLET arpeggio, bright, with a resonant tail. Not a long high run. And
+  the load-bearing fact: its sparkle is BELL TIMBRE — energy spread across a
+  fundamental and its partials — not a high pitch.
+  THAT DIAGNOSES THE STING. v23.35 put the whole glint into one loud ~1.76kHz
+  sine. A lone sine at that height is about the most piercing thing the ear
+  knows; a bell never stings because no single partial carries all the energy.
+  I had been adding brightness by going HIGHER, when the level-up gets it by
+  going RICHER.
+  THE REBUILD:
+  • An ascending D-minor-pentatonic bell arpeggio, D5 F5 A5 C6 — fundamentals
+    capped at C6 (1046Hz), where before the top sounding note was 1760.
+  • Each note is a small bell: fundamental + an octave partial, and the octave
+    is added only while it stays under ~1.5kHz, so the highest notes are pure and
+    the highest sound in the glint is now ~1.4kHz (a soft F6 partial), against a
+    loud 1.76kHz before.
+  • "Increases as it goes" is now the ascent plus the bloom — the arpeggio
+    climbs, accelerates, and each bell rings ~1.9s so the tails overlap into a
+    growing shimmer — rather than the literal note-piling of v23.35.
+  • Bigger tier still gets more of the arpeggio (2 notes at Andante, 4 at
+    Vivace), so the between-tier contrast survives.
+  119 tests, 119 green.
+  THE TEST FAILED ONCE, ON A REAL BUG IN THE TEST — and it is the same trap this
+  file keeps setting. It anchored "the landing chord" on D4 (293.66), assuming
+  D4 is struck only there. But the ANDANTE RUN OPENS ON D4, so for that tier the
+  anchor matched the first note of the run and swept the whole run into the
+  "glint" — Andante counted 6 glint notes instead of 2. The code was right; the
+  probe's unique-marker was not unique. Re-anchored on E5 (659.25), which is in
+  no run and no glint partial. That the shared pentatonic makes "obvious" markers
+  ambiguous is now the most-repeated lesson in this suite.
+  HONEST COST: unheard, still. The loud high sine is gone — that specific
+  complaint is addressed by construction. One thing left in the signal above
+  1.5kHz: the tier RUN's own Rhodes octave partial reaches ~2.09kHz on Vivace,
+  but it is ~0.6% of full volume and brief, and has been there since the tiers
+  joined the Rhodes voice without complaint. If that faint overtone is actually
+  the note in question, capping voice()'s octave partial is a separate one-line
+  change — say so and it is done.
+  ──────
+  BoardHub v23.35 — the glint comes down and builds (aug/2026)
+  Two notes on the sparkle from v23.34: "a little too high on pitch", and "it
+  shouldn't be one single sparkle but it increases as it goes, like minecraft
+  lvl up sounds."
+  • LOWER: the ladder dropped a fourth, A5..A6 instead of D6..D7. The ceiling
+    was 2349Hz (D7), squarely in the range where a sine turns shrill; it is
+    1760Hz (A6) now, still bright but out of the piercing band.
+  • IT BUILDS instead of being one even line. The climb still rises and still
+    accelerates — the ramp he already liked — but each step now ALSO thickens:
+    step i adds i quick unison flutters, so the bottom of the run is a single
+    note and the top is a shimmer of several at once, over the long tails of the
+    ones below still ringing. Sparse to dense, which is the shape of a level-up
+    chime rather than a sprinkle.
+  MEASURED: the sparkle window (everything after the landing chord's roll)
+  carries far more onsets in its second half than its first, and tops out below
+  1900Hz. Vivace still glints more than Andante — the run length drives both the
+  climb and the flutter count, so a bigger achievement blooms bigger for free.
+  119 tests, 119 green.
+  A NOTE ON THE TEST, because it is the counter-example to the pattern this
+  session kept hitting. The v23.34 test asserted the glint's notes strictly
+  ASCEND — true then, false now that flutters repeat a pitch before the next
+  step climbs. It would have gone red on this correct change. But it was already
+  rewritten BEFORE running, because the design note said out loud that the notes
+  would no longer be monotonic — so the test now pins DENSITY GROWTH and the
+  ceiling, the two things the owner actually asked for, and neither breaks when
+  the exact pitches move. Predicting the false failure and rewriting first is
+  the discipline the earlier five red-on-correct tests were missing.
+  HONEST COST: unheard. The pitch came down and the build is real in the
+  schedule, but "sparkly like a level-up" is a feel I cannot confirm, and the
+  overlapping long tails now stack more voices than before — if it sounds
+  crowded rather than shimmering, the flutter count per step (currently i) is
+  the single dial to turn down.
+  ──────
   BoardHub v23.34 — the tier landing gets its glint (aug/2026)
   "In the end, the last beat, should have some sparkly sounds that ramp up."
   A rising glint over the tier arrival chord — high D minor, PURE SINE with no
@@ -4595,27 +4670,41 @@ const playTempoSound = (level) => {
     const fim = t0 + run.length * beat * salto;
     roll([293.66, 349.23, 440.00, 659.25], fim, 0.16, ring * 2.1, 0.028, 0.42);
 
-    // THE SPARKLE (owner, 2026-08-03: "the last beat should have some sparkly
-    // sounds that ramp up"). A rising glint over the landing chord — high D
-    // minor, pure sine with no tine bite, because a triangle up here is a
-    // whistle rather than a shimmer.
+    // THE GLINT — rebuilt 2026-08-04 from the level-up's actual structure.
+    // Owner: "there's a note where the pitch is too high", and asked to model it
+    // on the Minecraft level-up chime.
     //
-    // It ACCELERATES: each gap is 15% shorter than the one before, so it reads
-    // as ramping up rather than as an evenly-spaced scale. Volume climbs as it
-    // rises, which is the opposite of what a natural decay would do — that is
-    // what makes it sound like something arriving rather than fading.
+    // The web has no note-for-note transcription of that chime, but its shape is
+    // consistent across sources: a SHORT ASCENDING BELL/MALLET arpeggio, bright,
+    // with a resonant tail — not a long high run. And the crucial thing: its
+    // sparkle comes from BELL TIMBRE (energy spread across a fundamental and its
+    // partials), not from a high pitch. That is exactly why the old version had a
+    // note that stung — v23.35 put the whole glint into one loud 1.76kHz sine,
+    // and a lone sine at that height is the most piercing thing the ear knows.
+    // A bell never stings because no single partial carries all the energy.
     //
-    // ITS LENGTH IS THE RUN'S LENGTH, so a bigger tier gets a bigger glint for
-    // free: 2 notes at Andante, 6 at Vivace. That reinforces the contrast
-    // between tiers instead of adding a separate thing to keep in sync.
+    // Reconciled to the app: D minor pentatonic, the shared reverb, and a ceiling
+    // brought DOWN to C6 (1046Hz) for the fundamentals. Each note is a small bell
+    // — fundamental plus an octave partial, and the octave is added only while it
+    // stays under ~1.5kHz, so the top notes are pure and unpiercing. Nothing
+    // sounding now passes ~1.4kHz, against 1.76kHz (loud) before.
+    //
+    // "Increases as it goes" is the ascent itself plus the bloom: the arpeggio
+    // rises, it accelerates, and each bell rings ~1.9s so the tails overlap into
+    // a growing shimmer — the level-up's reverberant build, rather than the
+    // literal note-piling of the previous try.
     //
     // Deliberately NOT applied to the session cues: end-of-focus was tuned over
-    // four rounds to be grave, and sparkle on it would undo exactly that.
-    const SPARK = [1174.66, 1396.91, 1567.98, 1760.00, 2093.00, 2349.32]; // D6..D7
-    let dt = 0.05;
-    for (let i = 0; i < run.length && i < SPARK.length; i++) {
-      note(SPARK[i], fim + dt, 0.045 + i * 0.005, 1.9 - i * 0.09, 'sine');
-      dt += 0.055 * Math.pow(0.85, i);
+    // four rounds to be grave, and a glint on it would undo exactly that.
+    const GLINT = [587.33, 698.46, 880.00, 1046.50]; // D5 F5 A5 C6, within one octave
+    const bell = (f, t, vol) => {
+      note(f, t, vol, 1.9, 'sine');                             // body, long tail → bloom
+      if (f * 2 < 1500) note(f * 2, t + 0.006, vol * 0.32, 1.0, 'sine'); // bell shimmer, capped
+    };
+    let gt = fim + 0.11;                                         // clear of the landing roll
+    for (let i = 0; i < run.length && i < GLINT.length; i++) {
+      bell(GLINT[i], gt, 0.09);
+      gt += 0.075 * Math.pow(0.85, i);                           // rising and accelerating
     }
   } catch(e) {/*silent-ok: a silent tier change is a cosmetic loss, not a data one*/}
 };
