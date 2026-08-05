@@ -63,6 +63,179 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.49 — OPT-8: content-visibility on the in-card image grids (aug/2026)
+  Eighth plan step (OPT-8), container-level as chosen. A .cv-grid class
+  (content-visibility:auto; contain-intrinsic-size:auto 400px) now sits on the
+  project frames/note/research grids and the gallery study grid — the same
+  treatment main>.fade-up already gives the view shells.
+  • HONEST SCOPE. content-visibility:auto only skips an element that is ENTIRELY
+    off-screen; a partially-visible grid still lays out and paints in full. And
+    every image cell is ALREADY viewport-gated (off-screen cells are cheap grey
+    divs, no decode), so the incremental win is bounded: it lets a section that has
+    been fully scrolled past drop its layout+paint, nothing more. The per-cell
+    variant (which would skip off-screen ROWS of one long grid) was deliberately
+    NOT taken — it needs the owner's eye on real data for scroll-jump/layout, which
+    I cannot see from here.
+  • SAFE BY CONSTRUCTION. On-screen grids are untouched (containment engages only
+    while skipped); the 400px is a placeholder height used only off-screen.
+  MEASURED: 125/125 green (browser harness — it mounts the app, so layout builds
+  clean). The scrolling feel on a 100-image study is the owner's to confirm.
+  ──────
+  BoardHub v23.48 — OPT-7: audited, already leak-safe (no code change) (aug/2026)
+  Seventh plan step (OPT-7) asked to stop getThumbUrl from leaking an object URL
+  when a racing path populates _thumbCache[key] mid-generation. MEASURED instead
+  of assumed, the way the v23.27 object-URL audit was: the generation path already
+  guards it —
+      const nb=await _makeThumbBlob(full);
+      try{await idbPut('thumb_'+key,nb);}catch{...}
+      if(!_thumbCache[key])_thumbCache[key]=URL.createObjectURL(nb);   // ← the guard
+  The check-and-set has no await between the test and the assignment, so it is
+  atomic against any other main-thread path; whoever sets _thumbCache[key] first
+  wins and the loser creates no URL. `nb` in the skip case is a Blob, not a URL —
+  nothing to revoke, it just GCs. The two sibling sites in the same function (the
+  read path and the video branch) carry the same !_thumbCache/!_objUrlCache guard.
+  ALL createObjectURL sites re-checked after this run's additions (OPT-6 added one,
+  guarded): the three temporaries — the Image+canvas fallback, _compressImage, the
+  export download — still revoke on both the success and error path. NO CODE
+  CHANGED. Recorded so the next session does not redo the audit.
+  MEASURED: 125/125 green (browser harness — unchanged from v23.47; this step
+  touched only this note).
+  ──────
+  BoardHub v23.47 — OPT-4: warm the card on hover, not on open (aug/2026)
+  Sixth plan step (OPT-4). warmKeys already warmed a card AFTER it opened; on a
+  40-image card that still meant a frame or two of grey while the first reads
+  resolved. A card is hovered ~200-400ms before it is clicked — that dwell is free
+  prefetch time, so we spend it.
+  • onPointerEnter now warms the first 24 thumbnails on TWO surfaces: the desktop
+    Projetos grid (warmObj(p) walks the project for idb:// refs) and the Gallery
+    study cards (warmKeys(post.images)). By click time the first viewport is
+    already in _thumbCache and _syncUrl returns it on mount.
+  • warmObj + _collectIdbRefs are new module-level helpers: a recursive walk that
+    gathers idb:// strings from anywhere in an object, then warmKeys(refs, 24).
+    Best-effort and try-wrapped; the trash view is excluded (hover there never
+    leads to an image grid).
+  • SCOPED DELIBERATELY. Not added to the dashboard "Em andamento" list (it
+    EXPANDS inline, doesn't open the image grid, and shows a 28px cover) nor to
+    mobile rows (no hover; pointerenter fires at tap time with no lead).
+  MEASURED: 125/125 green (browser harness). No test pins the handlers; the win is
+  a warmer cache on real hover, which I can't time from here.
+  ──────
+  BoardHub v23.46 — OPT-6: the dashboard covers, read before the mount (aug/2026)
+  Fifth plan step (OPT-6). The warmer (OPT-3) helps NAVIGATIONS; this helps the
+  very first screen. On a cold boot the dashboard's first paint hit _syncUrl for
+  each cover, missed, and drew a grey box — the thumbnail arrived ~20ms later, but
+  that was still one grey frame.
+  • A DEDICATED READ is now fired just before ReactDOM.createRoot: collect the
+    idb:// covers off `persisted.projects`, open one readonly transaction, and get
+    up to 16 (the first viewport) straight into _thumbCache. It races the mount;
+    the reads typically land before React's first commit effects run.
+  • SCOPED AND GUARDED. Only idb:// covers (network covers load through the
+    browser); null-persisted guarded; !p.deleted; and the !_thumbCache[k] check
+    means it can never race the warmer or getThumbUrl into a duplicate object URL
+    (each check-and-set runs synchronously inside its own callback).
+  MEASURED: 125/125 green (browser harness). The seed's covers are network URLs,
+  so _bootCovers is empty there and the block no-ops — the first-frame win is on
+  real data with uploaded covers, which I cannot see from here.
+  ──────
+  BoardHub v23.45 — OPT-3: the boot warmer starts sooner, self-paces (aug/2026)
+  Fourth plan step (OPT-3). The thumbnail warmer used to wait 1200ms and THEN
+  wait for a system-idle window before its first read; under a busy boot (Babel
+  transpile + Firestore auth + the sync listener) that idle window can be pushed
+  out for seconds, so the warmer effectively didn't run when it mattered.
+  • BOOT DELAY 1200ms → 200ms — just enough for the first frame to commit — and
+    the requestIdleCallback wrapper is gone from the boot call.
+  • THE STEP LOOP CHAINS ON setTimeout(0) instead of _idleCb. A 0ms macrotask
+    still yields the event loop between each 40-key read batch (and each 3-item
+    generation batch), so React commits and input still interleave — but the
+    warmer is no longer parked behind an "only when fully idle" gate. Generation
+    stays capped at GEN_MAX=3 concurrent, unchanged.
+  • _idleCb is left defined (now unused) — a one-line helper, removing it is churn
+    outside this step's scope.
+  MEASURED: 125/125 green (browser harness). Note: the suite boots with
+  settle:1200, so the warmer now actually fires DURING the settle window; it is a
+  no-op without idb:// refs and the suite stays green. Boot-smoothness itself I
+  cannot profile from here — flagged for the owner's eye.
+  ──────
+  BoardHub v23.44 — OPT-5 + OPT-9: prime the fold, shorten the fade (aug/2026)
+  Third plan step — two one-liners in <Img>, batched.
+  • OPT-5, decoding. Priority images (lightbox, above-the-fold) now decode SYNC
+    instead of async. Async lets the browser paint the frame BEFORE the image is
+    decoded — a one-frame blank flash even when the blob URL was already set. Sync
+    means the frame that carries the src already has pixels. Off-screen cells stay
+    async so their decode never blocks the main thread.
+  • OPT-9, fade. The network-image fade-in drops from .25s to .15s. It only ever
+    applied to network images (local blobs render instantly, no fade); a quarter-
+    second reads as latency when the bytes came from browser cache. 150ms still
+    smooths the transition without feeling sluggish. Comment updated to match.
+  MEASURED: 125/125 green (browser harness). No test pins either token; both are
+  presentation attributes.
+  ──────
+  BoardHub v23.43 — OPT-2: one IntersectionObserver, not forty (aug/2026)
+  Second plan step (OPT-2). Every viewport-gated <Img>/<BgImg> used to construct
+  its OWN IntersectionObserver in the ref callback; a grid of 40 cells meant 40
+  independent observers for the browser to service. No visible change — this is
+  about how much the browser carries per screen.
+  • A MODULE-LEVEL SINGLETON now backs all of them: _getSharedIO() lazily builds
+    one observer; a Map<element, callback> routes each intersection to the right
+    cell's setInView(true). Same 600px rootMargin, same one-shot behaviour
+    (unobserve + drop the entry on first intersection).
+  • useInView KEEPS ITS SHAPE — still [setRef, inView]. It now tracks its node in
+    a ref and registers/unregisters against the shared observer (via _ioUnwatch)
+    on ref change and on unmount, instead of disconnecting a private observer.
+  MEASURED: 125/125 green (browser harness). Behaviour-for-behaviour identical to
+  the per-element version; the saving is one observer instead of N.
+  ──────
+  BoardHub v23.42 — OPT-1: the LRU touch stops scanning (aug/2026)
+  First of the image-loading plan's steps (OPT-1). A behaviour-preserving
+  data-structure swap with no visible change — it goes first because it fires on
+  EVERY image render and cost the most for the least.
+  • _thumbOrder AND _objUrlOrder WERE ARRAYS touched by indexOf+splice. On every
+    render _touchThumb linear-scanned up to 600 keys to find and move one; a grid
+    of 40 cells paid ~40×O(600) comparisons per view. Both are now insertion-
+    ordered Maps: delete(key)+set(key) is O(1) and the iteration order STILL IS
+    the LRU order, so eviction reads keys().next().value (the oldest) — also O(1).
+  • BEHAVIOUR IDENTICAL. Eviction still revokes the object URL and deletes the
+    cache entry; the old!==key guard is kept (belt-and-braces — with delete+set the
+    touched key is always newest, so it can never be the one evicted). The one
+    external reader, warmThumbCache's cap check, moved from .length to .size.
+  MEASURED: 125/125 green (browser harness, transpile clean). The speedup is
+  algorithmic — true by construction, not profiled; there is no visible change to
+  see, which is the point.
+  ──────
+  BoardHub v23.41 — M4.5: notes as list bullets; M4 COMPLETE (aug/2026)
+  The last owed piece of M4 (the plan named it "note glyphs in lists"), and the
+  one that closes the arc that began with the rest on the empty state.
+  • THE VERTICAL TIMELINE'S DOTS BECOME NOTEHEADS. Those rows were already ruled
+    with a bottom border on each item — a staff by accident. The round dot on each
+    is now a slanted oval, tilted like engraved notation: a NOTEHEAD sitting on the
+    row.
+  • IT KEPT ITS MEANING FOR FREE. The dot already distinguished a done event
+    (filled) from a pending one (a hollow ring). A filled notehead is a struck
+    note; an OPEN notehead is a note not yet played. So the done/pending state now
+    reads in the right vocabulary without inventing anything — the same filled vs
+    hollow the disc always carried, said as notation.
+  • CSS-ONLY, no JSX touched: two declarations on .vtimeline-dot (an oval, tilted,
+    open by default) and its .done (filled). The shape is decoration; the row's
+    text stays the content, and there is no new element in any accessibility tree.
+    Hand-drawn by geometry, no font, no dependency (protocol #7).
+  MEASURED: 125 tests, 125 green (was 124). One new source guard, isolated by the
+  rule's braces: the bullet is tilted and OVAL (wider than tall, not a circle) and
+  a done event still fills.
+  ── M4 IS COMPLETE ──────────────────────────────────────────────────────────
+  The whole motif now stands together: M1 named the tiers as tempo and dynamics;
+  M4.1 put a REST on the empty state (silence, literally); M4.2 split the label
+  class so a mark could attach to headings without landing on the 23 form fields;
+  M4.3 hung a NOTE beside every section heading, one per section; M4.4 drew a faint
+  STAFF behind the big display titles, M4.4a ran those staves the full width and
+  aligned their buttons, M4.4b set actual NOTES on them — a hierarchical phrase on
+  the dashboard, a different figure on each other title; and M4.5 turned the list
+  bullets into NOTEHEADS. Rest, notes, staff, noteheads: the app is engraved.
+  HONEST COST: as with every visual step this run, I have not seen it — the
+  notehead's tilt (−20°), size (12×8.5) and stroke are three numbers in one CSS
+  rule. And "M4 complete" is complete against the plan's list, not against taste:
+  the owner's eye is the only thing that decides whether any of the marks earn
+  their place, and several are one word from being dialled or removed.
+  ──────
   BoardHub v23.40 — M4.4b: notes on the title staves (aug/2026)
   The staves were empty lines; the owner asked for actual notes ON them, at the
   right end (past the title text): bigger notes for the dashboard, and a different
@@ -2022,6 +2195,12 @@ try{var _bhT=localStorage.getItem('boardhub_theme');if(_bhT==='notturno')documen
 html{scroll-behavior:smooth;}
 /* Offscreen rendering optimization - scoped to view containers only (not overlays/modals) */
 main>.fade-up{content-visibility:auto;contain-intrinsic-size:auto 500px;}
+/* OPT-8: same treatment for the in-project / in-study image grids. Engages only
+   when a grid is ENTIRELY off-screen (a partially-visible grid still renders in
+   full), so on-screen layout is untouched; the placeholder height is a rough
+   guess used only while skipped. Bounded benefit here — cells are already
+   viewport-gated — but it lets a fully-scrolled-past section drop its layout+paint. */
+.cv-grid{content-visibility:auto;contain-intrinsic-size:auto 400px;}
 /* Image performance: prevent layout shift, smooth decode */
 img{max-width:100%;display:block;}
 body{font-family:'Alegreya Sans',sans-serif;background:var(--bg);color:var(--text);margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
@@ -3315,13 +3494,16 @@ const THUMB_MAX=480;       // longest side, px — ample for any grid cell under
 const THUMB_CAP=600;       // resident thumbnails (~15-25MB worst case)
 const _thumbCache={};      // idb key -> object URL for the thumbnail
 const _thumbInflight={};   // idb key -> Promise (dedupes read/generation)
-const _thumbOrder=[];      // keys, least-recently-shown first
+// Insertion-ordered Map: iteration order IS the LRU order (oldest first), so a
+// touch is delete+set (both O(1)) instead of indexOf+splice over up to 600 keys.
+// A grid of 40 cells used to cost ~40×O(600) comparisons per view; now it is O(1).
+const _thumbOrder=new Map(); // key -> true, least-recently-shown first
 const _touchThumb=key=>{
-  const i=_thumbOrder.indexOf(key);
-  if(i>=0)_thumbOrder.splice(i,1);
-  _thumbOrder.push(key);
-  while(_thumbOrder.length>THUMB_CAP){
-    const old=_thumbOrder.shift();
+  _thumbOrder.delete(key);
+  _thumbOrder.set(key,true);
+  while(_thumbOrder.size>THUMB_CAP){
+    const old=_thumbOrder.keys().next().value;
+    _thumbOrder.delete(old);
     if(old!==key&&_thumbCache[old]){URL.revokeObjectURL(_thumbCache[old]);delete _thumbCache[old];}
   }
 };
@@ -3330,13 +3512,13 @@ const _touchThumb=key=>{
 // Originals are now LIGHTBOX-ONLY, so this cache holds a handful of entries
 // instead of 100. Nothing on a grid pins a full-res blob anymore.
 const OBJURL_CAP=12;
-const _objUrlOrder=[]; // keys, least-recently-used first
+const _objUrlOrder=new Map(); // key -> true, least-recently-used first
 const _touchObjUrl=key=>{
-  const i=_objUrlOrder.indexOf(key);
-  if(i>=0)_objUrlOrder.splice(i,1);
-  _objUrlOrder.push(key);
-  while(_objUrlOrder.length>OBJURL_CAP){
-    const old=_objUrlOrder.shift();
+  _objUrlOrder.delete(key);
+  _objUrlOrder.set(key,true);
+  while(_objUrlOrder.size>OBJURL_CAP){
+    const old=_objUrlOrder.keys().next().value;
+    _objUrlOrder.delete(old);
     if(old!==key&&_objUrlCache[old]){URL.revokeObjectURL(_objUrlCache[old]);delete _objUrlCache[old];}
   }
 };
@@ -3381,6 +3563,18 @@ const warmKeys=(srcs,limit=WARM_PREFIX)=>{
   keys.forEach(k=>{try{getThumbUrl(k);}catch{/*silent-ok: warming is best-effort; a miss just means the cell decodes on first paint*/}});
 };
 
+// OPT-4: predictive warm on HOVER. A card is hovered ~200-400ms before it is
+// clicked; that dwell is free prefetch time. Gather the idb:// refs anywhere in a
+// project/study object and warm a bounded prefix, so by the time the card opens
+// its first viewport is already in _thumbCache and _syncUrl returns it on mount.
+const _collectIdbRefs=(o,out=[])=>{
+  if(Array.isArray(o))for(const v of o)_collectIdbRefs(v,out);
+  else if(o&&typeof o==='object')for(const v of Object.values(o))_collectIdbRefs(v,out);
+  else if(typeof o==='string'&&o.startsWith('idb://'))out.push(o);
+  return out;
+};
+const warmObj=(o,limit=24)=>{try{warmKeys(_collectIdbRefs(o),limit);}catch{/*silent-ok: best-effort prefetch*/}};
+
 // Boot warm: fill the thumbnail cache during idle so navigating to a post finds
 // its images ALREADY in memory — the resolver then returns a URL synchronously
 // on the first render (no placeholder frame, no fade). That "already there"
@@ -3401,8 +3595,14 @@ const warmThumbCache=()=>{
   if(!keys.length)return;
   const missing=[];
   let i=0;
+  // OPT-3: chain the steps on setTimeout(0) (a macrotask) rather than
+  // requestIdleCallback. Idle callbacks get deferred indefinitely under a busy
+  // boot (Babel transpile + Firestore auth + the sync listener), so the warmer
+  // could sit unrun for seconds. A 0ms macrotask still yields the event loop
+  // between batches — React commits, Firestore callbacks and input all interleave
+  // — but the warmer is no longer at the back of an "only when totally idle" queue.
   const readStep=()=>{
-    if(i>=keys.length||_thumbOrder.length>=THUMB_CAP){_idleCb(()=>genStep(0));return;}
+    if(i>=keys.length||_thumbOrder.size>=THUMB_CAP){setTimeout(()=>genStep(0),0);return;}
     const slice=keys.slice(i,i+40);i+=40;
     Promise.all(slice.map(k=>{
       if(_thumbCache[k])return null;
@@ -3410,14 +3610,14 @@ const warmThumbCache=()=>{
         if(tb){if(!_thumbCache[k]){_thumbCache[k]=URL.createObjectURL(tb);_touchThumb(k);}}
         else missing.push(k);
       }).catch(()=>{});
-    })).then(()=>_idleCb(readStep));
+    })).then(()=>setTimeout(readStep,0));
   };
   const genStep=j=>{
     if(j>=missing.length||j>=MIGRATE_CAP)return;
     Promise.all(missing.slice(j,j+3).map(k=>{try{return getThumbUrl(k,true);}catch{return null;}}))
-      .then(()=>_idleCb(()=>genStep(j+3)));
+      .then(()=>setTimeout(()=>genStep(j+3),0));
   };
-  _idleCb(readStep);
+  setTimeout(readStep,0);
 };
 
 // --- THUMBNAIL LAYER ---------------------------------------------------------
@@ -3607,19 +3807,40 @@ const MissingLocalImg=()=><Icon name="image-off" size={16} style={{width:'55%',h
 // wait until scrolled near (600px ≈ 3-4 rows of lookahead — affordable now that
 // a row costs one batched thumbnail read). When gating is disabled (cloud/data images, priority
 // images, or no IntersectionObserver) inView is true from the start.
+// ONE shared observer for every gated image, not one observer per cell. A screen
+// of 40 cells used to spin up 40 separate IntersectionObservers, each with its own
+// callback for the browser to service; now a single observer dispatches to all of
+// them through a Map (element -> one-shot callback). Same 600px rootMargin, same
+// one-shot semantics: unobserve on first intersection.
+let _sharedIO=null;
+const _ioCallbacks=new Map();   // element -> onIntersect callback (fired once)
+const _getSharedIO=()=>{
+  if(!_sharedIO&&typeof IntersectionObserver!=='undefined'){
+    _sharedIO=new IntersectionObserver(entries=>{
+      for(const e of entries){
+        if(!e.isIntersecting)continue;
+        const cb=_ioCallbacks.get(e.target);
+        _sharedIO.unobserve(e.target);_ioCallbacks.delete(e.target);
+        if(cb)cb();
+      }
+    },{rootMargin:'600px'});
+  }
+  return _sharedIO;
+};
+const _ioUnwatch=node=>{if(!node)return;const io=_getSharedIO();if(io)io.unobserve(node);_ioCallbacks.delete(node);};
 const useInView=(enabled)=>{
   const hasIO=typeof IntersectionObserver!=='undefined';
   const [inView,setInView]=React.useState(!enabled||!hasIO);
-  const obsRef=React.useRef(null);
+  const nodeRef=React.useRef(null);
   const setRef=React.useCallback(node=>{
-    if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}
+    if(nodeRef.current)_ioUnwatch(nodeRef.current);
+    nodeRef.current=node;
     if(inView||!enabled||!hasIO||!node)return;
-    obsRef.current=new IntersectionObserver(entries=>{
-      if(entries.some(e=>e.isIntersecting)){setInView(true);if(obsRef.current){obsRef.current.disconnect();obsRef.current=null;}}
-    },{rootMargin:'600px'});
-    obsRef.current.observe(node);
+    const io=_getSharedIO();if(!io)return;
+    _ioCallbacks.set(node,()=>setInView(true));
+    io.observe(node);
   },[inView,enabled,hasIO]);
-  React.useEffect(()=>()=>{if(obsRef.current)obsRef.current.disconnect();},[]);
+  React.useEffect(()=>()=>{if(nodeRef.current)_ioUnwatch(nodeRef.current);},[]);
   return [setRef,inView];
 };
 
@@ -3645,10 +3866,13 @@ const Img=({src,priority,full,thumb=!full,...props})=>{
     ?e=>{if(e.currentTarget.src!==src)e.currentTarget.src=src;}:props.onError;
   // Local blobs are already gated by our own IntersectionObserver — loading="lazy"
   // on top of that is a second, browser-controlled delay on a resource that is
-  // already in memory. And the 250ms fade only reads as latency when the image
+  // already in memory. And the 150ms fade only reads as latency when the image
   // was there all along, so it's kept for network images only.
-  return <img {...props} ref={setRef} src={url} loading={priority||local?'eager':'lazy'} decoding="async" onError={onErr}
-    style={local?props.style:{...props.style,animation:'imgFadeIn .25s ease'}}/>;
+  // decoding: priority (lightbox / above-the-fold) images decode SYNC so the frame
+  // that shows the blob URL already has pixels — no one-frame blank flash. Everything
+  // else stays async to keep the main thread free while off-screen cells resolve.
+  return <img {...props} ref={setRef} src={url} loading={priority||local?'eager':'lazy'} decoding={priority?'sync':'async'} onError={onErr}
+    style={local?props.style:{...props.style,animation:'imgFadeIn .15s ease'}}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs (thumbnail by default).
@@ -5871,6 +6095,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
                 {...keyActivate(()=>onSelect(p),'Abrir projeto '+(p.title||''),!trash)}
                 style={{overflow:'hidden',display:'flex',flexDirection:'column',cursor:trash?'default':'grab',opacity:trash?0.85:1,position:'relative'}}
                 onClick={()=>{if(!trash&&Date.now()-projDragEnd.current>160)onSelect(p);}}
+                onPointerEnter={()=>{if(!trash)warmObj(p,24);}}
                 onDragStart={e=>{if(trash){e.preventDefault();return;}projDrag.current=p.id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(p.id));}catch{/*silent-ok: setData is blocked in some drag contexts; the ref already carries the id*/}e.currentTarget.style.opacity='0.4';}}
                 onDragEnd={e=>{e.currentTarget.style.opacity=trash?'0.85':'1';projDrag.current=null;projDragEnd.current=Date.now();document.querySelectorAll('.drag-over-left').forEach(el=>el.classList.remove('drag-over-left'));}}
                 onDragOver={e=>{if(trash||projDrag.current==null||projDrag.current===p.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over-left');}}
@@ -6988,7 +7213,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   placeholder="Notas, intenções, referências para esta tarefa..."
                   style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:80,marginBottom:16}}/>
                 {(activeMini.frames||[]).length>0&&(
-                  <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
+                  <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i,list)=>(
                       <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -7027,7 +7252,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     placeholder="Notas, análises, referências..."
                     style={{resize:'vertical',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,marginBottom:16}}/>
                   {(note.images||[]).length>0&&(
-                    <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
+                    <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                       {(note.images||[]).map((img,i,list)=>(
                         <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                           <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -7109,7 +7334,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   style={{resize:'none',background:'transparent',border:'none',outline:'none',fontSize:'.9rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',minHeight:120,overflow:'hidden',marginBottom:16,width:'100%'}}/>
                 {/* Images - 3 column grid */}
                 {(activeResearch.images||[]).length>0&&(
-                  <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
+                  <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i,list)=>(
                       <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
                         <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
@@ -7278,7 +7503,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
-        <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
+        <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i,list)=>(
             <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
               {isVideoSrc(img)
@@ -7420,6 +7645,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?10:14}}>
             {monthPosts.map(post=>(
               <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}
+                onPointerEnter={()=>{if(!trash)warmKeys(post.images,24);}}
                 {...keyActivate(()=>setSelected(post),'Abrir post '+(post.title||''),!trash)}>
                 <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                   {post.images.length>0
@@ -9660,13 +9886,35 @@ const App=()=>{
 // Mount immediately — first paint is not blocked by any image I/O. Images resolve
 // on demand: grids/covers are viewport-gated (<Img>/<BgImg>), opening a card warms
 // a bounded prefix of thumbnails, and full-res is fetched only in the lightbox.
+// OPT-6: fire the dashboard covers' thumbnail reads into _thumbCache BEFORE the
+// mount below, so the earliest render that can see them (via _syncUrl) finds them
+// resident instead of painting a grey box first. Only idb:// covers need it —
+// network covers load through the browser; capped at 16 (the first viewport). One
+// readonly transaction, kicked off to race createRoot. The !_thumbCache[k] guard
+// keeps it from racing the warmer or getThumbUrl into a duplicate object URL.
+const _bootCovers=[];
+for(const p of ((persisted&&persisted.projects)||[])){
+  if(p&&!p.deleted&&typeof p.cover==='string'&&p.cover.startsWith('idb://'))_bootCovers.push(p.cover.slice(6));
+}
+if(_bootCovers.length){
+  openIdb().then(db=>{
+    const store=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE);
+    _bootCovers.slice(0,16).forEach(k=>{
+      const r=store.get('thumb_'+k);
+      r.onsuccess=e=>{const tb=e.target.result;if(tb&&!_thumbCache[k]){_thumbCache[k]=URL.createObjectURL(tb);_touchThumb(k);}};
+    });
+  }).catch(()=>{});
+}
 // F3.2: the ConfirmHost sits OUTSIDE the App, as its sibling. Inside, any
 // re-render or subtree unmount would take an open dialog down with it — and a
 // pending promise resolved as a cancellation in the middle of a user action.
 ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/><ConfirmHost/></ErrorBoundary>);
-// Pre-warm THUMBNAILS (not originals) during idle, once the first view has
-// settled — so navigating to a post finds its images already in memory.
-setTimeout(()=>_idleCb(warmThumbCache),1200);
+// Pre-warm THUMBNAILS (not originals) shortly after the first paint commits — so
+// navigating to a post finds its images already in memory. OPT-3: 200ms (was
+// 1200ms + requestIdleCallback). 200ms lets the first frame land; the warmer then
+// self-paces on setTimeout(0), yielding between batches instead of waiting for a
+// system-idle window that a busy boot may never grant.
+setTimeout(warmThumbCache,200);
 </script>
 <!-- ── BOOT LOADER (P1-1) ─────────────────────────────────────────────────
   DIAGNOSIS: the single-file design forced @babel/standalone (~400KB of download)
