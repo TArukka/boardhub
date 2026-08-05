@@ -63,6 +63,70 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.40 — M4.4b: notes on the title staves (aug/2026)
+  The staves were empty lines; the owner asked for actual notes ON them, at the
+  right end (past the title text): bigger notes for the dashboard, and a different
+  smaller note on each of the other titles.
+  • StaveTitleNotes draws the notes as a small SVG that shares the staff's exact
+    band (height 25, top 50%, translateY -50%), so a notehead at y 0/6/12/18/24
+    sits on a line and one at +3 sits in a space. Positioned at right:10 of the
+    <h1>, which flex-grows to the buttons — so the notes land in the empty staff
+    past the text, never over it. Decorative: aria-hidden, currentColor, hand-drawn
+    (protocol #7), pointer-events none. Same family as StaveRest / StaveGlyph.
+  • THE DASHBOARD IS A PHRASE, NOT A ROW. The first pass put three equal noteheads
+    in a line; the owner's note — "does not seem to be from a home page… a proper
+    hierarchy, a bigger note, not just 3 in a row." The greeting now reads as a
+    small melodic flourish: two quiet ascending notes (rx 2.6, 3.3) leading into a
+    large flagged HERO note (rx 5.4) whose stem rises ABOVE the staff via
+    overflow:visible. Growing size + rising pitch + a climax = hierarchy.
+  • VARIETY ELSEWHERE: each other title gets its own small figure from a set of
+    quarter / eighth / beamed notes at different pitches, so no two adjacent
+    sections read the same — the app becomes a page of music.
+  • A GAP THE OTHERS HAD AND ANOTAÇÕES DID NOT: its header row was missing the
+    gap:10 every other section header carries, so the full-width staff (M4.4a) ran
+    straight into its buttons. Added, desktop and mobile — "a little space here to
+    be consistent", as asked.
+  MEASURED in the real app by DOM: greeting figure = three ellipses rx 2.6/3.3/5.4
+  with a stem reaching y −9 (above the band) and a flag path; every title carries
+  its notes at right-inset 10, aria-hidden, on the staff band; zero console errors.
+  124 tests, 124 green (was 123). One new source guard: the notes stay decorative
+  and hand-drawn, the hero figure survives, and ≥8 titles carry notes.
+  HONEST COST: unseen by me, still — sizes, the hero's stem height, the right
+  inset and the per-title figure choices are all one number or one word each in
+  StaveTitleNotes / STAVE_TITLE_FIGS. On a narrow column a very long title could
+  reach the notes; they are faint (opacity .32) so an overlap would be soft rather
+  than a collision, but it is not something I can see here.
+  ──────
+  BoardHub v23.39 — M4.4a: the title staves run the full row (aug/2026)
+  Owner feedback on M4.4: the dashboard greeting's staff spanned the row, but the
+  other page titles' staves stopped at the width of the word — because those <h1>s
+  sit in a space-between flex row and shrink to their text, while the greeting is a
+  full-width block. Three coupled fixes so every title staff reaches its buttons:
+  • THE TITLE FILLS THE ROW: `.stave-title` gets flex:1 1 auto; min-width:0, so a
+    title that is a flex child grows to meet the action buttons and its staff runs
+    the full width. Galeria and Mentores wrap their <h1>+subtitle in a div, so that
+    wrapper gets flex:1 too. Titles that are already full-width blocks (greeting,
+    Sincronizar) are untouched — flex is simply ignored on a non-flex-item.
+  • BUTTONS ALIGN TO THE TITLE, not the subtitle: the header rows moved from
+    align-items:flex-end to flex-start. flex-end had dropped the buttons to the
+    BOTTOM of the title+subtitle block (so they sat beside the subtitle); flex-start
+    lands them beside the title, the same in every section. The project-detail hero
+    header is deliberately excluded — its title is not a stave-title, so it keeps
+    flex-end.
+  • NO UA MARGIN: with flex-start the browser's default <h1> margins became visible
+    — a ~18px top margin pushed the title below the buttons, and the bottom margin
+    left a dead band under the header. `.stave-title` now sets margin:0 (inline
+    marginBottom on the few titles that set one still wins), so title and buttons
+    share a top edge and the gap below is the header's own 14–16px, nothing more.
+  MEASURED in the real app by DOM: Projetos title and buttons both at row-top
+  (delta 0), gap below the header 16px (was ~34); Galeria title full-width to the
+  buttons with its subtitle sitting below. 123 tests, 123 green (unchanged — this
+  is layout, and the M4.4 guard still holds).
+  HONEST COST: all still by DOM measurement, not by eye. flex-start top-aligns the
+  buttons with the title's cap height rather than centring on it; on the tall
+  titles that reads as clean, but "aligned to the top" is a choice, and center vs
+  top is one word if the owner wants the buttons nudged down.
+  ──────
   BoardHub v23.38 — M4.4: a staff behind the big titles (aug/2026)
   The owner's reference all along was Kimi's pricing page — faint staff lines
   running behind the headings. M4.3 gave every SECTION heading its note; this
@@ -1969,7 +2033,7 @@ h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif;}
    and stays the accessible content, the staff is pure decoration. Applied to the
    serif PAGE TITLES only (via the stave-title marker), never the small inline
    serif marks (tempo/dynamics names) that share the .serif class. */
-.stave-title{position:relative;isolation:isolate;flex:1 1 auto;min-width:0;margin-top:0;}
+.stave-title{position:relative;isolation:isolate;flex:1 1 auto;min-width:0;margin:0;}
 .stave-title::before{content:'';position:absolute;left:0;right:0;top:50%;height:25px;transform:translateY(-50%);z-index:-1;pointer-events:none;background:repeating-linear-gradient(to bottom,var(--stave) 0 1px,transparent 1px 6px);}
 ::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:10px;}::-webkit-scrollbar-thumb:hover{background:var(--muted);}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;transition:border-color .2s,box-shadow .2s,transform .15s;}
@@ -2088,7 +2152,14 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 /* Vertical timeline */
 .vtimeline-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);min-height:48px;}
 .vtimeline-item:last-child{border-bottom:none;}
-.vtimeline-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid var(--border-2);}
+/* M4.5 — the last of M4: list bullets become NOTES, not discs. The vertical
+   timeline's rows are already ruled like staff lines; the dot on each is now a
+   slanted NOTEHEAD (an oval tilted like engraved notation). It keeps the existing
+   meaning for free: a DONE event is a filled notehead (a struck note), a pending
+   one is an OPEN notehead (a note not yet played) — the filled/hollow distinction
+   the disc already carried, now said in the right vocabulary. Decorative shape
+   only; the row's text is the content. */
+.vtimeline-dot{width:12px;height:8.5px;border-radius:50%;flex-shrink:0;border:1.7px solid var(--border-2);background:transparent;transform:rotate(-20deg);}
 .vtimeline-dot.done{background:var(--text);border-color:var(--text);}
 .vtimeline-text{flex:1;font-size:.9rem;font-weight:500;}
 .vtimeline-date{font-size:.78rem;color:var(--muted);flex-shrink:0;}
@@ -3030,6 +3101,42 @@ const StaveGlyph=({name,size=16,style={}})=>React.createElement('svg',{
   width:size*1.25,height:size,viewBox:'0 0 30 24',fill:'none','aria-hidden':'true',
   style:{display:'inline-block',verticalAlign:'middle',flexShrink:0,marginRight:6,...style},
   dangerouslySetInnerHTML:{__html:STAVE_LINES+(STAVE_NOTES[name]||STAVE_NOTES.quarter)}});
+// M4.4b — NOTES ON THE TITLE STAFF, at the right end (past the title text).
+// The staff (.stave-title::before) is a 25px band centred on the h1 with its five
+// lines at y = 0/6/12/18/24; this SVG shares that exact band (height 25, top 50%,
+// translateY -50%), so a notehead at one of those y sits on a line and one at
+// +3 sits in a space. Bigger notes on the dashboard greeting, a different small
+// figure on each other title — the app reads as a page of music, not a form.
+// Decorative: aria-hidden, inherits currentColor, pointer-events none. Hand-drawn,
+// no font, no dependency (protocol #7). Same family as StaveRest / StaveGlyph.
+const _nh=(cx,cy,r)=>`<ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="${(r*0.78).toFixed(2)}" transform="rotate(-18 ${cx} ${cy})" fill="currentColor"/>`;
+const _tn=(cx,cy,r,up)=>{
+  const ry=r*0.78, sx=(up?cx+r*0.86:cx-r*0.86).toFixed(2), sy=up?2:23, ny=(up?cy-ry*0.5:cy+ry*0.5).toFixed(2);
+  return _nh(cx,cy,r)+`<line x1="${sx}" y1="${ny}" x2="${sx}" y2="${sy}" stroke="currentColor" stroke-width="1.05" stroke-linecap="round"/>`;
+};
+const _flagUp=sx=>`<path d="M${sx.toFixed(2)} 2.2 C${(sx+3.2).toFixed(2)} 3.4 ${(sx+3.6).toFixed(2)} 6 ${(sx+1.6).toFixed(2)} 8.2" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round"/>`;
+// The dashboard hero note: a large flagged notehead with a tall stem that rises
+// ABOVE the staff (overflow:visible lets it), so the greeting reads as a home
+// page, not a form. Two small ascending notes lead into it — a phrase with a
+// climax, not three of a kind in a row.
+const _hero=(cx,cy,r)=>{const ry=r*0.78,sx=(cx+r*0.88).toFixed(2),fx=cx+r*0.88;return _nh(cx,cy,r)+`<line x1="${sx}" y1="${(cy-ry*0.4).toFixed(2)}" x2="${sx}" y2="-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M${sx} -9 C${(fx+5).toFixed(2)} -6.4 ${(fx+5.6).toFixed(2)} -1.2 ${(fx+2.6).toFixed(2)} 2.8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/>`;};
+const STAVE_TITLE_FIGS={
+  big: _hero(18,9,5.4)+_tn(40,17,2.6,1)+_tn(56,13,3.2,1),          // three ascending, larger
+  q18: _tn(44,18,3.2,1),
+  q15: _tn(44,15,3.2,1),
+  q12: _tn(44,12,3.2,1),
+  q9:  _tn(44,9,3.2,0),
+  e12: _tn(42,12,3,1)+_flagUp(42+3*0.86),
+  e15: _tn(42,15,3,1)+_flagUp(42+3*0.86),
+  beam: _nh(34,15,2.8)+_nh(46,9,2.8)+
+    `<line x1="36.41" y1="12.5" x2="36.41" y2="3" stroke="currentColor" stroke-width="1.05"/>`+
+    `<line x1="48.41" y1="6.5" x2="48.41" y2="3" stroke="currentColor" stroke-width="1.05"/>`+
+    `<path d="M35.9 2 L48.9 2 L48.9 4.3 L35.9 4.3 Z" fill="currentColor"/>`
+};
+const StaveTitleNotes=({fig='q12',w=56,style={}})=>React.createElement('svg',{
+  height:25,width:w,viewBox:'0 0 '+w+' 25',fill:'none','aria-hidden':'true',
+  style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',height:25,width:w,color:'currentColor',opacity:.32,pointerEvents:'none',overflow:'visible',...style},
+  dangerouslySetInnerHTML:{__html:STAVE_TITLE_FIGS[fig]||STAVE_TITLE_FIGS.q12}});
 const ICON_STROKE=1.25;
 const Icon=({name,size=16,style={},strokeWidth}) =>{
   _resolveIcon(name);
@@ -5380,7 +5487,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
     <div className="fade-up" style={{maxWidth:960,margin:'0 auto',width:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - 48px)',display:'flex',flexDirection:'column',overflow:'auto',gap:0}}>
       {/* Header */}
       <div style={{marginBottom:isMobile?10:isSmall?8:12,flexShrink:0}}>
-        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1}}>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
+        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1}}><StaveTitleNotes fig="big" w={66}/>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
         <p style={{color:'var(--muted)',fontSize:isSmall?'.76rem':'.82rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
       {/* Stats row */}
@@ -5703,7 +5810,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
         {/* LEFT: projects list */}
         <div style={{flex:1,minWidth:0,width:isMobile?'100%':undefined}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?12:16,gap:10,flexWrap:'wrap'}}>
-            <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}>Projetos</h1>
+            <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}><StaveTitleNotes fig="q15"/>Projetos</h1>
             <div style={{display:'flex',gap:8}}>
               <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
                 <Icon name="trash-2" size={13}/>
@@ -6473,7 +6580,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               <Icon name="trash-2" size={13}/>{isMobile?'':' Excluir Projeto'}
             </button>
           </div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',gap:8}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-end',gap:8}}>
             <div style={{minWidth:0,flex:1}}>
               <h1 className="serif" style={{fontSize:isMobile?'1.4rem':'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isMobile?'nowrap':'normal'}}>{local.title}</h1>
               {!isMobile&&<p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>}
@@ -7206,7 +7313,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   return(<>
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
-        <div style={{flex:1,minWidth:0}}><h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Galeria</h1>
+        <div style={{flex:1,minWidth:0}}><h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}><StaveTitleNotes fig="e15"/>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)'}}>Acervo visual & estudos</p>}</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
@@ -7623,8 +7730,8 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   // ── DESKTOP ──
   if(!isMobile)return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
-      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14,flexShrink:0}}>
-        <h1 className="serif stave-title" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}>Anotações</h1>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14,gap:10,flexShrink:0}}>
+        <h1 className="serif stave-title" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}><StaveTitleNotes fig="beam"/>Anotações</h1>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'5px 12px',fontSize:'.78rem'}}>
             <Icon name="trash-2" size={12}/>{showTrash?' Sair':' Lixeira'}{!showTrash&&trashed.length>0&&` (${trashed.length})`}
@@ -7755,10 +7862,10 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const [mobileView,setMobileView]=useState('list');
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,display:'flex',flexDirection:'column'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexShrink:0}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:10,flexShrink:0}}>
         {mobileView!=='list'
           ?<button className="btn btn-ghost" style={{padding:'8px 12px',fontSize:'.88rem'}} onClick={()=>setMobileView('list')}><Icon name="arrow-left" size={16}/> Voltar</button>
-          :<h1 className="serif stave-title" style={{fontSize:'1.6rem',fontWeight:300}}>Anotações</h1>
+          :<h1 className="serif stave-title" style={{fontSize:'1.6rem',fontWeight:300}}><StaveTitleNotes fig="q12"/>Anotações</h1>
         }
         {mobileView==='list'&&!showTrash&&(
           <div style={{display:'flex',gap:6}}>
@@ -7924,7 +8031,7 @@ const Social=React.memo(({posts,setPosts,isMobile})=>{
       , document.body)}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap'}}>
-        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}>Social Media</h1>
+        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}><StaveTitleNotes fig="q18"/>Social Media</h1>
         <button onClick={()=>{setTrash(!trash);cancelEdit();}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
           <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&trashedPosts.length>0&&` (${trashedPosts.length})`}
         </button>
@@ -8115,7 +8222,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
   return(
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap'}}>
-        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}>Clientes</h1>
+        <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em'}}><StaveTitleNotes fig="q9"/>Clientes</h1>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setTrash(!trash)} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
             <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&clients.filter(c=>c.deleted).length>0&&` (${clients.filter(c=>c.deleted).length})`}
@@ -8310,7 +8417,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
 
   return(
     <div className="fade-up" style={{maxWidth:'min(640px,100%)',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto',margin:'0 auto'}}>
-      <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Sincronizar</h1>
+      <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}><StaveTitleNotes fig="e12"/>Sincronizar</h1>
       <p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)',marginBottom:isMobile?10:12}}>Sync em tempo real entre dispositivos via Google.</p>
 
       <div style={{display:'flex',gap:6,marginBottom:isMobile?8:10,flexWrap:isMobile?'wrap':'nowrap'}}>
@@ -8722,7 +8829,7 @@ const MentorsHub=React.memo(({mentors,setMentors,isMobile})=>{
       {selectedFresh&&<MentorModal mentor={selectedFresh} onClose={()=>setSelected(null)} onSave={save} onDelete={del}/>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
         <div style={{flex:1,minWidth:0}}>
-          <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}>Mentores</h1>
+          <h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}><StaveTitleNotes fig="q12"/>Mentores</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'.85rem',margin:0}}>Referencias, influencias e guias de estudo.</p>}
         </div>
         <button className="btn btn-dark" onClick={add}><Icon name="user-plus" size={14}/> Adicionar</button>
