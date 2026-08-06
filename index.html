@@ -10109,7 +10109,7 @@ setTimeout(warmThumbCache,200);
     }
     try{fn();window.__bhBundleCache.source='cache';}
     catch(e){
-      // It parsed but threw partway through execution: the app may be half
+      // It parsed but threw partway through execution: the app may be half 
       // initialised, so we CANNOT simply run Babel over the top. Clear the cache
       // and reload exactly once (guarded in sessionStorage).
       var once=false;try{once=sessionStorage.getItem(RECOVER)==='1';}catch(_){/*silent-ok: defaults to "not yet retried", so the one recovery reload still gets its chance*/}
