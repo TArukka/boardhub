@@ -63,6 +63,53 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.51 — post-review cleanup: F-2, F-3, F-6 (aug/2026)
+  Three minor items from the same line-by-line review that found F-1. None change
+  behaviour; grouped because each is a few lines.
+  • F-2 — removed _idleCb. OPT-3 (v23.45) moved the boot warmer off
+    requestIdleCallback onto setTimeout(0), leaving this helper with zero call
+    sites. Dead code, no test referenced it.
+  • F-3 — the OPT-6 (v23.46) boot-cover read set r.onsuccess but no r.onerror, so
+    a failed IDB get on a cover surfaced as an unhandled request error. Added a
+    silent-ok handler; a cover that fails to preload just lazy-loads on mount.
+  • F-6 — the convolution reverb impulse (~635KB, filled by a ~160k-iteration RNG
+    loop) was rebuilt on EVERY sound. It never changes, so it is now cached per
+    AudioContext (via _getReverbImpulse); the ConvolverNode stays per-call. The
+    audio tests spy on createOscillator and are unaffected — the reverb has no
+    oscillators.
+  NOT RE-MEASURED THIS SESSION: the browser harness could not run — the tool
+  environment intermittently blocked the subprocess spawn it needs (cmd.exe), so
+  perl serve.pl / the harness page never loaded. Syntax verified by reading, and
+  the three changes are behaviour-neutral by construction (a dead-code deletion, an
+  added error handler, and a cache that changes no oscillator or note). RUN THE
+  HARNESS AND CONFIRM 127/127 next session before trusting this — protocol #2.
+  ──────
+  BoardHub v23.50 — F-1: the push that dropped an edit made mid-flight (aug/2026)
+  A data-loss race found by a line-by-line code review, in the layer this app has
+  already lost data to twice. It is narrow but real.
+  DIAGNOSIS: on a successful push, doPush cleared _hasPendingLocalEdit (and DIRTY)
+  UNCONDITIONALLY. If the user edited during the network round-trip, that edit set
+  the flag true — and the completing push cleared it. The edit reached localStorage
+  but its own push was skipped (the flag was already down), and the next reconcile,
+  seeing DIRTY='0', applied the cloud over it. The reconcile snapshots local before
+  overwriting, so the edit lands in the backup history — RECOVERABLE, but it
+  vanishes from the live state with no notice.
+  FIX: an edit-generation counter (_editGen) bumped on every user edit. doPush
+  captures the generation it covers; on success it surrenders the flag only if the
+  generation has not advanced — i.e. no newer edit arrived while it was in flight.
+  When superseded, the flag and DIRTY stay up (the newer edit already scheduled its
+  own push) and the status reads 'syncing', not 'synced'. SYNCED_UID and the seed
+  clear still run: this push DID reach the cloud. The decision is the pure
+  bhPushSettled(pushedGen,currentGen), outside the App like bhConcurrentDecision —
+  the push path is unreachable for the harness (BASELINE #3), so the DECISION is
+  what gets pinned.
+  MEASURED: 127/127 green (was 125). Two new: a behaviour test of bhPushSettled
+  (same gen → clear, newer gen → keep) and a source guard that the success path
+  consults it. HONEST COST: the race was reasoned from the code, not reproduced
+  live — the real push cannot be driven in the harness. The guard is correct by
+  construction and the pure function is tested; a live repro would still be worth
+  writing if the sync layer is touched again.
+  ──────
   BoardHub v23.49 — OPT-8: content-visibility on the in-card image grids (aug/2026)
   Eighth plan step (OPT-8), container-level as chosen. A .cv-grid class
   (content-visibility:auto; contain-intrinsic-size:auto 400px) now sits on the
@@ -2760,6 +2807,18 @@ const bhLocalSupersededDecision=({localSig,remoteSig,localAt,now,localHasData,wi
   if((now-t)>windowMs)return 'pre-sync';
   return 'concurrent-superseded';
 };
+// F-1 (2026-08-05) — after a push of the state captured at edit-generation
+// `pushedGen` SUCCEEDS, the pending-edit flag may be surrendered ONLY IF no newer
+// user edit arrived while the push was in flight (currentGen still equals
+// pushedGen). The bug it closes: doPush cleared the flag unconditionally on
+// success, so an edit made DURING the network round-trip had its flag cleared by
+// the completing push — it reached localStorage but its own push was skipped (the
+// flag was already down), and the next reconcile applied the cloud over it.
+// Recoverable from the backup history (the reconcile snapshots local before
+// overwriting), but silent. Pure + outside the App for the same reason as the
+// decisions above: the push path lives in a useEffect behind Firebase auth,
+// unreachable for the harness (BASELINE #3), so the DECISION is what gets pinned.
+const bhPushSettled=(pushedGen,currentGen)=>pushedGen===currentGen;
 const bhCounts=s=>({
   projects:(s.projects||[]).filter(p=>!p.deleted).length,
   clients:(s.clients||[]).filter(c=>!c.deleted).length,
@@ -3532,7 +3591,6 @@ const _warmFull=key=>{
   }).catch(()=>{delete _inflightFetch[key];return '';});
   return _inflightFetch[key];
 };
-const _idleCb=cb=>((typeof window!=='undefined'&&window.requestIdleCallback)||(f=>setTimeout(()=>f({timeRemaining:()=>0}),200)))(cb);
 
 // ── THUMBNAIL GENERATION THROTTLE ────────────────────────────────────
 // Reading a thumbnail is cheap; GENERATING one (decode + downscale + encode) is
@@ -4887,16 +4945,27 @@ const _getAudioCtx = () => {
 // sound now goes through _bhVoiceRig, which is the point: one instrument, one
 // reverb, one place to change the voice.
 
-// Convolution reverb — creates a warm, roomy ambience
-const _makeReverb = (ctx, secs=1.8) => {
+// Convolution reverb — creates a warm, roomy ambience.
+// F-6: the impulse (a ~635KB buffer filled by a ~160k-iteration RNG loop) is the
+// expensive part and it never changes, so cache it per AudioContext instead of
+// rebuilding it on every sound. The ConvolverNode stays per-call (cheap); only the
+// buffer is reused. Re-generated if the shared context is replaced (sampleRate may
+// differ) or the duration changes.
+let _reverbImpulse = null; // { ctx, secs, buf }
+const _getReverbImpulse = (ctx, secs) => {
+  if (_reverbImpulse && _reverbImpulse.ctx === ctx && _reverbImpulse.secs === secs) return _reverbImpulse.buf;
   const len = Math.ceil(ctx.sampleRate * secs);
   const buf = ctx.createBuffer(2, len, ctx.sampleRate);
   for(let ch=0; ch<2; ch++){
     const d = buf.getChannelData(ch);
     for(let i=0; i<len; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.2) * 0.5;
   }
+  _reverbImpulse = { ctx, secs, buf };
+  return buf;
+};
+const _makeReverb = (ctx, secs=1.8) => {
   const conv = ctx.createConvolver();
-  conv.buffer = buf;
+  conv.buffer = _getReverbImpulse(ctx, secs);
   return conv;
 };
 
@@ -9591,6 +9660,7 @@ const App=()=>{
   const fbPushTimer=useRef(null);
   const _retryTimer=useRef(null);
   const _pushAttempt=useRef(0);
+  const _editGen=useRef(0); // F-1: bumped on every USER edit; a push only clears the dirty flag if this hasn't advanced since the push began
   useEffect(()=>{
     // Compare against _remoteApplyId to detect whether this render was triggered
     // by remote data being applied (vs. a genuine user edit).
@@ -9603,6 +9673,7 @@ const App=()=>{
       // hydration, not a change the user made, so we must not block Firestore from
       // overwriting it with the authoritative cloud state.
       _hasPendingLocalEdit.current=true;
+      _editGen.current++; // F-1: a new edit; any in-flight push must not clear the flag on success
       try{
         localStorage.setItem(DIRTY_KEY,'1');
         localStorage.setItem(LAST_EDIT_KEY,new Date().toISOString()); // feeds last-write-wins
@@ -9630,6 +9701,7 @@ const App=()=>{
       clearTimeout(fbPushTimer.current);
       fbPushTimer.current=setTimeout(()=>{
         const doPush=async()=>{
+          const pushedGen=_editGen.current; // F-1: the edit generation this push covers (no edit can slip in before the awaits below)
           // Firestore's 1MB limit is PER DOCUMENT. v22 measured the whole state
           // against 900KB and gave up — blocking sync in scenarios the 3-doc
           // split was designed to survive. Measure each payload separately and
@@ -9648,13 +9720,19 @@ const App=()=>{
           setSyncStatus('syncing');
           await pushState(state,fbUser.uid);
           _pushAttempt.current=0;
-          _hasPendingLocalEdit.current=false; // push succeeded — clear flag so snapshot listener works
-          // cloud now has the latest local data; this device is in sync with this account
-          try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'the device may repeat the 1st-contact reconcile on the next boot');}
+          // F-1: surrender the pending-edit flag only if no newer user edit landed
+          // while this push was in flight. If one did (superseded), it was written
+          // to localStorage and already flagged dirty with its own push scheduled —
+          // clearing here would drop it, letting the next reconcile overwrite it
+          // with the cloud. Leave the flag AND DIRTY up in that case; SYNCED_UID and
+          // the seed clear are still correct (this push did reach the cloud).
+          const settled=bhPushSettled(pushedGen,_editGen.current);
+          if(settled)_hasPendingLocalEdit.current=false;
+          try{if(settled)localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'the device may repeat the 1st-contact reconcile on the next boot');}
           _deviceSyncedUid.current=fbUser.uid;
           clearTimeout(_retryTimer.current);
           setSyncDetail('');
-          setSyncStatus('synced');
+          setSyncStatus(settled?'synced':'syncing'); // superseded → the newer edit's push is still pending
         };
         const attemptPush=async()=>{
           try{await doPush();}
@@ -9902,6 +9980,7 @@ if(_bootCovers.length){
     _bootCovers.slice(0,16).forEach(k=>{
       const r=store.get('thumb_'+k);
       r.onsuccess=e=>{const tb=e.target.result;if(tb&&!_thumbCache[k]){_thumbCache[k]=URL.createObjectURL(tb);_touchThumb(k);}};
+      r.onerror=()=>{/*silent-ok: a cover that fails to preload just lazy-loads on mount*/};
     });
   }).catch(()=>{});
 }
