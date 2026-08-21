@@ -8147,15 +8147,30 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
     if(Date.now()-newNoteCooldownRef.current<600)return;
     const target=itemById(id);
     if(!target)return;
-    if(isCategory(target)){
-      // Removing a category never hides its contents: direct children return to the root.
-      setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:parentOf(n)===id?{...n,parentId:null}:n));
-    }else{
-      setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n));
-    }
+    // Deleting a container keeps its hierarchy intact. The container becomes archived
+    // and its children stay attached, so restoring it restores the whole branch.
+    setNotes(p=>p.map(n=>n.id===id?{...n,deleted:true,deletedAt:new Date().toISOString()}:n));
     if(selected?.id===id)setSelected(null);
   };
-  const restoreItem=id=>setNotes(p=>p.map(n=>n.id===id?{...n,deleted:false,deletedAt:null}:n));
+  const restoreItem=id=>setNotes(prev=>{
+    const item=prev.find(n=>n.id===id);
+    if(!item)return prev;
+    if(item.originFolderId){
+      const folder=prev.find(n=>n.id===item.originFolderId&&isFolder(n)&&!n.deleted);
+      if(folder){
+        const entry={id:item.id,title:item.title,content:item.content||'',date:item.date||new Date().toLocaleDateString('pt-BR')};
+        return prev.filter(n=>n.id!==id).map(n=>n.id===folder.id?{...n,entries:[...(n.entries||[]),entry]}:n);
+      }
+    }
+    return prev.map(n=>n.id===id?{...n,deleted:false,deletedAt:null,originFolderId:undefined}:n);
+  });
+  const archiveEntry=(entryId,folderId)=>setNotes(prev=>{
+    const folder=prev.find(n=>n.id===folderId);
+    const entry=folder?.entries?.find(e=>e.id===entryId);
+    if(!entry)return prev;
+    const archived={...entry,type:'note',deleted:true,deletedAt:new Date().toISOString(),parentId:null,originFolderId:folderId};
+    return prev.filter(n=>n.id!==archived.id).map(n=>n.id===folderId?{...n,entries:(n.entries||[]).filter(e=>e.id!==entryId)}:n).concat(archived);
+  });
   const hardDeleteItem=async id=>{
     if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){
       setNotes(p=>p.filter(n=>n.id!==id));
@@ -8282,7 +8297,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
     if(drag.kind==='item'){
       if(drag.id===target.id)return false;
       if(target.kind==='category')return true;
-      if(target.kind==='folder')return drag.itemType==='note' || drag.itemType==='folder' || drag.itemType==='category';
+      if(target.kind==='folder')return drag.itemType==='note' || drag.itemType==='category';
       if(target.kind==='item')return true;
     }
     return false;
@@ -8306,6 +8321,9 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
         else moveItemIntoCategory(dragged.id,targetItem.id);
       }else if(target.kind==='folder'&&isNote(dragged)){
         moveNoteIntoFolder(dragged.id,targetItem.id,null);
+      }else if(target.kind==='folder'&&isFolder(dragged)){
+        // Folders can be reordered beside sibling folders, but can never be dropped INTO a folder.
+        return;
       }else{
         reorderSiblings(parentOf(targetItem),dragged.id,targetItem.id);
       }
@@ -8344,11 +8362,30 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
 
   const Row=({n,depth=0})=>{
     const meta=typeMeta(n), open=isExpanded(n.id), kids=isCategory(n)?childrenOf(n.id):[];
+    const siblingFolderDrop = isFolder(n) ? (e=>{
+      e.preventDefault();
+      const d=dragRef.current;
+      if(!d||d.kind!=='item'||d.itemType!=='project'||parentOf(itemById(d.id))!==parentOf(n))return;
+      e.currentTarget.classList.add('drag-over-top');
+    }) : null;
     const target={kind:isCategory(n)?'category':isFolder(n)?'folder':'item',id:n.id};
     const draggable=n.type!=='note'||true;
     const selectedNote=selected?.kind==='note'&&selected.id===n.id;
     const isRenaming=renaming?.id===n.id;
     return <div key={n.id} style={{marginBottom:2}}>
+      {isFolder(n)&&!showTrash&&<div
+        onDragOver={siblingFolderDrop}
+        onDragLeave={e=>e.currentTarget.classList.remove('drag-over-top')}
+        onDrop={e=>{
+          e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove('drag-over-top');
+          const d=dragRef.current;
+          if(d&&d.kind==='item'&&d.itemType==='project'&&d.id!==n.id&&parentOf(itemById(d.id))===parentOf(n)){
+            reorderSiblings(parentOf(n),d.id,n.id);
+          }
+          dragRef.current=null;
+        }}
+        style={{height:4,borderRadius:6,margin:'1px 0',border:'1px solid transparent'}}
+      />}
       <div className="drag-item"
         draggable={!showTrash}
         onDragStart={e=>onDragStart({kind:'item',id:n.id,itemType:n.type,parentId:parentOf(n)},e)}
@@ -8375,6 +8412,16 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
                 onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commitRename();}if(e.key==='Escape')setRenaming(null);}}
                 onClick={e=>e.stopPropagation()} style={{flex:1,minWidth:0,fontWeight:600,fontSize:'.8rem',background:'transparent',border:'none',outline:'none',color:'var(--text)',padding:0}}/>
             : <div style={{flex:1,minWidth:0,fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>}
+          {!showTrash&&(isCategory(n)||isFolder(n)||isNote(n))&&<div style={{display:'flex',gap:2,flexShrink:0,opacity:.65}}>
+            <button onClick={e=>beginRename(n,e)} title="Renomear" aria-label={'Renomear '+(n.title||'item')}
+              style={{border:'none',background:'transparent',color:'var(--muted)',padding:'3px',cursor:'pointer',lineHeight:0,borderRadius:5}}
+              onMouseEnter={e=>{e.currentTarget.style.color='var(--text)';e.currentTarget.style.background='var(--bg)';}}
+              onMouseLeave={e=>{e.currentTarget.style.color='var(--muted)';e.currentTarget.style.background='transparent';}}><Icon name="pencil" size={11}/></button>
+            <button onClick={e=>{e.stopPropagation();trashItem(n.id);}} title={isCategory(n)?'Arquivar categoria':isFolder(n)?'Mover pasta para Arquivos':'Mover nota para Arquivos'} aria-label={isCategory(n)?'Arquivar categoria':isFolder(n)?'Mover pasta para Arquivos':'Mover nota para Arquivos'}
+              style={{border:'none',background:'transparent',color:'var(--muted)',padding:'3px',cursor:'pointer',lineHeight:0,borderRadius:5}}
+              onMouseEnter={e=>{e.currentTarget.style.color='var(--danger-fg)';e.currentTarget.style.background='var(--danger-bg)';}}
+              onMouseLeave={e=>{e.currentTarget.style.color='var(--muted)';e.currentTarget.style.background='transparent';}}><Icon name="archive" size={11}/></button>
+          </div>}
         </div>
         <div style={{fontSize:'.66rem',color:'var(--muted)',paddingLeft:28+depth*16,marginTop:2}}>
           {isCategory(n)?`${childrenOf(n.id).length} item${childrenOf(n.id).length===1?'':'s'}`:isFolder(n)?`${(n.entries||[]).length} nota${(n.entries||[]).length===1?'':'s'}`:n.date}
@@ -8398,7 +8445,9 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
           >
             <span className="drag-handle" style={{color:'var(--muted)',lineHeight:0,flexShrink:0}}><Icon name="grip-vertical" size={9}/></span>
             <span style={{fontSize:'.62rem',color:'var(--muted)',width:15,flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{String(i+1).padStart(2,'0')}</span>
-            <span style={{fontSize:'.76rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{entry.title}</span>
+            <span style={{fontSize:'.76rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{entry.title}</span>
+            <button onClick={e=>{e.stopPropagation();setRenaming({id:entry.id,value:entry.title||''});setSelected({kind:'entry',id:entry.id,folderId:n.id});setMobileDetail(true);}} title="Renomear nota" aria-label={'Renomear nota '+(entry.title||'nota')} style={{border:'none',background:'transparent',color:'var(--muted)',padding:'3px',cursor:'pointer',lineHeight:0,borderRadius:5}}><Icon name="pencil" size={10}/></button>
+            <button onClick={e=>{e.stopPropagation();archiveEntry(entry.id,n.id);if(selected?.kind==='entry'&&selected.id===entry.id)setSelected(null);}} title="Mover nota para Arquivos" aria-label={'Arquivar nota '+(entry.title||'nota')} style={{border:'none',background:'transparent',color:'var(--muted)',padding:'3px',cursor:'pointer',lineHeight:0,borderRadius:5}}><Icon name="archive" size={10}/></button>
           </div>)}
           <div onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over')}} onDragLeave={e=>e.currentTarget.classList.remove('drag-over')} onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over');const d=dragRef.current;if(!d)return;if(d.kind==='item'&&d.itemType==='note')moveNoteIntoFolder(d.id,n.id,null);else if(d.kind==='entry')moveEntryToFolder(d.id,d.folderId,n.id,null);dragRef.current=null;}} style={{height:5,borderRadius:6}}/>
         </div>
@@ -8426,7 +8475,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   };
 
   const trashEntry=(entryId,folderId)=>{
-    setNotes(p=>p.map(n=>n.id===folderId?{...n,entries:(n.entries||[]).filter(e=>e.id!==entryId)}:n));
+    archiveEntry(entryId,folderId);
     if(selected?.kind==='entry'&&selected.id===entryId)setSelected(null);
   };
 
@@ -8435,7 +8484,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14,gap:10,flexShrink:0}}>
         <h1 className="serif stave-title" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}><StaveTitleNotes fig="beam"/>Anotações</h1>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'5px 12px',fontSize:'.78rem'}}><Icon name="trash-2" size={12}/>{showTrash?' Sair':' Lixeira'}{!showTrash&&trashed.length>0&&` (${trashed.length})`}</button>
+          <button onClick={()=>setShowTrash(t=>!t)} className={`btn ${showTrash?'btn-danger':'btn-outline'}`} style={{padding:'5px 12px',fontSize:'.78rem'}}><Icon name="trash-2" size={12}/>{showTrash?' Sair':' Arquivos'}{!showTrash&&trashed.length>0&&` (${trashed.length})`}</button>
           {!showTrash&&<div style={{position:'relative'}}>
             <button className="btn btn-dark" style={{padding:'5px 14px',fontSize:'.78rem'}} onClick={()=>setShowCreateMenu(m=>!m)}><Icon name="plus" size={12}/> Criar</button>
             {showCreateMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:6,display:'flex',flexDirection:'column',gap:2,minWidth:155,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:50}}>
