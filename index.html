@@ -8182,14 +8182,22 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
   const reorderSiblings=(parentId,fromId,toId)=>{
     if(fromId===toId)return;
     setNotes(prev=>{
-      const siblings=prev.filter(n=>!n.deleted&&parentOf(n)===(parentId==null?null:parentId));
+      const normPid=parentId==null?null:parentId;
+      const siblings=prev.filter(n=>!n.deleted&&parentOf(n)===normPid);
       const order=siblings.map(n=>n.id);
       const from=order.indexOf(fromId),to=order.indexOf(toId);
       if(from<0||to<0)return prev;
       const [m]=order.splice(from,1);order.splice(to,0,m);
+      // Build a lookup so we never return undefined from the map.
+      // prev.find inside a map iterates O(n²) and, crucially, can return
+      // undefined when i drifts out of sync with the siblings slice.
+      const byId=Object.fromEntries(prev.map(n=>[n.id,n]));
       let i=0;
       return prev.map(n=>{
-        if(!n.deleted&&parentOf(n)===(parentId==null?null:parentId))return prev.find(x=>x.id===order[i++]);
+        if(!n.deleted&&parentOf(n)===normPid){
+          const reordered=byId[order[i++]];
+          return reordered||n; // safety: fall back to original if lookup misses
+        }
         return n;
       });
     });
@@ -8297,7 +8305,8 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
     if(drag.kind==='item'){
       if(drag.id===target.id)return false;
       if(target.kind==='category')return true;
-      if(target.kind==='folder')return drag.itemType==='note' || drag.itemType==='category';
+      // Only notes may enter a folder; folders and categories cannot be dropped INTO a folder.
+      if(target.kind==='folder')return drag.itemType==='note';
       if(target.kind==='item')return true;
     }
     return false;
@@ -8362,24 +8371,21 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
 
   const Row=({n,depth=0})=>{
     const meta=typeMeta(n), open=isExpanded(n.id), kids=isCategory(n)?childrenOf(n.id):[];
-    const siblingFolderDrop = isFolder(n) ? (e=>{
-      e.preventDefault();
-      const d=dragRef.current;
-      if(!d||d.kind!=='item'||d.itemType!=='project'||parentOf(itemById(d.id))!==parentOf(n))return;
-      e.currentTarget.classList.add('drag-over-top');
-    }) : null;
+    // Use d.parentId from the drag payload (recorded at drag-start) instead of
+    // itemById(d.id) which can be stale when parentId was changed by a previous drop.
+    const isSiblingFolder=d=>d&&d.kind==='item'&&d.itemType==='project'&&d.id!==n.id&&(d.parentId??null)===(parentOf(n)??null);
     const target={kind:isCategory(n)?'category':isFolder(n)?'folder':'item',id:n.id};
     const draggable=n.type!=='note'||true;
     const selectedNote=selected?.kind==='note'&&selected.id===n.id;
     const isRenaming=renaming?.id===n.id;
     return <div key={n.id} style={{marginBottom:2}}>
       {isFolder(n)&&!showTrash&&<div
-        onDragOver={siblingFolderDrop}
+        onDragOver={e=>{if(!isSiblingFolder(dragRef.current))return;e.preventDefault();e.currentTarget.classList.add('drag-over-top');}}
         onDragLeave={e=>e.currentTarget.classList.remove('drag-over-top')}
         onDrop={e=>{
           e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove('drag-over-top');
           const d=dragRef.current;
-          if(d&&d.kind==='item'&&d.itemType==='project'&&d.id!==n.id&&parentOf(itemById(d.id))===parentOf(n)){
+          if(isSiblingFolder(d)){
             reorderSiblings(parentOf(n),d.id,n.id);
           }
           dragRef.current=null;
