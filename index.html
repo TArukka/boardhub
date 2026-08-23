@@ -2310,14 +2310,14 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes checkPop{0%{transform:scale(.8);}50%{transform:scale(1.1);}100%{transform:scale(1);}}
 @keyframes checkDraw{from{opacity:0;transform:rotate(45deg) translate(-1px,-1px) scale(.5);}to{opacity:1;transform:rotate(45deg) translate(-1px,-1px) scale(1);}}
 @keyframes lbIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
-/* Lightbox: starts after the 220px sidebar so the image centres over the
-   content area, not the full viewport. On mobile the sidebar collapses so
-   we reset left to 0 there (see the @media block below). */
-.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:24px;box-sizing:border-box;}
-/* Image: fills the available content-area width/height with a safe 4% margin
-   on each side. --lb-ar is set in JS once naturalWidth/Height are known so the
-   image never exceeds its true aspect ratio. Background black gives letterbox. */
-.lightbox img{width:min(100%,1100px);height:min(84vh,680px);max-width:100%;max-height:calc(100vh - 48px);object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;box-shadow:0 18px 60px rgba(0,0,0,.32);}
+/* Lightbox viewer: the overlay begins exactly at the sidebar edge.
+   A dedicated .lightbox-stage fills the usable content area; the media is
+   contained inside that stage, so there is no second left offset/dead band. */
+.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:18px;box-sizing:border-box;}
+/* The stage is the stable viewing rectangle. Images scale to it with contain:
+   no cropping, predictable opened size, and black letterbox only when needed. */
+.lightbox-stage{width:100%;height:100%;max-width:1440px;max-height:900px;margin:auto;background:#000;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 60px rgba(0,0,0,.32);cursor:zoom-out;}
+.lightbox-stage img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;border-radius:0;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;}
 .ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Alegreya Sans',sans-serif;transition:all .12s;}
 .ptask-pill:active{transform:scale(.92);}
 .ptask-Pendente{background:var(--neutral-bg);color:var(--muted);}.ptask-Fazendo{background:var(--warn-bg);color:var(--warn-fg);}.ptask-Concluído{background:var(--ok-bg);color:var(--ok-fg);}.ptask-Atrasado{background:var(--danger-bg);color:var(--danger-fg);}
@@ -2414,7 +2414,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   /* Save toast: keep it centered over the content area */
   .save-toast{left:calc(180px + 50%)!important;}
   /* Lightbox: follow the narrower sidebar */
-  .lightbox{left:180px!important;}
+  .lightbox{left:180px!important;padding:12px!important;}
 }
 @media(max-width:768px){
   /* Prevent horizontal scroll */
@@ -2424,8 +2424,8 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
   /* Lightbox: no sidebar on mobile, span full screen */
-  .lightbox{left:0!important;padding:16px!important;}
-  .lightbox img{width:100%!important;height:min(78vh,620px)!important;max-height:calc(100vh - 32px)!important;}
+  .lightbox{left:0!important;padding:8px!important;}
+  .lightbox-stage{max-width:none!important;max-height:none!important;border-radius:6px!important;}
   /* Overlay / Modals — slide up from bottom on mobile */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
@@ -7611,17 +7611,14 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
 
 
   if(lightbox)return(
-    <div className="lightbox" onClick={()=>setLightbox(null)} ref={el=>{
-      // Once the img inside loads we know its natural dimensions.
-      // Write --lb-ar onto the overlay so the CSS min/max sizing uses the real ratio.
-      if(!el)return;
-      const img=el.querySelector('img');
-      if(!img)return;
-      const apply=()=>{const ar=img.naturalWidth&&img.naturalHeight?img.naturalWidth/img.naturalHeight:16/9;el.style.setProperty('--lb-ar',ar.toFixed(4));};
-      if(img.complete)apply();else img.addEventListener('load',apply,{once:true});
-    }}>
-      <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt="" style={{borderRadius:8}}/>
-      <button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)'}}><Icon name="x" size={20}/></button>
+    <div className="lightbox" onClick={()=>setLightbox(null)}>
+      <div className="lightbox-stage" onClick={()=>setLightbox(null)}>
+        <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt=""/>
+      </div>
+      <button onClick={()=>setLightbox(null)} aria-label="Fechar imagem" title="Fechar"
+        style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)',zIndex:201}}>
+        <Icon name="x" size={20}/>
+      </button>
     </div>
   );
 
