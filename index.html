@@ -2310,8 +2310,14 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes checkPop{0%{transform:scale(.8);}50%{transform:scale(1.1);}100%{transform:scale(1);}}
 @keyframes checkDraw{from{opacity:0;transform:rotate(45deg) translate(-1px,-1px) scale(.5);}to{opacity:1;transform:rotate(45deg) translate(-1px,-1px) scale(1);}}
 @keyframes lbIn{from{opacity:0;transform:scale(.94);}to{opacity:1;transform:scale(1);}}
-.lightbox{position:fixed;inset:0;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;}
-.lightbox img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;}
+/* Lightbox: starts after the 220px sidebar so the image centres over the
+   content area, not the full viewport. On mobile the sidebar collapses so
+   we reset left to 0 there (see the @media block below). */
+.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:48px;box-sizing:border-box;}
+/* Image: fills the available content-area width/height with a safe 4% margin
+   on each side. --lb-ar is set in JS once naturalWidth/Height are known so the
+   image never exceeds its true aspect ratio. Background black gives letterbox. */
+.lightbox img{max-width:min(82%,calc(100% - 96px));max-height:78vh;width:auto;height:auto;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;}
 .ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Alegreya Sans',sans-serif;transition:all .12s;}
 .ptask-pill:active{transform:scale(.92);}
 .ptask-Pendente{background:var(--neutral-bg);color:var(--muted);}.ptask-Fazendo{background:var(--warn-bg);color:var(--warn-fg);}.ptask-Concluído{background:var(--ok-bg);color:var(--ok-fg);}.ptask-Atrasado{background:var(--danger-bg);color:var(--danger-fg);}
@@ -2394,6 +2400,22 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .drag-item.drag-over{outline:2px dashed var(--text);outline-offset:-2px;border-radius:8px;background:rgba(var(--ink),.02);}
 
 /* - RESPONSIVE - */
+/* ── Compact desktop (≤1366px wide AND ≤800px tall): the 1280×720 notebook at
+   100% zoom lands here. Sidebar and main padding tighten so nothing overlaps.
+   The sidebar <aside> and <main> both carry inline styles, so !important is
+   needed throughout — these overrides are intentional, not hacks. */
+@media(max-width:1366px) and (max-height:800px) and (min-width:769px){
+  /* Sidebar: narrow from 220px → 180px */
+  aside{width:180px!important;min-width:180px!important;}
+  /* Main content: match the new sidebar width and tighten vertical padding */
+  main{margin-left:180px!important;padding:clamp(10px,1.6vh,20px) clamp(12px,1.8vw,28px)!important;}
+  /* Dialog overlay centering (sidebar + gap) */
+  .overlay{padding-left:204px!important;}
+  /* Save toast: keep it centered over the content area */
+  .save-toast{left:calc(180px + 50%)!important;}
+  /* Lightbox: follow the narrower sidebar */
+  .lightbox{left:180px!important;}
+}
 @media(max-width:768px){
   /* Prevent horizontal scroll */
   html,body{overflow-x:hidden!important;max-width:100vw!important;}
@@ -2401,6 +2423,8 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .main-mobile{margin-left:0!important;padding:16px 16px 72px!important;padding-top:0!important;min-height:calc(100vh - 56px)!important;overflow-x:hidden!important;width:100%!important;box-sizing:border-box!important;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
+  /* Lightbox: no sidebar on mobile, span full screen */
+  .lightbox{left:0!important;padding:48px 16px 32px!important;}
   /* Overlay / Modals — slide up from bottom on mobile */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
@@ -7586,8 +7610,16 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
 
 
   if(lightbox)return(
-    <div className="lightbox" onClick={()=>setLightbox(null)}>
-      <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt="" style={{maxWidth:'90vw',maxHeight:'90vh',objectFit:'contain',borderRadius:8}}/>
+    <div className="lightbox" onClick={()=>setLightbox(null)} ref={el=>{
+      // Once the img inside loads we know its natural dimensions.
+      // Write --lb-ar onto the overlay so the CSS min/max sizing uses the real ratio.
+      if(!el)return;
+      const img=el.querySelector('img');
+      if(!img)return;
+      const apply=()=>{const ar=img.naturalWidth&&img.naturalHeight?img.naturalWidth/img.naturalHeight:16/9;el.style.setProperty('--lb-ar',ar.toFixed(4));};
+      if(img.complete)apply();else img.addEventListener('load',apply,{once:true});
+    }}>
+      <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt="" style={{borderRadius:8}}/>
       <button onClick={()=>setLightbox(null)} style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.12)',border:'none',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)'}}><Icon name="x" size={20}/></button>
     </div>
   );
@@ -7626,8 +7658,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           {selected.images.map((img,i,list)=>(
             <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
               {isVideoSrc(img)
-                ?<Vid src={img} controls playsInline style={{width:'100%',height:'100%',objectFit:'cover',display:'block',borderRadius:10}}/>
-                :<Img src={img} priority={i<(isMobile?6:9)} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                ?<Vid src={img} controls playsInline style={{width:'100%',height:'100%',objectFit:'contain',display:'block',borderRadius:10,background:'#000'}}/>
+                :<Img src={img} priority={i<(isMobile?6:9)} className="img-zoom-sm" style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>
               }
               <button onClick={e=>{e.stopPropagation();removeImg(i);}} style={{position:'absolute',top:6,right:6,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:24,height:24,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',zIndex:2}}><Icon name="x" size={11}/></button>
               {!isVideoSrc(img)&&<button onClick={e=>{e.stopPropagation();upd('bannerImage',img);}} title="Usar como banner"
@@ -7794,16 +7826,16 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
                   onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove('drag-over-left');const from=postDragRef.current;if(from!=null&&String(from)!==String(post.id))reorderGalleryPosts(from,post.id);postDragRef.current=null;postDragEndRef.current=Date.now();}}
                   {...keyActivate(()=>setSelected(post),'Abrir post '+(post.title||''),true)}>
                   <div style={{position:'absolute',top:7,left:7,zIndex:3,width:24,height:24,borderRadius:6,background:'rgba(28,25,23,.62)',color:'white',display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}} title="Arraste para mover"><Icon name="grip-vertical" size={12}/></div>
-                  <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+                  <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'#000',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                     {post.images.length>0
                       ?(()=>{const src=post.bannerImage||(post.images[0]||post.images[post.images.length-1]);
                         return isVideoSrc(src)
-                          ?<><Vid src={src} muted playsInline loop preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}
+                          ?<><Vid src={src} muted playsInline loop preload="metadata" style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}
                               onMouseEnter={e=>{try{e.target.play();}catch{/*silent-ok: autoplay policy rejects play() without user gesture — the poster frame stays*/}}} onMouseLeave={e=>{try{e.target.pause();e.target.currentTime=0;}catch{/*silent-ok: pausing a video that never started*/}}}/>
                             <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
                               <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(2px)'}}>
                                 <Icon name="play" size={14} style={{color:'white',marginLeft:2}}/></div></div></>
-                          :<Img src={src} className="img-zoom" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                          :<Img src={src} className="img-zoom" style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}/>
                       ;})()
                       :<Icon name="image" size={28} style={{opacity:.2}}/>}
                   </div>
@@ -7825,16 +7857,16 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
                   <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}
                     onPointerEnter={()=>{if(!trash)warmKeys(post.images,24);}}
                     {...keyActivate(()=>setSelected(post),'Abrir post '+(post.title||''),!trash)}>
-                    <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+                    <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'#000',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                       {post.images.length>0
                         ?(()=>{const src=post.bannerImage||(post.images[0]||post.images[post.images.length-1]);
                           return isVideoSrc(src)
-                            ?<><Vid src={src} muted playsInline loop preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}
+                            ?<><Vid src={src} muted playsInline loop preload="metadata" style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}
                                 onMouseEnter={e=>{try{e.target.play();}catch{/*silent-ok: autoplay policy rejects play() without user gesture — the poster frame stays*/}}} onMouseLeave={e=>{try{e.target.pause();e.target.currentTime=0;}catch{/*silent-ok: pausing a video that never started*/}}}/>
                               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
                                 <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(2px)'}}>
                                   <Icon name="play" size={14} style={{color:'white',marginLeft:2}}/></div></div></>
-                            :<Img src={src} className={trash?'':'img-zoom'} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                            :<Img src={src} className={trash?'':'img-zoom'} style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}/>
                         ;})()
                         :<Icon name="image" size={28} style={{opacity:.2}}/>}
                     </div>
