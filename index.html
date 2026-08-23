@@ -2313,11 +2313,11 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 /* Lightbox: starts after the 220px sidebar so the image centres over the
    content area, not the full viewport. On mobile the sidebar collapses so
    we reset left to 0 there (see the @media block below). */
-.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:48px;box-sizing:border-box;}
+.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:24px;box-sizing:border-box;}
 /* Image: fills the available content-area width/height with a safe 4% margin
    on each side. --lb-ar is set in JS once naturalWidth/Height are known so the
    image never exceeds its true aspect ratio. Background black gives letterbox. */
-.lightbox img{max-width:min(82%,calc(100% - 96px));max-height:78vh;width:auto;height:auto;object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;}
+.lightbox img{width:min(100%,1100px);height:min(84vh,680px);max-width:100%;max-height:calc(100vh - 48px);object-fit:contain;border-radius:8px;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;box-shadow:0 18px 60px rgba(0,0,0,.32);}
 .ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Alegreya Sans',sans-serif;transition:all .12s;}
 .ptask-pill:active{transform:scale(.92);}
 .ptask-Pendente{background:var(--neutral-bg);color:var(--muted);}.ptask-Fazendo{background:var(--warn-bg);color:var(--warn-fg);}.ptask-Concluído{background:var(--ok-bg);color:var(--ok-fg);}.ptask-Atrasado{background:var(--danger-bg);color:var(--danger-fg);}
@@ -2424,7 +2424,8 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
   /* Lightbox: no sidebar on mobile, span full screen */
-  .lightbox{left:0!important;padding:48px 16px 32px!important;}
+  .lightbox{left:0!important;padding:16px!important;}
+  .lightbox img{width:100%!important;height:min(78vh,620px)!important;max-height:calc(100vh - 32px)!important;}
   /* Overlay / Modals — slide up from bottom on mobile */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
@@ -7042,8 +7043,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                         <div style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'var(--bg)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                           {src
                             ?(isVideoSrc(src)
-                              ?<Vid src={src} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
-                              :<Img src={src} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>)
+                              ?<Vid src={src} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>
+                              :<Img src={src} style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>)
                             :<Icon name="image" size={20} style={{opacity:.2}}/>}
                         </div>
                         <div style={{padding:'7px 9px'}}>
@@ -7309,7 +7310,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeMini.frames||[]).map((img,i,list)=>(
                       <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
-                        <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                        <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>
                         <button onClick={()=>{const f=[...(activeMini.frames||[])];f.splice(i,1);updateMini('frames',f);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
                     ))}
@@ -7348,7 +7349,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                       {(note.images||[]).map((img,i,list)=>(
                         <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
-                          <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                          <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>
                           <button onClick={()=>{const imgs=[...(note.images||[])];imgs.splice(i,1);updateInnerNote('images',imgs);}} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                         </div>
                       ))}
@@ -7430,7 +7431,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                   <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(auto-fill,minmax(160px,1fr))',gap:isMobile?8:10,marginBottom:14}}>
                     {(activeResearch.images||[]).map((img,i,list)=>(
                       <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)'}}>
-                        <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+                        <Img src={img} priority={i<(isMobile?6:9)} style={{width:'100%',height:'100%',objectFit:'contain',display:'block',background:'#000'}}/>
                         <button onClick={()=>removeResearchImg(activeResearch.id,i)} style={{position:'absolute',top:5,right:5,background:'rgba(28,25,23,.7)',border:'none',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white'}}><Icon name="x" size={11}/></button>
                       </div>
                     ))}
