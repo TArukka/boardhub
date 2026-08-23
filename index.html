@@ -2313,10 +2313,10 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 /* Lightbox viewer: the overlay begins exactly at the sidebar edge.
    A dedicated .lightbox-stage fills the usable content area; the media is
    contained inside that stage, so there is no second left offset/dead band. */
-.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:18px;box-sizing:border-box;}
+.lightbox{position:fixed;top:0;right:0;bottom:0;left:220px;background:rgba(10,8,6,.92);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:200;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:hidden;padding:12px 0;box-sizing:border-box;}
 /* The stage is the stable viewing rectangle. Images scale to it with contain:
    no cropping, predictable opened size, and black letterbox only when needed. */
-.lightbox-stage{width:100%;height:100%;max-width:1440px;max-height:900px;margin:auto;background:#000;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 60px rgba(0,0,0,.32);cursor:zoom-out;}
+.lightbox-stage{width:100%;height:100%;max-width:1440px;max-height:900px;margin:auto;background:#000;border-radius:0;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 18px 60px rgba(0,0,0,.32);cursor:zoom-out;}
 .lightbox-stage img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;border-radius:0;animation:lbIn .2s ease;cursor:default;background:#000;display:block;box-sizing:border-box;}
 .ptask-pill{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;cursor:pointer;border:none;font-family:'Alegreya Sans',sans-serif;transition:all .12s;}
 .ptask-pill:active{transform:scale(.92);}
@@ -2414,7 +2414,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   /* Save toast: keep it centered over the content area */
   .save-toast{left:calc(180px + 50%)!important;}
   /* Lightbox: follow the narrower sidebar */
-  .lightbox{left:180px!important;padding:12px!important;}
+  .lightbox{left:180px!important;padding:12px 0!important;}
 }
 @media(max-width:768px){
   /* Prevent horizontal scroll */
@@ -2424,8 +2424,8 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .fade-up{animation:none!important;max-width:100%!important;box-sizing:border-box!important;}
   
   /* Lightbox: no sidebar on mobile, span full screen */
-  .lightbox{left:0!important;padding:8px!important;}
-  .lightbox-stage{max-width:none!important;max-height:none!important;border-radius:6px!important;}
+  .lightbox{left:0!important;padding:8px 0!important;}
+  .lightbox-stage{max-width:none!important;max-height:none!important;border-radius:0!important;}
   /* Overlay / Modals — slide up from bottom on mobile */
   .overlay,.overlay-offset{padding:0!important;padding-left:0!important;align-items:flex-end!important;}
   .modal{border-radius:18px 18px 0 0!important;max-height:92vh!important;padding:24px 20px!important;}
@@ -7610,7 +7610,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   },[lightbox]);
 
 
-  if(lightbox)return(
+  if(lightbox)return ReactDOM.createPortal(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
       <div className="lightbox-stage" onClick={()=>setLightbox(null)}>
         <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt=""/>
@@ -7619,7 +7619,8 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)',zIndex:201}}>
         <Icon name="x" size={20}/>
       </button>
-    </div>
+    </div>,
+    document.body
   );
 
   if(selected)return(
