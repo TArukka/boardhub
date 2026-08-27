@@ -4887,6 +4887,20 @@ const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hub
 // - POMODORO -
 const POMO_LS = 'boardhub_pomo_v3';
 
+const pomoEmpty = () => ({days:{},categories:[],allocations:{},dailyAllocations:{}});
+const pomoNormalize = d => {
+  const src=(d&&typeof d==='object'&&!Array.isArray(d))?d:{};
+  return {
+    ...src,
+    days:(src.days&&typeof src.days==='object'&&!Array.isArray(src.days))?src.days:{},
+    categories:Array.isArray(src.categories)?src.categories.filter(c=>c&&c.id&&typeof c.name==='string'):[],
+    allocations:(src.allocations&&typeof src.allocations==='object'&&!Array.isArray(src.allocations))?src.allocations:{},
+    dailyAllocations:(src.dailyAllocations&&typeof src.dailyAllocations==='object'&&!Array.isArray(src.dailyAllocations))?src.dailyAllocations:{},
+  };
+};
+const pomoProjectKey = id => 'project:'+String(id);
+const pomoCategoryKey = id => 'cat:'+String(id);
+
 const pomoLoad = function() {
   try {
     var s = localStorage.getItem(POMO_LS);
@@ -4897,9 +4911,9 @@ const pomoLoad = function() {
         var today2 = localDateISO();
         var days2 = {};
         if (parsed.dailySeconds > 0) days2[today2] = parsed.dailySeconds;
-        return { days: days2 };
+        return pomoNormalize({ days: days2 });
       }
-      return parsed;
+      return pomoNormalize(parsed);
     }
     // Try older key
     var old = localStorage.getItem('boardhub_pomodoro_stats');
@@ -4908,14 +4922,14 @@ const pomoLoad = function() {
       var t2 = localDateISO();
       var d2 = {};
       if (p2.dailySeconds > 0) d2[t2] = p2.dailySeconds;
-      return { days: d2 };
+      return pomoNormalize({ days: d2 });
     }
   } catch(e) { bhLog('pomoLoad.migrate', e, 'the legacy pomodoro key could not be read, so its accumulated focus time is not carried over'); }
-  return { days: {} };
+  return pomoEmpty();
 };
 
 const pomoSave = function(d) {
-  try { localStorage.setItem(POMO_LS, JSON.stringify(d)); } catch(e) { bhLog('pomoSave', e, 'today\'s focus time was not persisted and is lost on reload'); }
+  try { localStorage.setItem(POMO_LS, JSON.stringify(pomoNormalize(d))); } catch(e) { bhLog('pomoSave', e, 'today\'s focus time was not persisted and is lost on reload'); }
 };
 
 const pomoTodayKey = function() {
@@ -5275,18 +5289,19 @@ const playTempoSound = (level) => {
 // the dial (see .bh-pendulum). The tier-change cadences stay — those play 4× a
 // day, not 3,600.
 
-const PomodoroTimer = ({ pomoData, setPomoData }) => {
+const PomodoroTimer = ({ pomoData, setPomoData, projects=[] }) => {
   const BREAK_SECS = 5 * 60;
   const MAX_FOCUS_MINS = 60;
 
   const _init = (() => {
     const saved = pomoTimerLoad();
     const focusMins = saved?.focusMins ?? 30;
+    const targetKey = saved?.targetKey || 'none';
     if (saved && saved.isActive && saved.endTimestamp) {
       const remaining = Math.max(0, Math.round((saved.endTimestamp - Date.now()) / 1000));
-      return { timeLeft: remaining > 0 ? remaining : focusMins*60, isActive: remaining > 0, mode: saved.mode||'focus', endTimestamp: remaining > 0 ? saved.endTimestamp : null, focusMins };
+      return { timeLeft: remaining > 0 ? remaining : focusMins*60, isActive: remaining > 0, mode: saved.mode||'focus', endTimestamp: remaining > 0 ? saved.endTimestamp : null, focusMins, targetKey };
     }
-    return { timeLeft: saved?.timeLeft ?? focusMins*60, isActive: false, mode: saved?.mode||'focus', endTimestamp: null, focusMins };
+    return { timeLeft: saved?.timeLeft ?? focusMins*60, isActive: false, mode: saved?.mode||'focus', endTimestamp: null, focusMins, targetKey };
   })();
 
   const [focusMins, setFocusMins] = useState(_init.focusMins);
@@ -5294,6 +5309,13 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const [isActive, setIsActive]   = useState(_init.isActive);
   const [mode, setMode]           = useState(_init.mode);
   const [showStats, setShowStats] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
+  const [showTargetMenu, setShowTargetMenu] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [targetKey, setTargetKey] = useState(_init.targetKey||'none');
+  const targetMenuRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [soundOn, setSoundOn] = useState(pomoSoundLoad);
 
@@ -5304,6 +5326,7 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   const endTimestampRef = useRef(_init.endTimestamp ?? (_init.isActive ? Date.now() + _init.timeLeft*1000 : null));
   const unsavedSecsRef  = useRef(0);
   const pendingSecsRef  = useRef(0);
+  const targetKeyRef    = useRef(_init.targetKey||'none');
   const circleRef       = useRef(null);
   const [displayUnsaved, setDisplayUnsaved] = useState(0);
 
@@ -5311,13 +5334,86 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
   modeRef.current      = mode;
   timeLeftRef.current  = timeLeft;
   isActiveRef.current  = isActive;
+  targetKeyRef.current = targetKey;
+
+  const categories = Array.isArray(pomoData?.categories)?pomoData.categories:[];
+  const activeProjects = useMemo(()=>(projects||[]).filter(p=>p&&!p.deleted&&p.status==='Em Andamento'),[projects]);
+  const selectedProjectAny = useMemo(()=>{
+    if(!targetKey.startsWith('project:'))return null;
+    const id=targetKey.slice(8);
+    return (projects||[]).find(p=>String(p.id)===id)||null;
+  },[projects,targetKey]);
+  const selectedCategoryAny = useMemo(()=>{
+    if(!targetKey.startsWith('cat:'))return null;
+    const id=targetKey.slice(4);
+    return categories.find(c=>String(c.id)===id)||null;
+  },[categories,targetKey]);
+  const selectedTargetLabel =
+    targetKey==='none' ? 'Sem categoria' :
+    selectedProjectAny?.title || selectedCategoryAny?.name || 'Sem categoria';
+  const selectedTargetLiveExtra = targetKey==='none'?0:(displayUnsaved+pendingSecsRef.current);
+  const selectedTargetTotal = targetKey==='none'?0:(((pomoData?.allocations||{})[targetKey]||0)+selectedTargetLiveExtra);
 
   const persist = (active, tLeft, m, fMins) => {
     const fm = fMins ?? focusMinsRef.current;
+    const tk=targetKeyRef.current||'none';
     if (active && tLeft > 0)
-      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft*1000, timeLeft: tLeft, focusMins: fm });
+      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft*1000, timeLeft: tLeft, focusMins: fm, targetKey:tk });
     else
-      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft, focusMins: fm });
+      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft, focusMins: fm, targetKey:tk });
+  };
+
+  const changeTarget = key => {
+    if(isActiveRef.current)return;
+    const next=key||'none';
+    targetKeyRef.current=next;
+    setTargetKey(next);
+    setShowTargetMenu(false);
+    persist(false,timeLeftRef.current,modeRef.current,focusMinsRef.current);
+  };
+  useEffect(()=>{
+    if(!showTargetMenu)return;
+    const onPointer=e=>{if(targetMenuRef.current&&!targetMenuRef.current.contains(e.target))setShowTargetMenu(false);};
+    const onKey=e=>{if(e.key==='Escape')setShowTargetMenu(false);};
+    document.addEventListener('mousedown',onPointer);
+    document.addEventListener('keydown',onKey);
+    return()=>{document.removeEventListener('mousedown',onPointer);document.removeEventListener('keydown',onKey);};
+  },[showTargetMenu]);
+
+  const addFocusCategory = () => {
+    const name=newCategoryName.trim();
+    if(!name)return;
+    const id='focus-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
+    setPomoData(prev=>{
+      const base=pomoNormalize(prev);
+      return {...base,categories:[...base.categories,{id,name}]};
+    });
+    setNewCategoryName('');
+  };
+  const saveFocusCategory = id => {
+    const name=editingCategoryName.trim();
+    if(!name)return;
+    setPomoData(prev=>{
+      const base=pomoNormalize(prev);
+      return {...base,categories:base.categories.map(c=>String(c.id)===String(id)?{...c,name}:c)};
+    });
+    setEditingCategoryId(null);setEditingCategoryName('');
+  };
+  const deleteFocusCategory = async id => {
+    const key=pomoCategoryKey(id);
+    if(isActiveRef.current&&targetKeyRef.current===key)return;
+    if(!(await bhConfirm({message:'Excluir esta categoria de foco? O tempo geral por dia sera mantido, mas a alocacao desta categoria sera removida.',danger:true,confirmLabel:'Excluir'})))return;
+    setPomoData(prev=>{
+      const base=pomoNormalize(prev);
+      const allocations={...base.allocations};delete allocations[key];
+      const dailyAllocations={};
+      for(const[day,map]of Object.entries(base.dailyAllocations||{})){
+        const next={...(map||{})};delete next[key];
+        if(Object.keys(next).length)dailyAllocations[day]=next;
+      }
+      return {...base,categories:base.categories.filter(c=>String(c.id)!==String(id)),allocations,dailyAllocations};
+    });
+    if(targetKeyRef.current===key)changeTarget('none');
   };
 
   const flushPomoSecsRef = useRef(null);
@@ -5327,11 +5423,21 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
     unsavedSecsRef.current = 0; setDisplayUnsaved(0);
     pendingSecsRef.current += secs;
     setPomoData(prev => {
-      const key = pomoTodayKey();
-      const newDays = { ...prev.days };
-      newDays[key] = (newDays[key] || 0) + secs;
+      const base=pomoNormalize(prev);
+      const dayKey = pomoTodayKey();
+      const newDays = { ...base.days };
+      newDays[dayKey] = (newDays[dayKey] || 0) + secs;
+      const tk=targetKeyRef.current||'none';
+      let allocations=base.allocations;
+      let dailyAllocations=base.dailyAllocations;
+      if(tk!=='none'){
+        allocations={...base.allocations,[tk]:(base.allocations[tk]||0)+secs};
+        const dayMap={...(base.dailyAllocations[dayKey]||{})};
+        dayMap[tk]=(dayMap[tk]||0)+secs;
+        dailyAllocations={...base.dailyAllocations,[dayKey]:dayMap};
+      }
       pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
-      return { days: newDays };
+      return { ...base, days:newDays, allocations, dailyAllocations };
     });
   };
   const flushPomoSecs = () => flushPomoSecsRef.current?.();
@@ -5573,6 +5679,10 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
             <Icon name={isFocus?'brain':'coffee'} size={11}/>
             {isFocus?'Foco':'Pausa'}
           </div>
+          <button className="btn btn-ghost" onClick={()=>setShowCategories(true)} title="Gerenciar categorias de foco"
+            style={{padding:'4px 8px',borderRadius:6,background:showCategories?'var(--text)':'transparent',color:showCategories?'white':'var(--muted)'}}>
+            <Icon name="folder" size={14}/>
+          </button>
           <button className="btn btn-ghost" onClick={()=>setShowStats(s=>!s)} title="Histórico de foco"
             style={{padding:'4px 8px',borderRadius:6,background:showStats?'var(--text)':'transparent',color:showStats?'white':'var(--muted)'}}>
             <Icon name="timer" size={14}/>
@@ -5646,6 +5756,92 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
               </button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
+                <div ref={targetMenuRef} style={{position:'relative',flex:1,minWidth:0}}>
+                  <button type="button"
+                    onClick={()=>{if(!isActive)setShowTargetMenu(v=>!v);}}
+                    disabled={isActive}
+                    title={isActive?'Pause o timer para trocar a categoria':'Vincular o tempo de foco'}
+                    aria-label="Categoria do tempo de foco"
+                    aria-haspopup="listbox"
+                    aria-expanded={showTargetMenu}
+                    style={{width:'100%',minWidth:0,height:30,display:'flex',alignItems:'center',gap:7,border:'1px solid var(--border)',borderRadius:8,background:'var(--bg)',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.7rem',fontWeight:500,padding:'0 8px',outline:'none',cursor:isActive?'not-allowed':'pointer',opacity:isActive?.65:1,transition:'border-color .15s,background .15s',textAlign:'left'}}>
+                    <Icon name={targetKey.startsWith('project:')?'folder':'clock'} size={11}
+                      style={{color:'var(--muted)',flexShrink:0}}/>
+                    <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>
+                      {selectedTargetLabel}
+                    </span>
+                    <Icon name="chevron-down" size={11}
+                      style={{color:'var(--muted)',flexShrink:0,transform:showTargetMenu?'rotate(180deg)':'none',transition:'transform .15s'}}/>
+                  </button>
+
+                  {showTargetMenu&&!isActive&&(
+                    <div role="listbox"
+                      style={{position:'absolute',left:0,right:0,top:'calc(100% + 5px)',zIndex:120,minWidth:220,maxHeight:280,overflowY:'auto',padding:5,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,boxShadow:'0 10px 30px rgba(var(--ink),.12)',fontFamily:'Alegreya Sans,sans-serif'}}>
+                      <button type="button" role="option" aria-selected={targetKey==='none'}
+                        onClick={()=>changeTarget('none')} className="hover-surface"
+                        style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 8px',border:0,borderRadius:7,background:targetKey==='none'?'rgba(var(--ink),.035)':'transparent',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.72rem',fontWeight:500,cursor:'pointer',textAlign:'left'}}>
+                        <span style={{width:14,display:'flex',justifyContent:'center',color:'var(--muted)',flexShrink:0}}>
+                          {targetKey==='none'?<Icon name="check" size={11}/>:<Icon name="clock" size={10}/>}
+                        </span>
+                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Sem categoria</span>
+                      </button>
+
+                      {activeProjects.length>0&&(
+                        <>
+                          <div style={{padding:'8px 8px 4px',fontSize:'.6rem',fontWeight:600,letterSpacing:'.09em',textTransform:'uppercase',color:'var(--muted)'}}>Projetos ativos</div>
+                          {activeProjects.map(p=>{
+                            const key=pomoProjectKey(p.id),selected=targetKey===key;
+                            return <button type="button" role="option" aria-selected={selected} key={'pomo-project-'+p.id}
+                              onClick={()=>changeTarget(key)} className="hover-surface"
+                              style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 8px',border:0,borderRadius:7,background:selected?'rgba(var(--ink),.035)':'transparent',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.72rem',fontWeight:500,cursor:'pointer',textAlign:'left'}}>
+                              <span style={{width:14,display:'flex',justifyContent:'center',color:'var(--muted)',flexShrink:0}}>
+                                {selected?<Icon name="check" size={11}/>:<Icon name="folder" size={10}/>}
+                              </span>
+                              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</span>
+                            </button>;
+                          })}
+                        </>
+                      )}
+
+                      {selectedProjectAny&&!activeProjects.some(p=>String(p.id)===String(selectedProjectAny.id))&&(
+                        <>
+                          <div style={{padding:'8px 8px 4px',fontSize:'.6rem',fontWeight:600,letterSpacing:'.09em',textTransform:'uppercase',color:'var(--muted)'}}>Projeto vinculado</div>
+                          <button type="button" role="option" aria-selected={true}
+                            onClick={()=>changeTarget(pomoProjectKey(selectedProjectAny.id))} className="hover-surface"
+                            style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 8px',border:0,borderRadius:7,background:'rgba(var(--ink),.035)',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.72rem',fontWeight:500,cursor:'pointer',textAlign:'left'}}>
+                            <span style={{width:14,display:'flex',justifyContent:'center',color:'var(--muted)',flexShrink:0}}><Icon name="check" size={11}/></span>
+                            <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selectedProjectAny.title}</span>
+                            <span style={{fontSize:'.62rem',fontWeight:500,color:'var(--muted)'}}>inativo</span>
+                          </button>
+                        </>
+                      )}
+
+                      {categories.length>0&&(
+                        <>
+                          <div style={{padding:'8px 8px 4px',fontSize:'.6rem',fontWeight:600,letterSpacing:'.09em',textTransform:'uppercase',color:'var(--muted)'}}>Categorias</div>
+                          {categories.map(c=>{
+                            const key=pomoCategoryKey(c.id),selected=targetKey===key;
+                            return <button type="button" role="option" aria-selected={selected} key={'pomo-cat-'+c.id}
+                              onClick={()=>changeTarget(key)} className="hover-surface"
+                              style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'7px 8px',border:0,borderRadius:7,background:selected?'rgba(var(--ink),.035)':'transparent',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.72rem',fontWeight:500,cursor:'pointer',textAlign:'left'}}>
+                              <span style={{width:14,display:'flex',justifyContent:'center',color:'var(--muted)',flexShrink:0}}>
+                                {selected?<Icon name="check" size={11}/>:<Icon name="clock" size={10}/>}
+                              </span>
+                              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</span>
+                            </button>;
+                          })}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {targetKey!=='none'&&
+                  <span title="Tempo total nesta categoria"
+                    style={{display:'inline-flex',alignItems:'center',height:28,padding:'0 8px',borderRadius:8,background:'var(--bg)',border:'1px solid var(--border)',fontSize:'.65rem',fontWeight:600,color:'var(--muted)',whiteSpace:'nowrap',flexShrink:0}}>
+                    {pomoFmtSecs(selectedTargetTotal)}
+                  </span>}
+              </div>
               <div style={{fontSize:'.67rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
                 <Icon name="clock" size={10}/> Hoje: <strong style={{color:'var(--text)'}}>{pomoFmtSecs(todayDisplay)}</strong> em foco
               </div>
@@ -5674,6 +5870,108 @@ const PomodoroTimer = ({ pomoData, setPomoData }) => {
         </div>
       )}
 
+
+      {showCategories&&(
+        <Modal title="Categorias de Foco" onClose={()=>setShowCategories(false)} width={520}>
+          <div style={{display:'flex',flexDirection:'column',gap:18}}>
+            <p style={{margin:'-8px 0 0',fontSize:'.8rem',lineHeight:1.5,color:'var(--muted)'}}>
+              Organize onde o tempo de foco será contabilizado. Projetos em andamento entram automaticamente nesta lista.
+            </p>
+
+            <section>
+              <span className="label label-section" style={{display:'block',marginBottom:9}}>
+                <StaveGlyph name="whole"/>Projetos em andamento
+              </span>
+              <div className="card" style={{padding:0,overflow:'hidden',boxShadow:'none'}}>
+                {activeProjects.length===0
+                  ?<div style={{padding:'16px 14px',fontSize:'.8rem',color:'var(--muted)',textAlign:'center'}}>
+                    Nenhum projeto em andamento.
+                  </div>
+                  :activeProjects.map((p,i)=>{
+                    const key=pomoProjectKey(p.id);
+                    const total=((pomoData?.allocations||{})[key]||0)+(targetKey===key?displayUnsaved+pendingSecsRef.current:0);
+                    const activeTarget=targetKey===key;
+                    return <div key={key}
+                      style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:i<activeProjects.length-1?'1px solid var(--border)':'none',background:activeTarget?'rgba(var(--ink),.025)':'transparent'}}>
+                      <span style={{width:26,height:26,borderRadius:7,background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:activeTarget?'var(--text)':'var(--muted)',flexShrink:0}}>
+                        <Icon name="folder" size={12}/>
+                      </span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:'.82rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
+                        <div style={{fontSize:'.67rem',color:'var(--muted)',marginTop:1}}>Projeto ativo</div>
+                      </div>
+                      <span style={{fontSize:'.72rem',fontWeight:600,color:'var(--muted)',whiteSpace:'nowrap'}}>{pomoFmtSecs(total)}</span>
+                    </div>;
+                  })}
+              </div>
+            </section>
+
+            <section>
+              <span className="label label-section" style={{display:'block',marginBottom:9}}>
+                <StaveGlyph name="quarter"/>Categorias personalizadas
+              </span>
+
+              <Field label="Nova categoria">
+                <div style={{display:'flex',gap:8}}>
+                  <input value={newCategoryName} onChange={e=>setNewCategoryName(e.target.value)}
+                    onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addFocusCategory();}}}
+                    className="input-box" placeholder="Ex.: Estudos, Portfólio, Administrativo..." style={{flex:1,minWidth:0}}/>
+                  <button className="btn btn-dark" onClick={addFocusCategory} disabled={!newCategoryName.trim()}
+                    style={{padding:'7px 12px',flexShrink:0}}>
+                    <Icon name="plus" size={13}/> Adicionar
+                  </button>
+                </div>
+              </Field>
+
+              <div className="card" style={{padding:0,overflow:'hidden',boxShadow:'none',marginTop:12}}>
+                {categories.length===0
+                  ?<div style={{padding:'16px 14px',fontSize:'.8rem',color:'var(--muted)',textAlign:'center'}}>
+                    Nenhuma categoria personalizada.
+                  </div>
+                  :categories.map((c,i)=>{
+                    const key=pomoCategoryKey(c.id);
+                    const total=((pomoData?.allocations||{})[key]||0)+(targetKey===key?displayUnsaved+pendingSecsRef.current:0);
+                    const editing=String(editingCategoryId)===String(c.id);
+                    const locked=isActive&&targetKey===key;
+                    const activeTarget=targetKey===key;
+                    return <div key={key}
+                      style={{display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderBottom:i<categories.length-1?'1px solid var(--border)':'none',background:activeTarget?'rgba(var(--ink),.025)':'transparent'}}>
+                      <span style={{width:26,height:26,borderRadius:7,background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:activeTarget?'var(--text)':'var(--muted)',flexShrink:0}}>
+                        <Icon name="clock" size={12}/>
+                      </span>
+
+                      {editing
+                        ?<input autoFocus value={editingCategoryName} onChange={e=>setEditingCategoryName(e.target.value)}
+                            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveFocusCategory(c.id);}if(e.key==='Escape'){setEditingCategoryId(null);setEditingCategoryName('');}}}
+                            className="input-box" style={{flex:1,minWidth:0,padding:'5px 8px'}}/>
+                        :<div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:'.82rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                            <div style={{fontSize:'.67rem',color:'var(--muted)',marginTop:1}}>Categoria</div>
+                          </div>}
+
+                      <span style={{fontSize:'.7rem',fontWeight:600,color:'var(--muted)',whiteSpace:'nowrap'}}>{pomoFmtSecs(total)}</span>
+
+                      {editing
+                        ?<>
+                            <button className="btn btn-ghost" onClick={()=>{setEditingCategoryId(null);setEditingCategoryName('');}}
+                              style={{padding:5}} title="Cancelar edição"><Icon name="x" size={13}/></button>
+                            <button className="btn btn-dark" onClick={()=>saveFocusCategory(c.id)} disabled={!editingCategoryName.trim()}
+                              style={{padding:'5px 8px'}} title="Salvar"><Icon name="check" size={13}/></button>
+                          </>
+                        :<>
+                            <button className="btn btn-ghost" onClick={()=>{setEditingCategoryId(c.id);setEditingCategoryName(c.name);}}
+                              style={{padding:5}} title="Editar"><Icon name="pencil" size={13}/></button>
+                            <button className="btn btn-ghost text-link-danger" disabled={locked} onClick={()=>deleteFocusCategory(c.id)}
+                              title={locked?'Pause o timer antes de excluir a categoria em uso':'Excluir categoria'}
+                              style={{padding:5,opacity:locked?.35:1,cursor:locked?'not-allowed':'pointer'}}><Icon name="trash-2" size={13}/></button>
+                          </>}
+                    </div>;
+                  })}
+              </div>
+            </section>
+          </div>
+        </Modal>
+      )}
 
       {showStats && ReactDOM.createPortal(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStats(false)}>
@@ -5941,7 +6239,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
 
         {/* RIGHT: pomodoro + activities + recent notes */}
         <div style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
-          <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} /></div>
+          <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} projects={projects} /></div>
           {/* Atividades gerais */}
           <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
@@ -6703,12 +7001,15 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,galleryFolders,isMobile})=>{
+const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,galleryFolders,pomoData,isMobile})=>{
   const [local,setLocal]=useState(()=>{
     const tasks=applyAutoLate(project.projectTasks);
     return{...project,projectTasks:tasks};
   });
   const [tab,setTab]=useState('Visão Geral');
+  const projectFocusKey=pomoProjectKey(project.id);
+  const projectFocusSecs=(pomoData?.allocations||{})[projectFocusKey]||0;
+  const projectTodaySecs=((pomoData?.dailyAllocations||{})[pomoTodayKey()]||{})[projectFocusKey]||0;
   const [galleryPopup,setGalleryPopup]=useState(null);
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>!f.deleted),[galleryFolders]);
   const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>!p.deleted&&p.folder===local.galleryFolder).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
@@ -6903,6 +7204,10 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             <div style={{minWidth:0,flex:1}}>
               <h1 className="serif" style={{fontSize:isMobile?'1.4rem':'2.4rem',fontWeight:400,color:'white',marginBottom:4,letterSpacing:'-0.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:isMobile?'nowrap':'normal'}}>{local.title}</h1>
               {!isMobile&&<p style={{color:'rgba(255,255,255,.7)',fontSize:'.9rem'}}>{local.client}</p>}
+              <div title="Tempo de foco vinculado a este projeto" style={{display:'inline-flex',alignItems:'center',gap:5,marginTop:5,padding:'3px 8px',borderRadius:12,background:'rgba(0,0,0,.28)',border:'1px solid rgba(255,255,255,.14)',color:'rgba(255,255,255,.9)',fontSize:isMobile?'.68rem':'.74rem',fontWeight:600,width:'fit-content',maxWidth:'100%'}}>
+                <Icon name="clock" size={11}/><span>{pomoFmtSecs(projectFocusSecs)} em foco</span>
+                {projectTodaySecs>0&&<span style={{opacity:.72,fontWeight:500}}>· {pomoFmtSecs(projectTodaySecs)} hoje</span>}
+              </div>
             </div>
             <select value={local.status} onChange={e=>{e.stopPropagation();upd('status',e.target.value);}} style={{background:'white',border:'none',borderRadius:20,padding:isMobile?'5px 10px':'7px 14px',fontFamily:'Alegreya Sans,sans-serif',fontWeight:600,fontSize:'.8rem',cursor:'pointer',outline:'none',pointerEvents:'all',flexShrink:0}}>
               <option>Em Andamento</option><option>Pausado</option><option>Concluído</option><option>Cancelado</option>
@@ -7597,21 +7902,48 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
     e.target.value='';
   };
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
+  const lightboxImages=useMemo(()=>((selected?.images)||[]).filter(img=>!isVideoSrc(img)),[selected?.images]);
+  const lightboxIndex=useMemo(()=>lightbox?lightboxImages.findIndex(img=>img===lightbox):-1,[lightbox,lightboxImages]);
+  const canLightboxPrev=lightboxIndex>0;
+  const canLightboxNext=lightboxIndex>=0&&lightboxIndex<lightboxImages.length-1;
+  const goLightboxPrev=()=>{if(canLightboxPrev)setLightbox(lightboxImages[lightboxIndex-1]);};
+  const goLightboxNext=()=>{if(canLightboxNext)setLightbox(lightboxImages[lightboxIndex+1]);};
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
   const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setPosts(p=>p.filter(x=>x.id!==id));}};
 
-  // Keyboard escape for lightbox
+  // Keyboard controls for lightbox
   useEffect(()=>{
     if(!lightbox)return;
-    const handleKeyDown=e=>{if(e.key==='Escape')setLightbox(null);};
+    const handleKeyDown=e=>{
+      if(e.key==='Escape'){setLightbox(null);return;}
+      if(e.key==='ArrowLeft'){e.preventDefault();goLightboxPrev();return;}
+      if(e.key==='ArrowRight'){e.preventDefault();goLightboxNext();return;}
+    };
     document.addEventListener('keydown',handleKeyDown);
     return()=>document.removeEventListener('keydown',handleKeyDown);
-  },[lightbox]);
+  },[lightbox,goLightboxPrev,goLightboxNext]);
 
 
   if(lightbox)return ReactDOM.createPortal(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
+      {lightboxImages.length>1&&(
+        <>
+          <button onClick={e=>{e.stopPropagation();goLightboxPrev();}} aria-label="Imagem anterior" title="Imagem anterior"
+            disabled={!canLightboxPrev}
+            style={{position:'fixed',left:isMobile?10:((window.innerWidth<=1366&&window.innerHeight<=800)?190:230),top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxPrev?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxPrev?1:.35}}>
+            <Icon name="arrow-left" size={20}/>
+          </button>
+          <button onClick={e=>{e.stopPropagation();goLightboxNext();}} aria-label="Próxima imagem" title="Próxima imagem"
+            disabled={!canLightboxNext}
+            style={{position:'fixed',right:10,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxNext?1:.35}}>
+            <Icon name="arrow-right" size={20}/>
+          </button>
+          <div style={{position:'fixed',left:'50%',bottom:18,transform:'translateX(-50%)',padding:'6px 12px',borderRadius:999,background:'rgba(0,0,0,.4)',color:'white',fontSize:'.78rem',fontWeight:600,letterSpacing:'.02em',backdropFilter:'blur(4px)',zIndex:201,pointerEvents:'none'}}>
+            {Math.max(1,lightboxIndex+1)} / {lightboxImages.length}
+          </div>
+        </>
+      )}
       <div className="lightbox-stage" onClick={()=>setLightbox(null)}>
         <Img src={lightbox} full priority onClick={e=>e.stopPropagation()} alt=""/>
       </div>
@@ -9972,7 +10304,7 @@ const App=()=>{
       if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(data.galleryPosts);
       if(data.galleryFolders&&isArr2(data.galleryFolders))setGalleryFolders(data.galleryFolders);
       if(data.noteGroups&&isArr2(data.noteGroups))setNoteGroups(data.noteGroups);
-      if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(data.pomoData);
+      if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(pomoNormalize(data.pomoData));
       if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
       // This device now mirrors this account: record it so later boots use
       // last-write-wins instead of the first-contact rule, and drop the seed mark.
@@ -10219,7 +10551,7 @@ const App=()=>{
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setGalleryPosts(SEED.galleryPosts);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);
     setNoteGroups(DEFAULT_NOTE_GROUPS);
-    setPomoData({days:{}});
+    setPomoData(pomoEmpty());
     navigate('dashboard');
   };
 
@@ -10261,7 +10593,7 @@ const App=()=>{
     if(A(ingested.galleryPosts)){setGalleryPosts(ingested.galleryPosts);applied++;}
     if(A(ingested.galleryFolders)){setGalleryFolders(ingested.galleryFolders);applied++;}
     if(A(ingested.noteGroups)){setNoteGroups(ingested.noteGroups);applied++;}
-    if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(ingested.pomoData);applied++;}
+    if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(pomoNormalize(ingested.pomoData));applied++;}
     if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);applied++;}
     return applied>0;
   };
@@ -10298,7 +10630,7 @@ const App=()=>{
       <main key={view} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
-        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} pomoData={pomoData} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} navTick={navTick} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
