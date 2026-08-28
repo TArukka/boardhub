@@ -2584,6 +2584,28 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 <script type="text/x-boardhub-jsx" id="bh-jsx-source">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
+const UI_SESSION_KEY='boardhub_ui_session_v1';
+const bhUiLoad=key=>{
+  try{
+    const all=JSON.parse(sessionStorage.getItem(UI_SESSION_KEY)||'{}');
+    return all&&typeof all==='object'?(all[key]||{}):{};
+  }catch{return{};}
+};
+const bhUiSave=(key,value)=>{
+  try{
+    const all=JSON.parse(sessionStorage.getItem(UI_SESSION_KEY)||'{}');
+    all[key]={...(all[key]||{}),...(value||{})};
+    sessionStorage.setItem(UI_SESSION_KEY,JSON.stringify(all));
+  }catch{/*silent-ok: UI position memory is non-critical*/}
+};
+const bhUiReplace=(key,value)=>{
+  try{
+    const all=JSON.parse(sessionStorage.getItem(UI_SESSION_KEY)||'{}');
+    all[key]=value||{};
+    sessionStorage.setItem(UI_SESSION_KEY,JSON.stringify(all));
+  }catch{/*silent-ok: UI reset is non-critical*/}
+};
+
 // - DATE HELPERS (local timezone) -
 // The app runs in UTC-3 (Brazil). toISOString() gives the UTC date, which after
 // 21:00 local is already *tomorrow* — pomodoro logged to the wrong day, deadline
@@ -3650,13 +3672,24 @@ const warmKeys=(srcs,limit=WARM_PREFIX)=>{
 // clicked; that dwell is free prefetch time. Gather the idb:// refs anywhere in a
 // project/study object and warm a bounded prefix, so by the time the card opens
 // its first viewport is already in _thumbCache and _syncUrl returns it on mount.
-const _collectIdbRefs=(o,out=[])=>{
-  if(Array.isArray(o))for(const v of o)_collectIdbRefs(v,out);
-  else if(o&&typeof o==='object')for(const v of Object.values(o))_collectIdbRefs(v,out);
-  else if(typeof o==='string'&&o.startsWith('idb://'))out.push(o);
+const _collectMediaRefs=(o,out=[])=>{
+  if(Array.isArray(o))for(const v of o)_collectMediaRefs(v,out);
+  else if(o&&typeof o==='object')for(const v of Object.values(o))_collectMediaRefs(v,out);
+  else if(typeof o==='string'&&(o.startsWith('idb://')||/^https?:\/\//.test(o)))out.push(o);
   return out;
 };
-const warmObj=(o,limit=24)=>{try{warmKeys(_collectIdbRefs(o),limit);}catch{/*silent-ok: best-effort prefetch*/}};
+const warmSources=(srcs,limit=24,{full=false,priority='low'}={})=>{
+  if(!Array.isArray(srcs))return;
+  const local=[];let n=0;
+  for(const src of srcs){
+    if(n>=limit)break;
+    if(typeof src!=='string')continue;
+    if(src.startsWith('idb://')){local.push(src);n++;continue;}
+    if(/^https?:\/\//.test(src)){_preload(full?src:_httpThumb(src),priority);n++;}
+  }
+  if(local.length)warmKeys(local,limit);
+};
+const warmObj=(o,limit=24)=>{try{warmSources(_collectMediaRefs(o),limit);}catch{/*silent-ok: best-effort prefetch*/}};
 
 // Boot warm: fill the thumbnail cache during idle so navigating to a post finds
 // its images ALREADY in memory — the resolver then returns a URL synchronously
@@ -3720,8 +3753,24 @@ const _httpThumb=url=>{
     return url.replace(/([?&]w=)\d+/,'$1640').replace(/([?&]q=)\d+/,'$170');
   return url;
 };
-// Preload a URL off-DOM; resolves with the URL once decoded (for progressive swaps).
-const _preload=u=>new Promise(res=>{const im=new Image();im.onload=()=>res(u);im.onerror=()=>res('');im.src=u;});
+// Preload a URL off-DOM, deduped. Hover/open warmers and lightbox neighbour
+// prefetch all share this map, so the same network image is never requested twice.
+const _netPreload=new Map();
+const _preload=(u,priority='low')=>{
+  if(!u)return Promise.resolve('');
+  if(_netPreload.has(u))return _netPreload.get(u);
+  const p=new Promise(res=>{
+    const im=new Image();
+    try{im.fetchPriority=priority;}catch{/*silent-ok: unsupported hint*/}
+    im.decoding='async';
+    im.onload=async()=>{try{if(im.decode)await im.decode();}catch{}res(u);};
+    im.onerror=()=>res('');
+    im.src=u;
+  });
+  _netPreload.set(u,p);
+  p.then(ok=>{if(!ok)_netPreload.delete(u);});
+  return p;
+};
 const _makeThumbBlob=async blob=>{
   // Fast path: createImageBitmap decodes AND downscales off the main thread —
   // dramatically cheaper than new Image()+canvas for large source photos, which
@@ -3906,7 +3955,7 @@ const _getSharedIO=()=>{
         _sharedIO.unobserve(e.target);_ioCallbacks.delete(e.target);
         if(cb)cb();
       }
-    },{rootMargin:'600px'});
+    },{rootMargin:'900px 0px'});
   }
   return _sharedIO;
 };
@@ -3954,8 +4003,9 @@ const Img=({src,priority,full,thumb=!full,...props})=>{
   // decoding: priority (lightbox / above-the-fold) images decode SYNC so the frame
   // that shows the blob URL already has pixels — no one-frame blank flash. Everything
   // else stays async to keep the main thread free while off-screen cells resolve.
-  return <img {...props} ref={setRef} src={url} loading={priority||local?'eager':'lazy'} decoding={priority?'sync':'async'} onError={onErr}
-    style={local?props.style:{...props.style,animation:'imgFadeIn .15s ease'}}/>;
+  return <img {...props} ref={setRef} src={url} loading={priority||local?'eager':'lazy'}
+    fetchPriority={priority?'high':'auto'} decoding={priority?'sync':'async'} onError={onErr}
+    style={local?props.style:{...props.style,animation:'imgFadeIn .12s ease'}}/>;
 };
 
 // BgImg: a <div> whose background-image auto-resolves idb:// refs (thumbnail by default).
@@ -4744,12 +4794,12 @@ const SetupModal=({onDone})=>{
 const splitHubName=name=>{const m=(name||'BoardHub').match(/^([A-Z][a-z]*)([A-Z].*)$/);return m?[m[1],m[2]]:[(name||'BoardHub'),''];};
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
+const SidebarDesktop=React.memo(({activeView,setView,resetView,saveFlash,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
   const activeProjects=useMemo(()=>(projects||[]).filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const badges={'projects':activeProjects.length||0};
   return(
   <aside style={{width:220,minWidth:220,borderRight:'1px solid var(--border)',height:'100vh',position:'fixed',top:0,left:0,background:'var(--surface)',display:'flex',flexDirection:'column',padding:'22px 14px 18px',zIndex:30,overflowY:'auto'}}>
-    <div onClick={()=>setView('dashboard')} style={{cursor:'pointer',marginBottom:20,padding:'0 4px'}}>
+    <div onClick={()=>setView('dashboard')} onDoubleClick={e=>{e.preventDefault();resetView?.('dashboard');}} style={{cursor:'pointer',marginBottom:20,padding:'0 4px'}}>
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.85rem',fontWeight:500,letterSpacing:'-0.02em',lineHeight:1,color:'var(--text)'}}>
         {(([a,b])=><>{a}<span style={{fontStyle:'italic',fontWeight:300}}>{b}</span></>)(splitHubName(hubName))}
       </div>
@@ -4772,7 +4822,10 @@ const SidebarDesktop=React.memo(({activeView,setView,saveFlash,isMobile,setForce
     <div className="sidebar-section-label" style={{marginTop:activeProjects.length>0?16:0}}>Menu</div>
     <nav style={{display:'flex',flexDirection:'column',gap:2,flex:1}}>
       {NAV_ITEMS.map(item=>(
-        <button key={item.id} onClick={()=>setView(item.id)} className={`nav-item ${activeView.startsWith(item.id)||(item.id==='projects'&&activeView==='project-detail')?'active':''}`}>
+        <button key={item.id} onClick={()=>setView(item.id)}
+          onDoubleClick={e=>{e.preventDefault();resetView?.(item.id);}}
+          title="Clique para abrir · clique duas vezes para voltar ao início"
+          className={`nav-item ${activeView.startsWith(item.id)||(item.id==='projects'&&activeView==='project-detail')?'active':''}`}>
           <Icon name={item.icon} size={15}/>{item.label}
           {item.id==='projects'&&badges.projects>0&&<span className="nav-badge">{badges.projects}</span>}
         </button>
@@ -4815,9 +4868,16 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,saveFlash,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
+const SidebarMobile=React.memo(({activeView,setView,resetView,saveFlash,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
   const [moreOpen,setMoreOpen]=useState(false);
-  const go=id=>{setView(id);setMoreOpen(false);};
+  const lastTabTapRef=useRef({id:null,at:0});
+  const go=id=>{
+    const now=Date.now(),last=lastTabTapRef.current;
+    const doubleTap=last.id===id&&(now-last.at)<360;
+    lastTabTapRef.current=doubleTap?{id:null,at:0}:{id,at:now};
+    if(doubleTap)resetView?.(id);else setView(id);
+    setMoreOpen(false);
+  };
   const isMore=MORE_ITEMS.some(n=>activeView.startsWith(n.id));
   const currentLabel=NAV_ITEMS.find(n=>activeView.startsWith(n.id))?.label||(hubName||'BoardHub');
   return(
@@ -5319,6 +5379,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[] }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [soundOn, setSoundOn] = useState(pomoSoundLoad);
 
+  const draggingRef     = useRef(false);
   const focusMinsRef    = useRef(focusMins);
   const modeRef         = useRef(mode);
   const timeLeftRef     = useRef(_init.timeLeft);
@@ -5538,20 +5599,56 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[] }) => {
     return Math.max(1, Math.min(MAX_FOCUS_MINS, Math.round(t * MAX_FOCUS_MINS)));
   };
   const handlePointerDown = (e) => {
-    if (isActive || mode !== 'focus') return;
-    e.preventDefault(); circleRef.current?.setPointerCapture(e.pointerId); setIsDragging(true);
+    if (isActiveRef.current) return;
+    e.preventDefault();
+
+    // Editing the metronome weight always prepares a focus session. The old
+    // guard blocked dragging whenever mode==='break', so a paused break made the
+    // control appear available while ignoring the gesture.
+    if (modeRef.current !== 'focus') {
+      setMode('focus');
+      modeRef.current = 'focus';
+    }
+
+    draggingRef.current = true;
+    setIsDragging(true);
+    try { circleRef.current?.setPointerCapture(e.pointerId); } catch {}
+
     const mins = getDragMins(e);
-    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
+    if (mins) {
+      setFocusMins(mins);
+      focusMinsRef.current = mins;
+      const fs = mins * 60;
+      setTimeLeft(fs);
+      timeLeftRef.current = fs;
+    }
   };
   const handlePointerMove = (e) => {
-    if (!isDragging) return;
+    if (!draggingRef.current) return;
+    e.preventDefault();
     const mins = getDragMins(e);
-    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; setTimeLeft(mins*60); timeLeftRef.current = mins*60; }
+    if (mins) {
+      setFocusMins(mins);
+      focusMinsRef.current = mins;
+      const fs = mins * 60;
+      setTimeLeft(fs);
+      timeLeftRef.current = fs;
+    }
   };
   const handlePointerUp = (e) => {
-    if (!isDragging) return; setIsDragging(false);
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setIsDragging(false);
     const mins = getDragMins(e);
-    if (mins) { setFocusMins(mins); focusMinsRef.current = mins; const fs=mins*60; setTimeLeft(fs); timeLeftRef.current=fs; persist(false,fs,'focus',mins); }
+    if (mins) {
+      setFocusMins(mins);
+      focusMinsRef.current = mins;
+      const fs = mins * 60;
+      setTimeLeft(fs);
+      timeLeftRef.current = fs;
+      persist(false, fs, 'focus', mins);
+    }
+    try { circleRef.current?.releasePointerCapture(e.pointerId); } catch {}
   };
 
   // Display — geometry of the abstract metronome (viewBox 76×76).
@@ -5693,7 +5790,8 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[] }) => {
       {!showStats&&(
         <div className="card" style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:14}}>
           <div ref={circleRef}
-            style={{position:'relative',width:76,height:76,flexShrink:0,cursor:(!isActive&&isFocus)?'pointer':'default',touchAction:'none',userSelect:'none'}}
+            style={{position:'relative',width:76,height:76,flexShrink:0,cursor:!isActive?'ns-resize':'default',touchAction:'none',userSelect:'none'}}
+            title={!isActive?'Arraste para cima/baixo para ajustar de 1 a 60 min':'Pause o timer para ajustar a duração'}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
             {/* M2.1 — the dial became an abstract metronome: truncated pyramid,
@@ -5732,9 +5830,17 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[] }) => {
                   against: without it, "almost done" and "not started" are the
                   same emptiness. */}
               <rect x={BAR_X} y={BAR_Y} width={BAR_W} height="3" rx="1.5" fill="var(--border)"/>
-              <rect x={BAR_X} y={BAR_Y} width={Math.max(0,BAR_W*pct)} height="3" rx="1.5"
-                fill={isFocus?'var(--text)':'var(--ok-fg)'}
-                style={{transition:isDragging?'none':'width .5s cubic-bezier(.4,0,.2,1),fill .4s'}}/>
+              {(()=>{
+                const progressW=Math.max(0,BAR_W*pct);
+                // During a break the accent bar is shorter than the track.
+                // Keep that shorter segment centered under the metronome instead
+                // of pinning it to BAR_X, which made the blue pause bar look
+                // shifted to the left.
+                const progressX=isFocus?BAR_X:(BAR_X+(BAR_W-progressW)/2);
+                return <rect x={progressX} y={BAR_Y} width={progressW} height="3" rx="1.5"
+                  fill={isFocus?'var(--text)':'var(--ok-fg)'}
+                  style={{transition:isDragging?'none':'x .5s cubic-bezier(.4,0,.2,1),width .5s cubic-bezier(.4,0,.2,1),fill .4s'}}/>;
+              })()}
             </svg>
           </div>
           <div style={{flex:1,minWidth:0}}>
@@ -7006,7 +7112,14 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     const tasks=applyAutoLate(project.projectTasks);
     return{...project,projectTasks:tasks};
   });
-  const [tab,setTab]=useState('Visão Geral');
+  const [tab,setTab]=useState(()=>{
+    const saved=bhUiLoad('projectTabs');
+    return saved[String(project.id)]||'Visão Geral';
+  });
+  useEffect(()=>{
+    const saved=bhUiLoad('projectTabs');
+    bhUiSave('projectTabs',{...saved,[String(project.id)]:tab});
+  },[project.id,tab]);
   const projectFocusKey=pomoProjectKey(project.id);
   const projectFocusSecs=(pomoData?.allocations||{})[projectFocusKey]||0;
   const projectTodaySecs=((pomoData?.dailyAllocations||{})[pomoTodayKey()]||{})[projectFocusKey]||0;
@@ -7800,13 +7913,14 @@ const normalizeGalleryFolder=f=>({
   manualOrder:Array.isArray(f?.manualOrder)?f.manualOrder:[]
 });
 const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=>{
+  const _galleryUi=useMemo(()=>bhUiLoad('gallery'),[]);
   const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted&&!f.archived).map(normalizeGalleryFolder),[folders]);
   const archivedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.archived&&!f.deleted).map(normalizeGalleryFolder),[folders]);
   const trashedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.deleted),[folders]);
   const FOLDERS=liveFolders;
-  const [activeFolder,setActiveFolder]=useState(()=>(liveFolders[0]||{id:'work'}).id);
-  const [folderTrash,setFolderTrash]=useState(false);
-  const [folderArchive,setFolderArchive]=useState(false);
+  const [activeFolder,setActiveFolder]=useState(()=>liveFolders.some(f=>String(f.id)===String(_galleryUi.activeFolder))?_galleryUi.activeFolder:(liveFolders[0]||{id:'work'}).id);
+  const [folderTrash,setFolderTrash]=useState(()=>!!_galleryUi.folderTrash);
+  const [folderArchive,setFolderArchive]=useState(()=>!!_galleryUi.folderArchive);
   // Auto-close each panel when its list empties (otherwise the toggle button vanishes
   // with items gone, leaving the panel stuck open with no way to hide it).
   useEffect(()=>{if(archivedFolders.length===0&&folderArchive)setFolderArchive(false);},[archivedFolders.length,folderArchive]);
@@ -7816,13 +7930,21 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const folderDragRef=useRef(null);
   const postDragRef=useRef(null);
   const postDragEndRef=useRef(0);
-  const [selected,setSelected]=useState(null);
+  const [selected,setSelected]=useState(()=>posts.find(p=>String(p.id)===String(_galleryUi.selectedId))||null);
   const [lightbox,setLightbox]=useState(null);
-  // Eager-warm an opened study's images so its grid fills right away.
-  useEffect(()=>{if(selected&&Array.isArray(selected.images))warmKeys(selected.images);},[selected?.id]);
-  // Re-clicking "Galeria" in the nav (navTick bumps) closes any open post and returns to the grid.
+  // Eager-warm local thumbnails AND network images for the opened study.
+  useEffect(()=>{if(selected&&Array.isArray(selected.images))warmSources(selected.images,48,{priority:'high'});},[selected?.id]);
+  // A deliberate tab RESET (double-click/double-tap) returns Gallery to its
+  // initial browsing state. Ordinary tab switches do not touch any of this.
   const _firstNav=useRef(true);
-  useEffect(()=>{if(_firstNav.current){_firstNav.current=false;return;}setSelected(null);setLightbox(null);},[navTick]);
+  useEffect(()=>{
+    if(_firstNav.current){_firstNav.current=false;return;}
+    setSelected(null);setLightbox(null);
+    setFolderTrash(false);setFolderArchive(false);setTrash(false);
+    const first=(liveFolders[0]||{id:'work'}).id;
+    setActiveFolder(first);
+    bhUiReplace('gallery',{activeFolder:first,folderTrash:false,folderArchive:false,trash:false,selectedId:null});
+  },[navTick]);
 
   const addFolder=()=>{const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false,sortMode:'month',manualOrder:[]};setFolders(p=>[...(p||[]),n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label);};
   const renameFolder=(id,label)=>{if(label.trim())setFolders(p=>p.map(f=>f.id===id?{...f,label:label.trim()}:f));};
@@ -7833,9 +7955,13 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const hardDeleteFolder=async id=>{if(await bhConfirm({message:'Excluir pasta permanentemente?',danger:true,confirmLabel:'Excluir'}))setFolders(p=>p.filter(f=>f.id!==id));};
   const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted&&!f.archived);const rest=prev.filter(f=>f.deleted||f.archived);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...rest];});};
 
-  const [trash,setTrash]=useState(false);
+  const [trash,setTrash]=useState(()=>!!_galleryUi.trash);
   const [uploading,setUploading]=useState(false);
   const addImgRef=useRef();
+
+  useEffect(()=>{
+    bhUiSave('gallery',{activeFolder,folderTrash,folderArchive,trash,selectedId:selected?.id||null});
+  },[activeFolder,folderTrash,folderArchive,trash,selected?.id]);
   const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
   const activeFolderData=useMemo(()=>liveFolders.find(f=>f.id===activeFolder)||null,[liveFolders,activeFolder]);
   const sortMode=trash?'month':(activeFolderData?.sortMode||'month');
@@ -7908,6 +8034,15 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const canLightboxNext=lightboxIndex>=0&&lightboxIndex<lightboxImages.length-1;
   const goLightboxPrev=()=>{if(canLightboxPrev)setLightbox(lightboxImages[lightboxIndex-1]);};
   const goLightboxNext=()=>{if(canLightboxNext)setLightbox(lightboxImages[lightboxIndex+1]);};
+  useEffect(()=>{
+    if(lightboxIndex<0)return;
+    const neighbours=[lightboxImages[lightboxIndex-1],lightboxImages[lightboxIndex+1]].filter(Boolean);
+    for(const src of neighbours){
+      if(typeof src!=='string')continue;
+      if(src.startsWith('idb://')){try{_warmFull(src.slice(6));}catch{}}
+      else if(/^https?:\/\//.test(src))_preload(src,'high');
+    }
+  },[lightboxIndex,lightboxImages]);
   const softDelete=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:true,deletedAt:new Date().toISOString()}:x));
   const restore=id=>setPosts(p=>p.map(x=>x.id===id?{...x,deleted:false,deletedAt:null}:x));
   const hardDelete=async id=>{if(await bhConfirm({message:'Excluir permanentemente?',danger:true,confirmLabel:'Excluir'})){setPosts(p=>p.filter(x=>x.id!==id));}};
@@ -8149,7 +8284,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
                 <div key={post.id} className="card drag-item" draggable
                   style={{overflow:'hidden',cursor:'grab',position:'relative'}}
                   onClick={()=>{if(Date.now()-postDragEndRef.current>180)setSelected(post);}}
-                  onPointerEnter={()=>warmKeys(post.images,24)}
+                  onPointerEnter={()=>warmSources(post.images,24)}
                   onDragStart={e=>{e.dataTransfer.effectAllowed='move';postDragRef.current=post.id;e.currentTarget.style.opacity='.45';}}
                   onDragEnd={e=>{e.currentTarget.style.opacity='1';postDragRef.current=null;postDragEndRef.current=Date.now();document.querySelectorAll('.drag-over-left').forEach(el=>el.classList.remove('drag-over-left'));}}
                   onDragOver={e=>{if(postDragRef.current==null||String(postDragRef.current)===String(post.id))return;e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over-left');}}
@@ -8186,7 +8321,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
               <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?10:14}}>
                 {periodPosts.map(post=>(
                   <div key={post.id} className="card" style={{overflow:'hidden',cursor:trash?'default':'pointer'}} onClick={()=>!trash&&setSelected(post)}
-                    onPointerEnter={()=>{if(!trash)warmKeys(post.images,24);}}
+                    onPointerEnter={()=>{if(!trash)warmSources(post.images,24);}}
                     {...keyActivate(()=>setSelected(post),'Abrir post '+(post.title||''),!trash)}>
                     <div className="cover-wrap" style={{aspectRatio:'16/9',overflow:'hidden',backgroundColor:'#000',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
                       {post.images.length>0
@@ -8255,6 +8390,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const ref=useRef(null);
   const saveTimer=useRef(null);
   const lastId=useRef(null);
+  const scrollTopRef=useRef((bhUiLoad('noteScroll')[String(noteId)]||0));
   const dragImgRef=useRef(null);
   const imgInputRef=useRef(null);
   const [fmt,setFmt]=useState({});
@@ -8264,8 +8400,26 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     if(lastId.current!==noteId){
       ref.current.innerHTML=sanitizeHTML(initialHTML||'');
       lastId.current=noteId;
+      const saved=(bhUiLoad('noteScroll')[String(noteId)]||0);
+      scrollTopRef.current=saved;
+      ref.current.scrollTop=saved;
     }
   });
+
+  // Autosave updates the notes array every ~800ms. Keep the contentEditable's
+  // own scroll position stable across those React commits instead of jumping
+  // back to the first line.
+  React.useLayoutEffect(()=>{
+    if(ref.current&&Math.abs(ref.current.scrollTop-scrollTopRef.current)>1){
+      ref.current.scrollTop=scrollTopRef.current;
+    }
+  });
+
+  useEffect(()=>()=> {
+    const top=ref.current?.scrollTop??scrollTopRef.current;
+    const prev=bhUiLoad('noteScroll');
+    bhUiSave('noteScroll',{...prev,[String(noteId)]:top});
+  },[noteId]);
 
   // v23.3 P2-2: the sanitizer only ran on the WAY IN (when populating the
   // editor). What was SAVED was the contentEditable's raw innerHTML — and a paste
@@ -8415,6 +8569,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
       </div>
       <div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning
         data-placeholder="Comece a escrever..."
+        onScroll={e=>{scrollTopRef.current=e.currentTarget.scrollTop;}}
         onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
         onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
         onPaste={handlePaste} onBlur={flushSave}
@@ -8423,18 +8578,38 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   );
 });
 
-const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
-  const [selected,setSelected]=useState(null); // {kind:'note'|'entry',id,folderId?}
-  const [showTrash,setShowTrash]=useState(false);
+const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
+  const _ideasUi=useMemo(()=>bhUiLoad('ideas'),[]);
+  const [selected,setSelected]=useState(()=>_ideasUi.selected||null); // {kind:'note'|'entry',id,folderId?}
+  const [showTrash,setShowTrash]=useState(()=>!!_ideasUi.showTrash);
   const [showCreateMenu,setShowCreateMenu]=useState(false);
-  const [expanded,setExpanded]=useState(()=>new Set());
+  const [expanded,setExpanded]=useState(()=>new Set(Array.isArray(_ideasUi.expanded)?_ideasUi.expanded:[]));
   const [renaming,setRenaming]=useState(null); // {id,value} for top-level item/category/folder
   const [localTitle,setLocalTitle]=useState('');
-  const [mobileDetail,setMobileDetail]=useState(false);
+  const [mobileDetail,setMobileDetail]=useState(()=>!!_ideasUi.mobileDetail);
   const dragRef=useRef(null);
   const renameRef=useRef(null);
   const newNoteCooldownRef=useRef(0);
-  
+  const treePaneRef=useRef(null);
+  const treeScrollTopRef=useRef(_ideasUi.treeScroll||0);
+
+  useEffect(()=>{
+    bhUiSave('ideas',{selected,showTrash,expanded:[...expanded],mobileDetail,treeScroll:treeScrollTopRef.current});
+  },[selected,showTrash,expanded,mobileDetail]);
+
+  React.useLayoutEffect(()=>{
+    if(treePaneRef.current)treePaneRef.current.scrollTop=treeScrollTopRef.current;
+  },[showTrash]);
+
+  const _firstIdeasNav=useRef(true);
+  useEffect(()=>{
+    if(_firstIdeasNav.current){_firstIdeasNav.current=false;return;}
+    setSelected(null);setShowTrash(false);setExpanded(new Set());setMobileDetail(false);
+    treeScrollTopRef.current=0;
+    if(treePaneRef.current)treePaneRef.current.scrollTop=0;
+    bhUiReplace('ideas',{selected:null,showTrash:false,expanded:[],mobileDetail:false,treeScroll:0});
+  },[navTick]);
+
   useEffect(()=>{
     if(!showCreateMenu)return;
     const close=e=>{if(e.key==='Escape')setShowCreateMenu(false);};
@@ -8868,7 +9043,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
       <div style={{flex:1,display:'flex',gap:16,minHeight:0}}>
         <div style={{width:220,flexShrink:0,display:'flex',flexDirection:'column',minHeight:0}}>
           {showTrash?(
-            <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+            <div ref={treePaneRef} onScroll={e=>{treeScrollTopRef.current=e.currentTarget.scrollTop;}} style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
               {trashed.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Lixeira vazia.</div>}
               {trashed.map(n=><div key={n.id} className="card" style={{padding:'10px 12px',display:'flex',alignItems:'center',gap:8}}>
                 <Icon name={typeMeta(n).icon} size={12} style={{color:'var(--muted)',flexShrink:0}}/><div style={{flex:1,minWidth:0,fontSize:'.78rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
@@ -8877,7 +9052,7 @@ const IdeasLab=React.memo(({notes,setNotes,isMobile})=>{
               </div>)}
             </div>
           ):(
-            <div style={{flex:1,overflowY:'auto',paddingRight:3}}>
+            <div ref={treePaneRef} onScroll={e=>{treeScrollTopRef.current=e.currentTarget.scrollTop;}} style={{flex:1,overflowY:'auto',paddingRight:3}}>
               {tree.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
               {tree.map(n=><Row key={n.id} n={n}/>)}
               <DropZone style={{marginTop:8,padding:'8px 8px',fontSize:'.68rem',color:'var(--muted)',textAlign:'center'}}>
@@ -10034,12 +10209,31 @@ const App=()=>{
   };
 
   const [view,setView]=useState(()=>parseHash().view);
-  const [navTick,setNavTick]=useState(0); // incremented on every navigate; lets views reset on re-click
+  const [navTick,setNavTick]=useState(0); // increments only on same-view re-click
+  const mainRef=useRef(null);
+  const viewRef=useRef(view);
+  viewRef.current=view;
+  const scrollMemoryRef=useRef(bhUiLoad('viewScroll'));
+  const rememberCurrentScroll=useCallback(()=>{
+    const key=viewRef.current;
+    const next={...(scrollMemoryRef.current||{})};
+    next[key]={main:mainRef.current?.scrollTop||0,win:window.scrollY||0};
+    scrollMemoryRef.current=next;
+    bhUiSave('viewScroll',next);
+  },[]);
   const [selectedProject,setSelectedProject]=useState(()=>{
     const{projectId}=parseHash();
     if(!projectId)return null;
     return(persisted?.projects||[]).find(p=>p.id===projectId)||null;
   });
+  const tabMemoryRef=useRef(bhUiLoad('tabMemory'));
+  const rememberProjectsMode=useCallback((mode,p)=>{
+    const next={...(tabMemoryRef.current||{}),projectsMode:mode,projectId:p?.id||null};
+    tabMemoryRef.current=next;bhUiReplace('tabMemory',next);
+  },[]);
+  useEffect(()=>{
+    if(view==='project-detail'&&selectedProject)rememberProjectsMode('detail',selectedProject);
+  },[]);// initial route only
   const [showNewProject,setShowNewProject]=useState(false);
   const [saveFlash,setSaveFlash]=useState(false);
   const [showCmdPalette,setShowCmdPalette]=useState(false);
@@ -10460,28 +10654,58 @@ const App=()=>{
   selectedProjectRef.current=selectedProject;
 
   const navigate=useCallback(v=>{
+    rememberCurrentScroll();
     const sp=selectedProjectRef.current;
-    const hash=v==='project-detail'&&sp?`#project-detail/${sp.id}`:`#${v}`;
+    let target=v;
+    if(v==='projects'&&tabMemoryRef.current?.projectsMode==='detail'&&sp&&!sp.deleted)target='project-detail';
+    const hash=target==='project-detail'&&sp?`#project-detail/${sp.id}`:`#${target}`;
     if(window.location.hash!==hash)window.history.pushState(null,'',hash);
-    setView(v);
-    setNavTick(t=>t+1); // bumps even on same-view clicks so views can reset (e.g. close an open gallery post)
-    if(v!=='project-detail')setSelectedProject(null);
-  },[]);
+    setView(target);
+  },[rememberCurrentScroll]);
+
+  const resetView=useCallback(v=>{
+    rememberCurrentScroll();
+    const scrolls={...(scrollMemoryRef.current||{})};
+    scrolls[v]={main:0,win:0};
+    if(v==='projects')scrolls['project-detail']={main:0,win:0};
+    scrollMemoryRef.current=scrolls;
+    bhUiReplace('viewScroll',scrolls);
+
+    if(v==='projects'){
+      rememberProjectsMode('list',null);
+      setSelectedProject(null);
+      setView('projects');
+      if(window.location.hash!=='#projects')window.history.pushState(null,'','#projects');
+    }else{
+      if(v==='gallery')bhUiReplace('gallery',{});
+      if(v==='ideas')bhUiReplace('ideas',{});
+      setView(v);
+      setNavTick(t=>t+1);
+      const hash='#'+v;
+      if(window.location.hash!==hash)window.history.pushState(null,'',hash);
+    }
+    requestAnimationFrame(()=>{
+      if(mainRef.current)mainRef.current.scrollTop=0;
+      if(isMobile)window.scrollTo(0,0);
+    });
+  },[rememberCurrentScroll,rememberProjectsMode,isMobile]);
 
   // Listen to browser back/forward
   const projectsRef=useRef(projects);
   projectsRef.current=projects;
   useEffect(()=>{
     const onPop=()=>{
+      rememberCurrentScroll();
       const{view:v,projectId}=parseHash();
       setView(v);
       if(v==='project-detail'&&projectId){
         setSelectedProject(prev=>{
           const found=projectsRef.current.find(p=>p.id===projectId);
+          if(found)rememberProjectsMode('detail',found);
           return found||prev;
         });
-      }else{
-        setSelectedProject(null);
+      }else if(v==='projects'){
+        rememberProjectsMode('list',null);
       }
     };
     window.addEventListener('popstate',onPop);
@@ -10491,23 +10715,39 @@ const App=()=>{
     if(!window.location.hash)window.history.replaceState(null,'',initHash);
     return()=>window.removeEventListener('popstate',onPop);
   },[]);//eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useLayoutEffect(()=>{
+    const pos=(scrollMemoryRef.current||{})[view]||{main:0,win:0};
+    let raf2=0;
+    const raf1=requestAnimationFrame(()=>{
+      raf2=requestAnimationFrame(()=>{
+        if(mainRef.current)mainRef.current.scrollTop=pos.main||0;
+        if(isMobile)window.scrollTo(0,pos.win||0);
+      });
+    });
+    return()=>{cancelAnimationFrame(raf1);if(raf2)cancelAnimationFrame(raf2);};
+  },[view,isMobile]);
+
   const handleUpdateProject=useCallback(p=>{setProjects(prev=>prev.map(x=>x.id===p.id?p:x));setSelectedProject(p);},[]);
   const addProject=useCallback(p=>{
     setProjects(prev=>[p,...prev]);
     setShowNewProject(false);
     setSelectedProject(p);
+    rememberProjectsMode('detail',p);
     setView('project-detail');
-    setNavTick(t=>t+1);
     window.history.pushState(null,'',`#project-detail/${p.id}`);
-  },[]);
+  },[rememberProjectsMode]);
   const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true,deletedAt:new Date().toISOString()}:p)),[]);
   // Stable handler (reads current project via ref) so ProjectDetail's React.memo isn't
   // defeated by a fresh inline arrow on every App render (e.g. saveFlash/syncStatus toggles).
   const handleSoftDeleteSelected=useCallback(()=>{const sp=selectedProjectRef.current;if(sp)softDeleteProject(sp.id);},[softDeleteProject]);
-  const handleSelectProject=useCallback(p=>{setSelectedProject(p);setView('project-detail');setNavTick(t=>t+1);window.history.pushState(null,'',`#project-detail/${p.id}`);},[]);
+  const handleSelectProject=useCallback(p=>{rememberCurrentScroll();setSelectedProject(p);rememberProjectsMode('detail',p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);},[rememberCurrentScroll,rememberProjectsMode]);
   const handleAddProject=useCallback(()=>setShowNewProject(true),[]);
   const handleCloseNewProject=useCallback(()=>setShowNewProject(false),[]);
-  const handleBackToProjects=useCallback(()=>navigate('projects'),[navigate]);
+  const handleBackToProjects=useCallback(()=>{
+    rememberCurrentScroll();rememberProjectsMode('list',null);setView('projects');
+    if(window.location.hash!=='#projects')window.history.pushState(null,'','#projects');
+  },[rememberCurrentScroll,rememberProjectsMode]);
   const handleAddGlobalMentor=useCallback(m=>{setMentors(prev=>[...prev,m]);},[]);
   const handleResetIdentity=useCallback(()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);},[]);
 
@@ -10624,15 +10864,15 @@ const App=()=>{
       {showShortcuts&&<ShortcutsModal onClose={()=>setShowShortcuts(false)}/>}
       {showNewProject&&<NewProjectModal onSave={addProject} onClose={handleCloseNewProject} isMobile={isMobile}/>}
       {isMobile
-        ?<SidebarMobile activeView={view} setView={navigate} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
-        :<SidebarDesktop activeView={view} setView={navigate} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
+        ?<SidebarMobile activeView={view} setView={navigate} resetView={resetView} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
+        :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
       }
-      <main key={view} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
+      <main ref={mainRef} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject}/>}
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} pomoData={pomoData} isMobile={isMobile}/>}
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} navTick={navTick} isMobile={isMobile}/>}
-        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} isMobile={isMobile}/>}
+        {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} navTick={navTick} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} isMobile={isMobile}/>}
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
@@ -10664,6 +10904,17 @@ if(_bootCovers.length){
     });
   }).catch(()=>{});
 }
+const _bootNetwork=[];
+for(const p of ((persisted&&persisted.projects)||[])){
+  if(p&&!p.deleted&&typeof p.cover==='string'&&/^https?:\/\//.test(p.cover))_bootNetwork.push(p.cover);
+  if(_bootNetwork.length>=8)break;
+}
+for(const post of ((persisted&&persisted.galleryPosts)||[])){
+  const src=post&&(post.bannerImage||(Array.isArray(post.images)&&post.images[0]));
+  if(typeof src==='string'&&/^https?:\/\//.test(src))_bootNetwork.push(src);
+  if(_bootNetwork.length>=14)break;
+}
+setTimeout(()=>warmSources(_bootNetwork,14),450);
 // F3.2: the ConfirmHost sits OUTSIDE the App, as its sibling. Inside, any
 // re-render or subtree unmount would take an open dialog down with it — and a
 // pending promise resolved as a cancellation in the middle of a user action.
