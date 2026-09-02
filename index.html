@@ -2542,7 +2542,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
    drag cursors from the 2nd copy, min-height from the 1st) */
 .rich-editor{outline:none;word-break:break-word;overflow-y:auto;min-height:80px;}
 .rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
-.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:zoom-in;}
+.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:grab;}
 .rich-editor img:active{cursor:grabbing;}
 /* Note-image uploads reserve their final place immediately. The placeholder is
    deliberately a block (not a floating/inline element), so text before and
@@ -2560,11 +2560,10 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .note-image-grid[data-cols="3"]{--note-grid-cols:3;}
 .note-image-grid[data-cols="4"]{--note-grid-cols:4;}
 .note-image-grid>img{width:100%!important;max-width:none!important;height:auto!important;min-width:0;min-height:0;aspect-ratio:16/9;object-fit:contain;background:#000;margin:0!important;border-radius:8px;display:block;}
-.rich-editor img.note-grid-selected{outline:3px solid var(--text);outline-offset:-3px;box-shadow:0 0 0 2px var(--surface);filter:saturate(.82);}
-.rich-editor.grid-select-mode img{cursor:cell;}
-.note-grid-tools{display:flex;align-items:center;gap:6;padding:7px 9px;margin:-5px 0 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);font-size:.72rem;flex-wrap:wrap;flex-shrink:0;}
-.note-grid-col-btn{height:26px;min-width:28px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font:600 .7rem 'Alegreya Sans',sans-serif;cursor:pointer;}
-.note-grid-col-btn.active{background:var(--text);border-color:var(--text);color:var(--surface);}
+.rich-editor img.note-image-dragging{opacity:.32;}
+.rich-editor img.note-image-drop-before{outline:2px solid var(--text);outline-offset:2px;box-shadow:-7px 0 0 -3px var(--text);}
+.rich-editor img.note-image-drop-after{outline:2px solid var(--text);outline-offset:2px;box-shadow:7px 0 0 -3px var(--text);}
+.note-image-grid.note-grid-drop{outline:2px dashed var(--text);outline-offset:5px;background:rgba(var(--ink),.035);}
 @media(max-width:620px){
   .note-image-grid[data-cols="3"],.note-image-grid[data-cols="4"]{--note-grid-cols:2;}
   .note-image-grid{gap:7px;}
@@ -8433,34 +8432,70 @@ const sanitizeHTML=html=>{
   }catch{return html;}
 };
 
+// Note-image grids are driven directly by drag/drop, without React selection
+// state. That keeps contentEditable's DOM and caret stable while images move.
+const _noteGridCols=count=>count<=4?count:(count<=6?3:4);
+const _prepareNoteImage=img=>{
+  if(!img)return;
+  img.draggable=true;
+  img.setAttribute('data-note-image','true');
+  img.setAttribute('title','Clique para ampliar • Arraste sobre outra imagem para criar uma grade');
+  img.classList.remove('note-image-dragging','note-image-drop-before','note-image-drop-after','note-grid-selected');
+};
+const _normalizeNoteGrid=grid=>{
+  if(!grid||!grid.isConnected)return null;
+  const images=[...grid.children].filter(el=>el.tagName==='IMG');
+  if(images.length===0){grid.remove();return null;}
+  if(images.length===1){
+    const img=images[0];
+    grid.parentNode.insertBefore(img,grid);
+    grid.remove();
+    _prepareNoteImage(img);
+    return null;
+  }
+  const cols=_noteGridCols(images.length);
+  grid.className='note-image-grid';
+  grid.setAttribute('data-count',String(images.length));
+  grid.setAttribute('data-cols',String(cols));
+  grid.setAttribute('contenteditable','false');
+  grid.setAttribute('aria-label',`Grade com ${images.length} imagens em ${cols} colunas`);
+  images.forEach(_prepareNoteImage);
+  return grid;
+};
+const _normalizeNoteImages=editor=>{
+  if(!editor)return;
+  editor.querySelectorAll('img').forEach(_prepareNoteImage);
+  editor.querySelectorAll('.note-image-grid').forEach(_normalizeNoteGrid);
+};
+const _noteCaretRangeFromPoint=(x,y)=>{
+  if(document.caretRangeFromPoint)return document.caretRangeFromPoint(x,y);
+  const pos=document.caretPositionFromPoint?.(x,y); // Firefox
+  if(!pos)return null;
+  const range=document.createRange();
+  range.setStart(pos.offsetNode,pos.offset);
+  range.collapse(true);
+  return range;
+};
+
 const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const ref=useRef(null);
   const saveTimer=useRef(null);
   const lastId=useRef(null);
   const scrollTopRef=useRef((bhUiLoad('noteScroll')[String(noteId)]||0));
   const dragImgRef=useRef(null);
+  const dragTargetRef=useRef(null); // {el,kind:'grid'|'image',side?}
+  const dragEndedAtRef=useRef(-Infinity);
   const imgInputRef=useRef(null);
   const uploadSeqRef=useRef(0);
   const [fmt,setFmt]=useState({});
   const [noteLightbox,setNoteLightbox]=useState(null); // {images,index}|null
-  const [gridMode,setGridMode]=useState(false);
-  const [gridCols,setGridCols]=useState(2);
-  const [gridSelectionCount,setGridSelectionCount]=useState(0);
-  const [gridSelectionInGrid,setGridSelectionInGrid]=useState(false);
-
-  const clearGridSelection=useCallback(()=>{
-    ref.current?.querySelectorAll('img.note-grid-selected').forEach(img=>img.classList.remove('note-grid-selected'));
-    setGridSelectionCount(0);
-    setGridSelectionInGrid(false);
-  },[]);
 
   useEffect(()=>{
     if(!ref.current)return;
     if(lastId.current!==noteId){
       ref.current.innerHTML=sanitizeHTML(initialHTML||'');
+      _normalizeNoteImages(ref.current);
       lastId.current=noteId;
-      clearGridSelection();
-      setGridMode(false);
       setNoteLightbox(null);
       const saved=(bhUiLoad('noteScroll')[String(noteId)]||0);
       scrollTopRef.current=saved;
@@ -8490,14 +8525,13 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   // Sanitizing on the way out closes the cycle.
   // It is the SAVED VALUE that gets sanitized, never the live DOM: touching the
   // contentEditable while typing would kill the cursor.
-  // Loading placeholders and the temporary grid-selection outline belong only
-  // to the live UI. Clone before saving so neither can leak into persisted note
-  // HTML if autosave fires while an upload/selection is active.
+  // Loading placeholders and drag/drop markers belong only to the live UI.
+  // Clone before saving so none can leak into persisted note HTML.
   const serializedHTML=useCallback(()=>{
     if(!ref.current)return'';
     const clone=ref.current.cloneNode(true);
     clone.querySelectorAll('.note-image-loading').forEach(el=>el.remove());
-    clone.querySelectorAll('img.note-grid-selected').forEach(img=>img.classList.remove('note-grid-selected'));
+    clone.querySelectorAll('.note-image-dragging,.note-image-drop-before,.note-image-drop-after,.note-grid-drop,.note-grid-selected').forEach(el=>el.classList.remove('note-image-dragging','note-image-drop-before','note-image-drop-after','note-grid-drop','note-grid-selected'));
     return sanitizeHTML(clone.innerHTML);
   },[]);
 
@@ -8556,6 +8590,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
       img.setAttribute('data-note-image','true');
       img.alt='';
       placeholder.replaceWith(img);
+      _prepareNoteImage(img);
       emit();
     }catch(e){
       console.warn('[BoardHub] Note image upload failed:',e?.message||e);
@@ -8600,62 +8635,23 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const refreshGridSelectionState=useCallback(()=>{
-    const selected=[...(ref.current?.querySelectorAll('img.note-grid-selected')||[])];
-    setGridSelectionCount(selected.length);
-    setGridSelectionInGrid(selected.some(img=>!!img.closest('.note-image-grid')));
+  const clearDragTarget=useCallback(()=>{
+    const mark=dragTargetRef.current;
+    if(mark?.el){
+      mark.el.classList.remove('note-grid-drop','note-image-drop-before','note-image-drop-after');
+    }
+    dragTargetRef.current=null;
   },[]);
 
-  const applyImageGrid=useCallback(()=>{
-    const editor=ref.current;
-    if(!editor)return;
-    const images=[...editor.querySelectorAll('img.note-grid-selected')];
-    if(images.length<2)return;
-    const parentGrids=[...new Set(images.map(img=>img.closest('.note-image-grid')).filter(Boolean))];
-    const allInOneGrid=parentGrids.length===1&&images.every(img=>img.closest('.note-image-grid')===parentGrids[0]);
-    const itemCount=allInOneGrid?parentGrids[0].querySelectorAll('img').length:images.length;
-    const effectiveCols=Math.max(2,Math.min(gridCols,itemCount));
-    if(allInOneGrid){
-      parentGrids[0].setAttribute('data-cols',String(effectiveCols));
-      parentGrids[0].setAttribute('aria-label',`Grade de imagens com ${effectiveCols} colunas`);
-    }else{
-      const first=images[0];
-      const firstGrid=first.closest('.note-image-grid');
-      const anchor=firstGrid||first;
-      // A span with block-grid display is safe even when execCommand originally
-      // placed an image inside a paragraph. Persisting a literal <div> there
-      // would make the HTML parser split/rearrange that paragraph on reload.
-      const grid=document.createElement('span');
-      grid.className='note-image-grid';
-      grid.setAttribute('data-cols',String(effectiveCols));
-      grid.setAttribute('contenteditable','false');
-      grid.setAttribute('aria-label',`Grade de imagens com ${effectiveCols} colunas`);
-      anchor.parentNode.insertBefore(grid,anchor);
-      images.forEach(img=>{img.classList.remove('note-grid-selected');grid.appendChild(img);});
-      editor.querySelectorAll('.note-image-grid').forEach(old=>{if(old!==grid&&!old.querySelector('img'))old.remove();});
-    }
-    clearGridSelection();
-    setGridMode(false);
-    emit();
-  },[clearGridSelection,emit,gridCols]);
-
-  const ungroupSelectedImages=useCallback(()=>{
-    const editor=ref.current;
-    if(!editor)return;
-    const grids=[...new Set([...editor.querySelectorAll('img.note-grid-selected')].map(img=>img.closest('.note-image-grid')).filter(Boolean))];
-    if(!grids.length)return;
-    grids.forEach(grid=>{
-      const parent=grid.parentNode;
-      [...grid.querySelectorAll('img')].forEach(img=>{
-        img.classList.remove('note-grid-selected');
-        parent.insertBefore(img,grid);
-      });
-      grid.remove();
-    });
-    clearGridSelection();
-    setGridMode(false);
-    emit();
-  },[clearGridSelection,emit]);
+  const markDragTarget=useCallback((el,kind,side=null)=>{
+    const prev=dragTargetRef.current;
+    if(prev?.el===el&&prev.kind===kind&&prev.side===side)return;
+    clearDragTarget();
+    if(!el)return;
+    if(kind==='grid')el.classList.add('note-grid-drop');
+    else el.classList.add(side==='before'?'note-image-drop-before':'note-image-drop-after');
+    dragTargetRef.current={el,kind,side};
+  },[clearDragTarget]);
 
   const openNoteImage=useCallback(img=>{
     const nodes=[...(ref.current?.querySelectorAll('img')||[])];
@@ -8669,10 +8665,10 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     if(!img||!ref.current?.contains(img))return;
     e.preventDefault();
     e.stopPropagation();
-    if(gridMode){
-      img.classList.toggle('note-grid-selected');
-      refreshGridSelectionState();
-    }else openNoteImage(img);
+    // Browsers may dispatch click after dragend. Suppress that one click so a
+    // completed reordering never flashes the lightbox open and closed.
+    if(performance.now()-dragEndedAtRef.current<260)return;
+    openNoteImage(img);
   };
 
   useEffect(()=>{
@@ -8688,33 +8684,141 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
 
   const handleKeyDown=e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}};
 
+  const finishImageDrag=()=>{
+    dragImgRef.current?.classList.remove('note-image-dragging');
+    clearDragTarget();
+    dragImgRef.current=null;
+    dragEndedAtRef.current=performance.now();
+  };
+
+  const handleDragOver=e=>{
+    const source=dragImgRef.current;
+    if(!source){
+      const hasFiles=[...(e.dataTransfer?.types||[])].includes('Files');
+      if(hasFiles||[...(e.dataTransfer?.items||[])].some(i=>i.type?.startsWith('image/')))e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect='move';
+    const targetImg=e.target?.closest?.('img');
+    if(targetImg===source){clearDragTarget();return;}
+    if(targetImg&&ref.current?.contains(targetImg)){
+      const rect=targetImg.getBoundingClientRect();
+      markDragTarget(targetImg,'image',e.clientX<rect.left+rect.width/2?'before':'after');
+      return;
+    }
+    const targetGrid=e.target?.closest?.('.note-image-grid');
+    if(targetGrid&&ref.current?.contains(targetGrid))markDragTarget(targetGrid,'grid');
+    else clearDragTarget();
+  };
+
   const handleDrop=e=>{
-    if(dragImgRef.current){
+    const source=dragImgRef.current;
+    if(source){
       e.preventDefault();
-      const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
-      if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
-      const oldGrid=dragImgRef.current.closest('.note-image-grid');
-      const clone=dragImgRef.current.cloneNode(true);
-      clone.classList.remove('note-grid-selected');
-      dragImgRef.current.remove();
-      document.execCommand('insertHTML',false,clone.outerHTML);
-      if(oldGrid&&!oldGrid.querySelector('img'))oldGrid.remove();
-      dragImgRef.current=null;emit();return;
+      const gridsToNormalize=new Set();
+      const oldGrid=source.closest('.note-image-grid');
+      if(oldGrid)gridsToNormalize.add(oldGrid);
+      const originalParent=source.parentNode;
+      const originalNext=source.nextSibling;
+      const targetImg=e.target?.closest?.('img');
+      const targetGrid=e.target?.closest?.('.note-image-grid');
+      let changed=false;
+
+      try{
+        if(targetImg&&targetImg!==source&&ref.current?.contains(targetImg)){
+          const marked=dragTargetRef.current;
+          const rect=targetImg.getBoundingClientRect();
+          const before=marked?.el===targetImg?marked.side==='before':e.clientX<rect.left+rect.width/2;
+          const grid=targetImg.closest('.note-image-grid');
+          if(grid){
+            grid.insertBefore(source,before?targetImg:targetImg.nextSibling);
+            gridsToNormalize.add(grid);
+          }else{
+            // Dropping one standalone image onto another creates the grid exactly
+            // where the target was, without moving or rewriting surrounding text.
+            const newGrid=document.createElement('span');
+            newGrid.className='note-image-grid';
+            newGrid.setAttribute('contenteditable','false');
+            targetImg.parentNode.insertBefore(newGrid,targetImg);
+            if(before){newGrid.appendChild(source);newGrid.appendChild(targetImg);}
+            else{newGrid.appendChild(targetImg);newGrid.appendChild(source);}
+            gridsToNormalize.add(newGrid);
+          }
+          changed=true;
+        }else if(targetGrid&&ref.current?.contains(targetGrid)){
+          targetGrid.appendChild(source);
+          gridsToNormalize.add(targetGrid);
+          changed=true;
+        }else{
+          // Create/validate the destination marker BEFORE moving the image. The
+          // old implementation removed first, so a failed Firefox caret lookup
+          // made the image disappear. A missing caret falls back just after its
+          // current grid, which is the natural "take this out" destination.
+          const range=_noteCaretRangeFromPoint(e.clientX,e.clientY);
+          if(range&&ref.current?.contains(range.startContainer)){
+            const marker=document.createElement('span');
+            marker.setAttribute('data-note-drop-marker','true');
+            marker.style.display='none';
+            range.insertNode(marker);
+            try{marker.parentNode.insertBefore(source,marker);}finally{marker.remove();}
+            const sel=window.getSelection();
+            range.selectNode(source);range.collapse(false);
+            sel.removeAllRanges();sel.addRange(range);
+            _prepareNoteImage(source);
+            changed=true;
+          }else if(oldGrid?.parentNode){
+            oldGrid.parentNode.insertBefore(source,oldGrid.nextSibling);
+            _prepareNoteImage(source);
+            changed=true;
+          }
+        }
+      }catch(err){
+        console.warn('[BoardHub] Note image move failed; restoring its original position:',err?.message||err);
+        if(!source.isConnected&&originalParent){
+          if(originalNext?.parentNode===originalParent)originalParent.insertBefore(source,originalNext);
+          else originalParent.appendChild(source);
+        }
+        changed=false;
+      }
+
+      gridsToNormalize.forEach(grid=>{if(grid.isConnected)_normalizeNoteGrid(grid);});
+      finishImageDrag();
+      if(changed)emit();
+      return;
     }
     const files=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));
     if(!files.length)return;
     e.preventDefault();
-    const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
+    const range=_noteCaretRangeFromPoint(e.clientX,e.clientY);
     if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
     files.forEach(f=>insertImageFile(f));
   };
-  const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
+  const handleDragStart=e=>{
+    if(e.target.tagName!=='IMG')return;
+    clearDragTarget();
+    dragImgRef.current=e.target;
+    e.target.classList.add('note-image-dragging');
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain','boardhub-note-image');
+  };
+  const handleDragEnd=()=>finishImageDrag();
+  const handleDragLeave=e=>{
+    const rect=ref.current?.getBoundingClientRect();
+    if(!rect||e.clientX<=rect.left||e.clientX>=rect.right||e.clientY<=rect.top||e.clientY>=rect.bottom)clearDragTarget();
+  };
   const handlePaste=e=>{
     const items=e.clipboardData?.items||[];
     const images=[...items].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);
     if(images.length){e.preventDefault();images.forEach(insertImageFile);}
   };
-  const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{/*silent-ok: queryCommandState throws when the selection is outside the editor; the toolbar keeps its last state*/}};
+  const updateFmt=()=>{try{
+    const next={bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')};
+    // Mouseup used to allocate new state even when no format changed. Image
+    // clicks therefore forced a needless RichEditor render just before click,
+    // which read as a flash on image-heavy notes.
+    setFmt(prev=>Object.keys(next).every(k=>prev[k]===next[k])?prev:next);
+  }catch{/*silent-ok: queryCommandState throws when the selection is outside the editor; the toolbar keeps its last state*/}};
 
   const toolbarBtns=[
     {cmd:'bold',icon:'bold',title:'Negrito'},
@@ -8767,7 +8871,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
           </button>
         ))}
         <div style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
-        <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
+        <label className="rich-toolbar-btn" title="Inserir imagem • Arraste imagens umas sobre as outras para criar grades" style={{cursor:'pointer'}}>
           <input ref={imgInputRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={async e=>{
             const files=[...e.target.files];if(!files.length)return;
             files.forEach(insertImageFile);
@@ -8775,23 +8879,12 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
           }}/>
           <Icon name="image" size={13}/>
         </label>
-        <button title="Organizar imagens em grade" className={`rich-toolbar-btn${gridMode?' active':''}`}
-          onMouseDown={e=>{e.preventDefault();if(gridMode){clearGridSelection();setGridMode(false);}else setGridMode(true);}}>
-          <Icon name="grid-2x2" size={13}/>
-        </button>
       </div>
-      {gridMode&&<div className="note-grid-tools">
-        <span style={{marginRight:2}}>{gridSelectionCount?`${gridSelectionCount} selecionada${gridSelectionCount===1?'':'s'}`:'Clique nas imagens que quer agrupar'}</span>
-        {[2,3,4].map(cols=><button key={cols} className={`note-grid-col-btn${gridCols===cols?' active':''}`} onMouseDown={e=>{e.preventDefault();setGridCols(cols);}}>{cols} col.</button>)}
-        <button className="btn btn-dark" disabled={gridSelectionCount<2} onMouseDown={e=>{e.preventDefault();applyImageGrid();}} style={{padding:'4px 10px',fontSize:'.7rem',opacity:gridSelectionCount<2 ? .45 : 1}}>Aplicar grade</button>
-        {gridSelectionInGrid&&<button className="btn btn-outline" onMouseDown={e=>{e.preventDefault();ungroupSelectedImages();}} style={{padding:'4px 9px',fontSize:'.7rem'}}>Desfazer grade</button>}
-        <button className="btn btn-ghost" onMouseDown={e=>{e.preventDefault();clearGridSelection();setGridMode(false);}} style={{padding:'4px 7px',fontSize:'.7rem',marginLeft:'auto'}}>Cancelar</button>
-      </div>}
-      <div ref={ref} className={`rich-editor${gridMode?' grid-select-mode':''}`} contentEditable suppressContentEditableWarning
+      <div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning
         data-placeholder="Comece a escrever..."
         onScroll={e=>{scrollTopRef.current=e.currentTarget.scrollTop;}}
-        onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
-        onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
+        onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={e=>{if(e.target.tagName!=='IMG')updateFmt();}} onSelect={updateFmt}
+        onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDragStart={handleDragStart} onDragEnd={handleDragEnd}
         onPaste={handlePaste} onClick={handleEditorClick} onBlur={flushSave}
         style={{flex:1,fontSize:'.95rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
     </div>
