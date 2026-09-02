@@ -2553,20 +2553,19 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .note-image-loading.note-image-loading-failed{animation:none;background:var(--danger-bg);border-color:var(--danger-line);}
 .note-image-loading.note-image-loading-failed::after{content:'Não foi possível carregar a imagem';color:var(--danger-fg);}
 /* Image grids are isolated block elements. Only their image children enter the
-   grid; surrounding text remains in the editor's normal document flow. Equal
-   16:9 cells make mixed portrait/landscape sources line up without cropping. */
-.note-image-grid{--note-grid-cols:2;display:grid;grid-template-columns:repeat(var(--note-grid-cols),minmax(0,1fr));gap:10px;width:100%;margin:12px 0;align-items:stretch;clear:both;}
-.note-image-grid[data-cols="2"]{--note-grid-cols:2;}
-.note-image-grid[data-cols="3"]{--note-grid-cols:3;}
-.note-image-grid[data-cols="4"]{--note-grid-cols:4;}
-.note-image-grid>img{width:100%!important;max-width:none!important;height:auto!important;min-width:0;min-height:0;aspect-ratio:16/9;object-fit:contain;background:#000;margin:0!important;border-radius:8px;display:block;}
+   grid; surrounding text remains in the editor's normal document flow. Each
+   row is justified from the images' real aspect ratios: the images share one
+   height while their proportional widths consume the whole row. No 16:9 box,
+   black letterboxing or crop is needed. */
+.note-image-grid{display:flex;flex-direction:column;gap:10px;width:100%;margin:12px 0;clear:both;}
+.note-image-row{display:grid;gap:10px;width:100%;align-items:start;}
+.note-image-row>img{width:100%!important;max-width:none!important;height:auto!important;min-width:0;min-height:0;aspect-ratio:auto!important;object-fit:contain;background:transparent;margin:0!important;border-radius:8px;display:block;}
 .rich-editor img.note-image-dragging{opacity:.32;}
 .rich-editor img.note-image-drop-before{outline:2px solid var(--text);outline-offset:2px;box-shadow:-7px 0 0 -3px var(--text);}
 .rich-editor img.note-image-drop-after{outline:2px solid var(--text);outline-offset:2px;box-shadow:7px 0 0 -3px var(--text);}
 .note-image-grid.note-grid-drop{outline:2px dashed var(--text);outline-offset:5px;background:rgba(var(--ink),.035);}
 @media(max-width:620px){
-  .note-image-grid[data-cols="3"],.note-image-grid[data-cols="4"]{--note-grid-cols:2;}
-  .note-image-grid{gap:7px;}
+  .note-image-grid,.note-image-row{gap:7px;}
 }
 .rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
 .rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
@@ -8434,17 +8433,55 @@ const sanitizeHTML=html=>{
 
 // Note-image grids are driven directly by drag/drop, without React selection
 // state. That keeps contentEditable's DOM and caret stable while images move.
-const _noteGridCols=count=>count<=4?count:(count<=6?3:4);
+const _noteGridRowSizes=count=>{
+  if(count<=4)return[count];
+  const rowCount=Math.ceil(count/4);
+  const base=Math.floor(count/rowCount);
+  const extra=count%rowCount;
+  return Array.from({length:rowCount},(_,i)=>base+(i<extra?1:0));
+};
+const _noteImageRatio=img=>{
+  const w=img?.naturalWidth||Number(img?.getAttribute?.('width'))||0;
+  const h=img?.naturalHeight||Number(img?.getAttribute?.('height'))||0;
+  if(w>0&&h>0){
+    const ratio=Math.max(.12,Math.min(8,w/h));
+    img.setAttribute('data-note-ratio',String(ratio));
+    return ratio;
+  }
+  const saved=Number(img?.getAttribute?.('data-note-ratio'));
+  return Number.isFinite(saved)&&saved>0?saved:16/9;
+};
+const _syncNoteImageRow=row=>{
+  if(!row)return;
+  const images=[...row.children].filter(el=>el.tagName==='IMG');
+  row.style.gridTemplateColumns=images.map(img=>`${_noteImageRatio(img)}fr`).join(' ');
+};
 const _prepareNoteImage=img=>{
   if(!img)return;
   img.draggable=true;
   img.setAttribute('data-note-image','true');
   img.setAttribute('title','Clique para ampliar • Arraste sobre outra imagem para criar uma grade');
   img.classList.remove('note-image-dragging','note-image-drop-before','note-image-drop-after','note-grid-selected');
+  // A cloud image can still be decoding when a saved note is opened. Updating
+  // only its row's fractional columns after load avoids reconstructing either
+  // the editor or the surrounding text (and therefore avoids a visible flash).
+  if(!img._boardhubNoteRatioBound){
+    img._boardhubNoteRatioBound=true;
+    img.addEventListener('load',()=>{
+      const before=img.getAttribute('data-note-ratio');
+      _syncNoteImageRow(img.closest('.note-image-row'));
+      // Persist a newly discovered ratio. Subsequent opens can lay the grid out
+      // correctly before the network image decodes, avoiding a 16:9-to-real
+      // width jump that looked like the note flickering.
+      if(before!==img.getAttribute('data-note-ratio')){
+        img.closest('.rich-editor')?.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    });
+  }
 };
 const _normalizeNoteGrid=grid=>{
   if(!grid||!grid.isConnected)return null;
-  const images=[...grid.children].filter(el=>el.tagName==='IMG');
+  const images=[...grid.querySelectorAll('img')].filter(img=>img.closest('.note-image-grid')===grid);
   if(images.length===0){grid.remove();return null;}
   if(images.length===1){
     const img=images[0];
@@ -8453,13 +8490,24 @@ const _normalizeNoteGrid=grid=>{
     _prepareNoteImage(img);
     return null;
   }
-  const cols=_noteGridCols(images.length);
+  const rowSizes=_noteGridRowSizes(images.length);
+  const cols=Math.max(...rowSizes);
   grid.className='note-image-grid';
   grid.setAttribute('data-count',String(images.length));
   grid.setAttribute('data-cols',String(cols));
   grid.setAttribute('contenteditable','false');
   grid.setAttribute('aria-label',`Grade com ${images.length} imagens em ${cols} colunas`);
-  images.forEach(_prepareNoteImage);
+  grid.replaceChildren();
+  let cursor=0;
+  rowSizes.forEach(size=>{
+    const row=document.createElement('span');
+    row.className='note-image-row';
+    row.setAttribute('contenteditable','false');
+    images.slice(cursor,cursor+size).forEach(img=>{_prepareNoteImage(img);row.appendChild(img);});
+    cursor+=size;
+    grid.appendChild(row);
+    _syncNoteImageRow(row);
+  });
   return grid;
 };
 const _normalizeNoteImages=editor=>{
@@ -8732,7 +8780,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
           const before=marked?.el===targetImg?marked.side==='before':e.clientX<rect.left+rect.width/2;
           const grid=targetImg.closest('.note-image-grid');
           if(grid){
-            grid.insertBefore(source,before?targetImg:targetImg.nextSibling);
+            targetImg.parentNode.insertBefore(source,before?targetImg:targetImg.nextSibling);
             gridsToNormalize.add(grid);
           }else{
             // Dropping one standalone image onto another creates the grid exactly
@@ -8966,8 +9014,27 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
   const handleTitleKey=e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}if(e.key==='Escape'){e.currentTarget.value=localTitle; e.currentTarget.blur();}};
 
   const handleContentSave=useCallback(html=>{
-    if(selected?.kind==='note')setNotes(p=>p.map(n=>n.id===selected.id?{...n,content:html}:n));
-    else if(selected?.kind==='entry')setNotes(p=>p.map(n=>n.id===selected.folderId&&n.type==='project'?{...n,entries:(n.entries||[]).map(e=>e.id===selected.id?{...e,content:html}:e)}:n));
+    if(selected?.kind==='note')setNotes(p=>{
+      let changed=false;
+      const next=p.map(n=>{
+        if(n.id!==selected.id||n.content===html)return n;
+        changed=true;return{...n,content:html};
+      });
+      return changed?next:p;
+    });
+    else if(selected?.kind==='entry')setNotes(p=>{
+      let changed=false;
+      const next=p.map(n=>{
+        if(n.id!==selected.folderId||n.type!=='project')return n;
+        let folderChanged=false;
+        const entries=(n.entries||[]).map(e=>{
+          if(e.id!==selected.id||e.content===html)return e;
+          changed=true;folderChanged=true;return{...e,content:html};
+        });
+        return folderChanged?{...n,entries}:n;
+      });
+      return changed?next:p;
+    });
   },[selected,setNotes]);
 
   // ── CREATE ──
@@ -9216,12 +9283,16 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
 
   const typeMeta=n=>isCategory(n)?{icon:'layers-3',label:'Categoria'}:isFolder(n)?{icon:'folder',label:'Pasta'}:{icon:'file-text',label:'Nota'};
 
-  const DropZone=({children,style={}})=>(
+  // Render helpers are invoked as ordinary functions, not mounted as nested
+  // React component types. A component declared inside IdeasLab gets a new
+  // identity on every notes update; React then unmounts/remounts its complete
+  // subtree at each autosave, which was the visible note flash.
+  const renderRootDropZone=(children,style={})=>(
     <div onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}} onDragLeave={e=>e.currentTarget.classList.remove('drag-over')} onDrop={rootDrop}
       style={{border:'1px dashed transparent',borderRadius:8,padding:'2px 0',transition:'all .12s',...style}}>{children}</div>
   );
 
-  const Row=({n,depth=0})=>{
+  const renderRow=(n,depth=0)=>{
     const meta=typeMeta(n), open=isExpanded(n.id), kids=isCategory(n)?childrenOf(n.id):[];
     // Use d.parentId from the drag payload (recorded at drag-start) instead of
     // itemById(d.id) which can be stale when parentId was changed by a previous drop.
@@ -9285,7 +9356,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           {isCategory(n)?`${childrenOf(n.id).length} item${childrenOf(n.id).length===1?'':'s'}`:isFolder(n)?`${(n.entries||[]).length} nota${(n.entries||[]).length===1?'':'s'}`:n.date}
         </div>
       </div>
-      {!showTrash&&open&&isCategory(n)&&kids.map(child=><Row key={child.id} n={child} depth={depth+1}/>)}
+      {!showTrash&&open&&isCategory(n)&&kids.map(child=>renderRow(child,depth+1))}
       {!showTrash&&open&&isFolder(n)&&(
         <div style={{marginLeft:26+depth*16,paddingLeft:8,borderLeft:'1px solid var(--border)'}}>
           {(n.entries||[]).length===0&&<div style={{fontSize:'.69rem',color:'var(--muted)',padding:'6px 8px 8px'}}>Nenhuma nota.</div>}
@@ -9315,7 +9386,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
 
   const tree=childrenOf(null);
 
-  const Editor=()=>{
+  const renderEditor=()=>{
     const target=selected?.kind==='entry'?selectedEntry:selectedItem;
     if(!target)return <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)',minWidth:0}}><Icon name="notebook-pen" size={32} style={{opacity:.3}}/><p style={{fontSize:'.85rem'}}>Abra uma nota para editar</p></div>;
     const date=target.date||'';
@@ -9368,14 +9439,12 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           ):(
             <div ref={treePaneRef} onScroll={e=>{treeScrollTopRef.current=e.currentTarget.scrollTop;}} style={{flex:1,overflowY:'auto',paddingRight:3}}>
               {tree.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
-              {tree.map(n=><Row key={n.id} n={n}/>)}
-              <DropZone style={{marginTop:8,padding:'8px 8px',fontSize:'.68rem',color:'var(--muted)',textAlign:'center'}}>
-                Solte aqui para mover para a raiz
-              </DropZone>
+              {tree.map(n=>renderRow(n))}
+              {renderRootDropZone('Solte aqui para mover para a raiz',{marginTop:8,padding:'8px 8px',fontSize:'.68rem',color:'var(--muted)',textAlign:'center'})}
             </div>
           )}
         </div>
-        <div style={{flex:1,minWidth:0,display:'flex',minHeight:0}}>{showTrash?<div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',fontSize:'.85rem'}}>Itens excluídos</div>:<Editor/>}</div>
+        <div style={{flex:1,minWidth:0,display:'flex',minHeight:0}}>{showTrash?<div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',fontSize:'.85rem'}}>Itens excluídos</div>:renderEditor()}</div>
       </div>
     </div>
   );
@@ -9401,8 +9470,8 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           {!showTrash?(
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
               {tree.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
-              {tree.map(n=><Row key={n.id} n={n}/>)}
-              <DropZone style={{marginTop:8,padding:'9px 8px',fontSize:'.72rem',color:'var(--muted)',textAlign:'center'}}>Solte aqui para a raiz</DropZone>
+              {tree.map(n=>renderRow(n))}
+              {renderRootDropZone('Solte aqui para a raiz',{marginTop:8,padding:'9px 8px',fontSize:'.72rem',color:'var(--muted)',textAlign:'center'})}
             </div>
           ):(
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
@@ -9416,7 +9485,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
             <button className="btn btn-ghost" style={{padding:'8px 10px'}} onClick={()=>setMobileDetail(false)}><Icon name="arrow-left" size={16}/> Voltar</button>
           </div>
-          {showTrash?<div style={{color:'var(--muted)',fontSize:'.85rem'}}>Lixeira</div>:<div style={{height:'calc(100vh - 120px)',minHeight:380,display:'flex'}}><Editor/></div>}
+          {showTrash?<div style={{color:'var(--muted)',fontSize:'.85rem'}}>Lixeira</div>:<div style={{height:'calc(100vh - 120px)',minHeight:380,display:'flex'}}>{renderEditor()}</div>}
         </>
       )}
     </div>
