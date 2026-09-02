@@ -2542,8 +2542,33 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
    drag cursors from the 2nd copy, min-height from the 1st) */
 .rich-editor{outline:none;word-break:break-word;overflow-y:auto;min-height:80px;}
 .rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
-.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:grab;}
+.rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:zoom-in;}
 .rich-editor img:active{cursor:grabbing;}
+/* Note-image uploads reserve their final place immediately. The placeholder is
+   deliberately a block (not a floating/inline element), so text before and
+   after it never reflows sideways while the image is uploading. */
+@keyframes noteImageLoading{0%,100%{opacity:.52}50%{opacity:.9}}
+.note-image-loading{display:block;width:min(100%,520px);aspect-ratio:16/9;margin:10px 0;border:1px solid var(--border);border-radius:8px;background:linear-gradient(110deg,var(--bg) 28%,var(--surface) 44%,var(--bg) 60%);background-size:220% 100%;animation:noteImageLoading 1.15s ease-in-out infinite;position:relative;overflow:hidden;user-select:none;}
+.note-image-loading::after{content:'Carregando imagem…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.72rem;font-weight:600;letter-spacing:.02em;}
+.note-image-loading.note-image-loading-failed{animation:none;background:var(--danger-bg);border-color:var(--danger-line);}
+.note-image-loading.note-image-loading-failed::after{content:'Não foi possível carregar a imagem';color:var(--danger-fg);}
+/* Image grids are isolated block elements. Only their image children enter the
+   grid; surrounding text remains in the editor's normal document flow. Equal
+   16:9 cells make mixed portrait/landscape sources line up without cropping. */
+.note-image-grid{--note-grid-cols:2;display:grid;grid-template-columns:repeat(var(--note-grid-cols),minmax(0,1fr));gap:10px;width:100%;margin:12px 0;align-items:stretch;clear:both;}
+.note-image-grid[data-cols="2"]{--note-grid-cols:2;}
+.note-image-grid[data-cols="3"]{--note-grid-cols:3;}
+.note-image-grid[data-cols="4"]{--note-grid-cols:4;}
+.note-image-grid>img{width:100%!important;max-width:none!important;height:auto!important;min-width:0;min-height:0;aspect-ratio:16/9;object-fit:contain;background:#000;margin:0!important;border-radius:8px;display:block;}
+.rich-editor img.note-grid-selected{outline:3px solid var(--text);outline-offset:-3px;box-shadow:0 0 0 2px var(--surface);filter:saturate(.82);}
+.rich-editor.grid-select-mode img{cursor:cell;}
+.note-grid-tools{display:flex;align-items:center;gap:6;padding:7px 9px;margin:-5px 0 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);font-size:.72rem;flex-wrap:wrap;flex-shrink:0;}
+.note-grid-col-btn{height:26px;min-width:28px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font:600 .7rem 'Alegreya Sans',sans-serif;cursor:pointer;}
+.note-grid-col-btn.active{background:var(--text);border-color:var(--text);color:var(--surface);}
+@media(max-width:620px){
+  .note-image-grid[data-cols="3"],.note-image-grid[data-cols="4"]{--note-grid-cols:2;}
+  .note-image-grid{gap:7px;}
+}
 .rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
 .rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
 .rich-editor h3{font-size:1rem;font-weight:700;margin:.4em 0 .2em;}
@@ -7931,7 +7956,23 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const postDragRef=useRef(null);
   const postDragEndRef=useRef(0);
   const [selected,setSelected]=useState(()=>posts.find(p=>String(p.id)===String(_galleryUi.selectedId))||null);
+  const galleryBrowseRef=useRef(null);
+  const hadSelectedPostRef=useRef(!!selected);
   const [lightbox,setLightbox]=useState(null);
+  // Leaving a post is a fresh return to the gallery list. Reset every possible
+  // scroll owner (the desktop gallery pane, the app main area and the mobile
+  // document) before paint so the list always reappears at its top.
+  React.useLayoutEffect(()=>{
+    const hadSelected=hadSelectedPostRef.current;
+    hadSelectedPostRef.current=!!selected;
+    if(!hadSelected||selected)return;
+    const galleryPane=galleryBrowseRef.current;
+    if(galleryPane)galleryPane.scrollTop=0;
+    const main=galleryPane?.closest?.('main');
+    if(main)main.scrollTop=0;
+    document.documentElement.scrollTop=0;
+    document.body.scrollTop=0;
+  },[selected]);
   // Eager-warm local thumbnails AND network images for the opened study.
   useEffect(()=>{if(selected&&Array.isArray(selected.images))warmSources(selected.images,48,{priority:'high'});},[selected?.id]);
   // A deliberate tab RESET (double-click/double-tap) returns Gallery to its
@@ -8060,7 +8101,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   },[lightbox,goLightboxPrev,goLightboxNext]);
 
 
-  if(lightbox)return ReactDOM.createPortal(
+  // Keep the post mounted behind the lightbox. Returning only the portal here
+  // used to unmount its scroll container, so closing an image rebuilt the post
+  // at scrollTop 0 instead of returning to the image the user had opened.
+  const lightboxPortal=lightbox?ReactDOM.createPortal(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
       {lightboxImages.length>1&&(
         <>
@@ -8088,9 +8132,11 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
       </button>
     </div>,
     document.body
-  );
+  ):null;
 
   if(selected)return(
+    <>
+    {lightboxPortal}
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       <input ref={addImgRef} type="file" accept="image/*,video/*,.gif" multiple style={{display:'none'}} onChange={handleAddImages}/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}>
@@ -8150,10 +8196,11 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
       </div>
     </div>
+    </>
   );
 
   return(<>
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
+    <div ref={galleryBrowseRef} className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
         <div style={{flex:1,minWidth:0}}><h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}><StaveTitleNotes fig="e15"/>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)'}}>Acervo visual & estudos</p>}</div>
@@ -8393,13 +8440,28 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const scrollTopRef=useRef((bhUiLoad('noteScroll')[String(noteId)]||0));
   const dragImgRef=useRef(null);
   const imgInputRef=useRef(null);
+  const uploadSeqRef=useRef(0);
   const [fmt,setFmt]=useState({});
+  const [noteLightbox,setNoteLightbox]=useState(null); // {images,index}|null
+  const [gridMode,setGridMode]=useState(false);
+  const [gridCols,setGridCols]=useState(2);
+  const [gridSelectionCount,setGridSelectionCount]=useState(0);
+  const [gridSelectionInGrid,setGridSelectionInGrid]=useState(false);
+
+  const clearGridSelection=useCallback(()=>{
+    ref.current?.querySelectorAll('img.note-grid-selected').forEach(img=>img.classList.remove('note-grid-selected'));
+    setGridSelectionCount(0);
+    setGridSelectionInGrid(false);
+  },[]);
 
   useEffect(()=>{
     if(!ref.current)return;
     if(lastId.current!==noteId){
       ref.current.innerHTML=sanitizeHTML(initialHTML||'');
       lastId.current=noteId;
+      clearGridSelection();
+      setGridMode(false);
+      setNoteLightbox(null);
       const saved=(bhUiLoad('noteScroll')[String(noteId)]||0);
       scrollTopRef.current=saved;
       ref.current.scrollTop=saved;
@@ -8428,24 +8490,28 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   // Sanitizing on the way out closes the cycle.
   // It is the SAVED VALUE that gets sanitized, never the live DOM: touching the
   // contentEditable while typing would kill the cursor.
+  // Loading placeholders and the temporary grid-selection outline belong only
+  // to the live UI. Clone before saving so neither can leak into persisted note
+  // HTML if autosave fires while an upload/selection is active.
+  const serializedHTML=useCallback(()=>{
+    if(!ref.current)return'';
+    const clone=ref.current.cloneNode(true);
+    clone.querySelectorAll('.note-image-loading').forEach(el=>el.remove());
+    clone.querySelectorAll('img.note-grid-selected').forEach(img=>img.classList.remove('note-grid-selected'));
+    return sanitizeHTML(clone.innerHTML);
+  },[]);
+
   const emit=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));},800);
-  },[onSave]);
+    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(serializedHTML());},800);
+  },[onSave,serializedHTML]);
 
   const flushSave=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));
-  },[onSave]);
+    if(ref.current)onSave(serializedHTML());
+  },[onSave,serializedHTML]);
 
   const exec=(cmd,val)=>{ref.current?.focus();document.execCommand(cmd,false,val||null);emit();};
-
-  const insertImage=useCallback((src)=>{
-    ref.current?.focus();
-    const safe=String(src).replace(/"/g,'&quot;'); // never let a raw URL break out of the attribute
-    document.execCommand('insertHTML',false,`<img src="${safe}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;" draggable="true"/>`);
-    emit();
-  },[emit]);
 
   // Upload the image instead of embedding it as base64 inline. A single pasted
   // screenshot can be 100-500KB as base64 — embed a couple of those and the
@@ -8456,18 +8522,50 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   // components, not in raw contentEditable HTML, where it would just render
   // as a broken image. Last-resort here is inline base64, same as before this
   // fix — a working (if heavy) image beats a silently lost paste.
-  const insertImageFile=useCallback(async(file)=>{
+  const uploadNoteImage=useCallback(async(file)=>{
     const compressed=await _compressImage(file);
     if(_fbReady&&_fbAuth?.currentUser){
-      try{insertImage(await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid));return;}
+      try{return await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid);}
       catch(e){console.warn('[BoardHub] Storage upload failed for note image, trying fallback:',e.message);}
     }
-    try{insertImage(await _uploadImgur(compressed));return;}
+    try{return await _uploadImgur(compressed);}
     catch(e){console.warn('[BoardHub] Imgur fallback failed for note image, embedding inline:',e.message);}
-    const r=new FileReader();
-    r.onload=ev=>insertImage(ev.target.result);
-    r.readAsDataURL(compressed);
-  },[insertImage]);
+    return await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=ev=>resolve(ev.target.result);
+      r.onerror=()=>reject(r.error||new Error('Falha ao ler a imagem'));
+      r.readAsDataURL(compressed);
+    });
+  },[]);
+
+  const insertImageFile=useCallback(async(file)=>{
+    if(!file)return;
+    ref.current?.focus();
+    const uploadId=`note-upload-${Date.now()}-${++uploadSeqRef.current}`;
+    // insertHTML keeps the native contentEditable undo history. The unique
+    // marker lets concurrent pasted images finish in any order without swapping.
+    document.execCommand('insertHTML',false,`<span class="note-image-loading" data-note-upload="${uploadId}" contenteditable="false" role="status" aria-label="Carregando imagem"></span>`);
+    emit();
+    try{
+      const src=await uploadNoteImage(file);
+      const placeholder=ref.current?.querySelector(`[data-note-upload="${uploadId}"]`);
+      if(!placeholder)return; // the user changed note while this upload ran
+      const img=document.createElement('img');
+      img.src=String(src);
+      img.draggable=true;
+      img.setAttribute('data-note-image','true');
+      img.alt='';
+      placeholder.replaceWith(img);
+      emit();
+    }catch(e){
+      console.warn('[BoardHub] Note image upload failed:',e?.message||e);
+      const placeholder=ref.current?.querySelector(`[data-note-upload="${uploadId}"]`);
+      if(placeholder){
+        placeholder.classList.add('note-image-loading-failed');
+        setTimeout(()=>{if(placeholder.isConnected){placeholder.remove();emit();}},2600);
+      }
+    }
+  },[emit,uploadNoteImage]);
 
   // One-time migration: if this note was already carrying heavy inline base64
   // images (from before this fix), lift them out to Storage and shrink the
@@ -8494,13 +8592,99 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         }catch(e){console.warn('[BoardHub] Legacy note-image migration failed for one image:',e.message);}
       }
       if(changed&&!cancelled&&ref.current){
-        onSave(sanitizeHTML(ref.current.innerHTML));
+        onSave(serializedHTML());
         console.info('[BoardHub] Moved inline note images to cloud storage, freeing up document space.');
       }
     })();
     return()=>{cancelled=true;};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
+
+  const refreshGridSelectionState=useCallback(()=>{
+    const selected=[...(ref.current?.querySelectorAll('img.note-grid-selected')||[])];
+    setGridSelectionCount(selected.length);
+    setGridSelectionInGrid(selected.some(img=>!!img.closest('.note-image-grid')));
+  },[]);
+
+  const applyImageGrid=useCallback(()=>{
+    const editor=ref.current;
+    if(!editor)return;
+    const images=[...editor.querySelectorAll('img.note-grid-selected')];
+    if(images.length<2)return;
+    const parentGrids=[...new Set(images.map(img=>img.closest('.note-image-grid')).filter(Boolean))];
+    const allInOneGrid=parentGrids.length===1&&images.every(img=>img.closest('.note-image-grid')===parentGrids[0]);
+    const itemCount=allInOneGrid?parentGrids[0].querySelectorAll('img').length:images.length;
+    const effectiveCols=Math.max(2,Math.min(gridCols,itemCount));
+    if(allInOneGrid){
+      parentGrids[0].setAttribute('data-cols',String(effectiveCols));
+      parentGrids[0].setAttribute('aria-label',`Grade de imagens com ${effectiveCols} colunas`);
+    }else{
+      const first=images[0];
+      const firstGrid=first.closest('.note-image-grid');
+      const anchor=firstGrid||first;
+      // A span with block-grid display is safe even when execCommand originally
+      // placed an image inside a paragraph. Persisting a literal <div> there
+      // would make the HTML parser split/rearrange that paragraph on reload.
+      const grid=document.createElement('span');
+      grid.className='note-image-grid';
+      grid.setAttribute('data-cols',String(effectiveCols));
+      grid.setAttribute('contenteditable','false');
+      grid.setAttribute('aria-label',`Grade de imagens com ${effectiveCols} colunas`);
+      anchor.parentNode.insertBefore(grid,anchor);
+      images.forEach(img=>{img.classList.remove('note-grid-selected');grid.appendChild(img);});
+      editor.querySelectorAll('.note-image-grid').forEach(old=>{if(old!==grid&&!old.querySelector('img'))old.remove();});
+    }
+    clearGridSelection();
+    setGridMode(false);
+    emit();
+  },[clearGridSelection,emit,gridCols]);
+
+  const ungroupSelectedImages=useCallback(()=>{
+    const editor=ref.current;
+    if(!editor)return;
+    const grids=[...new Set([...editor.querySelectorAll('img.note-grid-selected')].map(img=>img.closest('.note-image-grid')).filter(Boolean))];
+    if(!grids.length)return;
+    grids.forEach(grid=>{
+      const parent=grid.parentNode;
+      [...grid.querySelectorAll('img')].forEach(img=>{
+        img.classList.remove('note-grid-selected');
+        parent.insertBefore(img,grid);
+      });
+      grid.remove();
+    });
+    clearGridSelection();
+    setGridMode(false);
+    emit();
+  },[clearGridSelection,emit]);
+
+  const openNoteImage=useCallback(img=>{
+    const nodes=[...(ref.current?.querySelectorAll('img')||[])];
+    const images=nodes.map(node=>node.currentSrc||node.src).filter(Boolean);
+    const index=Math.max(0,nodes.indexOf(img));
+    if(images.length)setNoteLightbox({images,index});
+  },[]);
+
+  const handleEditorClick=e=>{
+    const img=e.target?.closest?.('img');
+    if(!img||!ref.current?.contains(img))return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(gridMode){
+      img.classList.toggle('note-grid-selected');
+      refreshGridSelectionState();
+    }else openNoteImage(img);
+  };
+
+  useEffect(()=>{
+    if(!noteLightbox)return;
+    const onKey=e=>{
+      if(e.key==='Escape'){setNoteLightbox(null);return;}
+      if(e.key==='ArrowLeft'){e.preventDefault();setNoteLightbox(cur=>cur?{...cur,index:Math.max(0,cur.index-1)}:cur);}
+      if(e.key==='ArrowRight'){e.preventDefault();setNoteLightbox(cur=>cur?{...cur,index:Math.min(cur.images.length-1,cur.index+1)}:cur);}
+    };
+    document.addEventListener('keydown',onKey);
+    return()=>document.removeEventListener('keydown',onKey);
+  },[noteLightbox]);
 
   const handleKeyDown=e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}};
 
@@ -8509,9 +8693,12 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
       e.preventDefault();
       const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
       if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
+      const oldGrid=dragImgRef.current.closest('.note-image-grid');
       const clone=dragImgRef.current.cloneNode(true);
+      clone.classList.remove('note-grid-selected');
       dragImgRef.current.remove();
       document.execCommand('insertHTML',false,clone.outerHTML);
+      if(oldGrid&&!oldGrid.querySelector('img'))oldGrid.remove();
       dragImgRef.current=null;emit();return;
     }
     const files=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));
@@ -8524,8 +8711,8 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
   const handlePaste=e=>{
     const items=e.clipboardData?.items||[];
-    const img=[...items].find(i=>i.type.startsWith('image/'));
-    if(img){e.preventDefault();insertImageFile(img.getAsFile());}
+    const images=[...items].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);
+    if(images.length){e.preventDefault();images.forEach(insertImageFile);}
   };
   const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{/*silent-ok: queryCommandState throws when the selection is outside the editor; the toolbar keeps its last state*/}};
 
@@ -8546,7 +8733,29 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     {cmd:'removeFormat',icon:'eraser',title:'Limpar formato'},
   ];
 
+  const lightboxSrc=noteLightbox?.images?.[noteLightbox.index]||'';
+  const canNotePrev=!!noteLightbox&&noteLightbox.index>0;
+  const canNoteNext=!!noteLightbox&&noteLightbox.index<noteLightbox.images.length-1;
+  const noteLightboxPortal=noteLightbox?ReactDOM.createPortal(
+    <div className="lightbox" onClick={()=>setNoteLightbox(null)}>
+      {noteLightbox.images.length>1&&<>
+        <button onClick={e=>{e.stopPropagation();if(canNotePrev)setNoteLightbox(cur=>({...cur,index:cur.index-1}));}} disabled={!canNotePrev} aria-label="Imagem anterior" title="Imagem anterior"
+          style={{position:'fixed',left:window.innerWidth<=768?10:230,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canNotePrev?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canNotePrev?1:.35}}><Icon name="arrow-left" size={20}/></button>
+        <button onClick={e=>{e.stopPropagation();if(canNoteNext)setNoteLightbox(cur=>({...cur,index:cur.index+1}));}} disabled={!canNoteNext} aria-label="Próxima imagem" title="Próxima imagem"
+          style={{position:'fixed',right:10,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canNoteNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canNoteNext?1:.35}}><Icon name="arrow-right" size={20}/></button>
+        <div style={{position:'fixed',left:'50%',bottom:18,transform:'translateX(-50%)',padding:'6px 12px',borderRadius:999,background:'rgba(0,0,0,.4)',color:'white',fontSize:'.78rem',fontWeight:600,zIndex:201,pointerEvents:'none'}}>{noteLightbox.index+1} / {noteLightbox.images.length}</div>
+      </>}
+      <div className="lightbox-stage" onClick={()=>setNoteLightbox(null)}>
+        <Img src={lightboxSrc} full priority onClick={e=>e.stopPropagation()} alt=""/>
+      </div>
+      <button onClick={()=>setNoteLightbox(null)} aria-label="Fechar imagem" title="Fechar"
+        style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)',zIndex:201}}><Icon name="x" size={20}/></button>
+    </div>,document.body
+  ):null;
+
   return(
+    <>
+    {noteLightboxPortal}
     <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
       <div style={{display:'flex',gap:1,padding:'4px 0 8px',borderBottom:'1px solid var(--border)',marginBottom:12,flexWrap:'wrap',flexShrink:0,alignItems:'center'}}>
         {toolbarBtns.map((b,i)=>b===null?(
@@ -8559,22 +8768,34 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         ))}
         <div style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
         <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
-          <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={async e=>{
-            const f=e.target.files[0];if(!f)return;
-            insertImageFile(f);
+          <input ref={imgInputRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={async e=>{
+            const files=[...e.target.files];if(!files.length)return;
+            files.forEach(insertImageFile);
             e.target.value='';
           }}/>
           <Icon name="image" size={13}/>
         </label>
+        <button title="Organizar imagens em grade" className={`rich-toolbar-btn${gridMode?' active':''}`}
+          onMouseDown={e=>{e.preventDefault();if(gridMode){clearGridSelection();setGridMode(false);}else setGridMode(true);}}>
+          <Icon name="grid-2x2" size={13}/>
+        </button>
       </div>
-      <div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning
+      {gridMode&&<div className="note-grid-tools">
+        <span style={{marginRight:2}}>{gridSelectionCount?`${gridSelectionCount} selecionada${gridSelectionCount===1?'':'s'}`:'Clique nas imagens que quer agrupar'}</span>
+        {[2,3,4].map(cols=><button key={cols} className={`note-grid-col-btn${gridCols===cols?' active':''}`} onMouseDown={e=>{e.preventDefault();setGridCols(cols);}}>{cols} col.</button>)}
+        <button className="btn btn-dark" disabled={gridSelectionCount<2} onMouseDown={e=>{e.preventDefault();applyImageGrid();}} style={{padding:'4px 10px',fontSize:'.7rem',opacity:gridSelectionCount<2 ? .45 : 1}}>Aplicar grade</button>
+        {gridSelectionInGrid&&<button className="btn btn-outline" onMouseDown={e=>{e.preventDefault();ungroupSelectedImages();}} style={{padding:'4px 9px',fontSize:'.7rem'}}>Desfazer grade</button>}
+        <button className="btn btn-ghost" onMouseDown={e=>{e.preventDefault();clearGridSelection();setGridMode(false);}} style={{padding:'4px 7px',fontSize:'.7rem',marginLeft:'auto'}}>Cancelar</button>
+      </div>}
+      <div ref={ref} className={`rich-editor${gridMode?' grid-select-mode':''}`} contentEditable suppressContentEditableWarning
         data-placeholder="Comece a escrever..."
         onScroll={e=>{scrollTopRef.current=e.currentTarget.scrollTop;}}
         onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
         onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
-        onPaste={handlePaste} onBlur={flushSave}
+        onPaste={handlePaste} onClick={handleEditorClick} onBlur={flushSave}
         style={{flex:1,fontSize:'.95rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
     </div>
+    </>
   );
 });
 
