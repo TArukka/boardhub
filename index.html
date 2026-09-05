@@ -2242,6 +2242,12 @@ try{var _bhT=localStorage.getItem('boardhub_theme');if(_bhT==='notturno')documen
 html{scroll-behavior:smooth;}
 /* Offscreen rendering optimization - scoped to view containers only (not overlays/modals) */
 main>.fade-up{content-visibility:auto;contain-intrinsic-size:auto 500px;}
+/* content-visibility can briefly discard/repaint a contentEditable subtree as
+   its internal scroll position changes. In the notes view that repaint exposed
+   the dark page background as a black flash, so this view stays continuously
+   painted. It also skips the entrance fade: opening/saving a note must never
+   animate the whole editor surface. */
+main>.fade-up.ideas-view{content-visibility:visible!important;contain:none!important;animation:none!important;}
 /* OPT-8: same treatment for the in-project / in-study image grids. Engages only
    when a grid is ENTIRELY off-screen (a partially-visible grid still renders in
    full), so on-screen layout is untouched; the placeholder height is a rough
@@ -2548,6 +2554,29 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .rich-editor:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none;}
 .rich-editor img{max-width:100%;border-radius:8px;margin:8px 0;display:block;cursor:grab;}
 .rich-editor img:active{cursor:grabbing;}
+/* Note-image uploads reserve their final place immediately. The placeholder is
+   deliberately a block (not a floating/inline element), so text before and
+   after it never reflows sideways while the image is uploading. */
+@keyframes noteImageLoading{0%,100%{opacity:.52}50%{opacity:.9}}
+.note-image-loading{display:block;width:min(100%,520px);aspect-ratio:16/9;margin:10px 0;border:1px solid var(--border);border-radius:8px;background:linear-gradient(110deg,var(--bg) 28%,var(--surface) 44%,var(--bg) 60%);background-size:220% 100%;animation:noteImageLoading 1.15s ease-in-out infinite;position:relative;overflow:hidden;user-select:none;}
+.note-image-loading::after{content:'Carregando imagem…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.72rem;font-weight:600;letter-spacing:.02em;}
+.note-image-loading.note-image-loading-failed{animation:none;background:var(--danger-bg);border-color:var(--danger-line);}
+.note-image-loading.note-image-loading-failed::after{content:'Não foi possível carregar a imagem';color:var(--danger-fg);}
+/* Image grids are isolated block elements. Only their image children enter the
+   grid; surrounding text remains in the editor's normal document flow. Each
+   row is justified from the images' real aspect ratios: the images share one
+   height while their proportional widths consume the whole row. No 16:9 box,
+   black letterboxing or crop is needed. */
+.note-image-grid{display:flex;flex-direction:column;gap:10px;width:100%;margin:12px 0;clear:both;}
+.note-image-row{display:grid;gap:10px;width:100%;align-items:start;}
+.note-image-grid>img,.note-image-row>img{width:100%!important;max-width:none!important;height:auto!important;min-width:0;min-height:0;aspect-ratio:auto!important;object-fit:contain;background:transparent!important;margin:0!important;border-radius:8px;display:block;}
+.rich-editor img.note-image-dragging{opacity:.32;}
+.rich-editor img.note-image-drop-before{outline:2px solid var(--text);outline-offset:2px;box-shadow:-7px 0 0 -3px var(--text);}
+.rich-editor img.note-image-drop-after{outline:2px solid var(--text);outline-offset:2px;box-shadow:7px 0 0 -3px var(--text);}
+.note-image-grid.note-grid-drop{outline:2px dashed var(--text);outline-offset:5px;background:rgba(var(--ink),.035);}
+@media(max-width:620px){
+  .note-image-grid,.note-image-row{gap:7px;}
+}
 .rich-editor h1{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:400;margin:.6em 0 .3em;line-height:1.2;}
 .rich-editor h2{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:500;margin:.5em 0 .25em;}
 .rich-editor h3{font-size:1rem;font-weight:700;margin:.4em 0 .2em;}
@@ -5677,7 +5706,7 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
   const eligiblePosts=useMemo(()=>(galleryPosts||[]).filter(p=>{
     if(!p||p.deleted)return false;
     if(destination==='project'){
-      const keys=[p.sourceTargetKey,...(p.sourceTargetKeys||[])].filter(Boolean).map(String);
+      const keys=[p.sourceTargetKey,...(Array.isArray(p.sourceTargetKeys)?p.sourceTargetKeys:[])].filter(Boolean).map(String);
       return p.storageScope==='project'&&keys.includes(String(session.targetKey));
     }
     return p.storageScope!=='project'&&String(p.folder)===String(folderId);
@@ -5737,7 +5766,7 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
       </div>
       {saveMode==='new'&&<label className="session-title-field"><span>Título do post</span><input value={title} onChange={e=>setTitle(e.target.value)} maxLength={120} disabled={saving}/></label>}
       {saveMode==='append'&&existingPost&&<div className="session-offline-note"><Icon name="images" size={14}/><span>As novas imagens serão anexadas a <strong>{existingPost.title}</strong>. O post original e sua categoria serão preservados.</span></div>}
-      {offline&&<div className="session-offline-note"><Icon name="hard-drive" size={14}/><span>Você está sem conexão. As imagens serão guardadas neste dispositivo e o post continuará disponível na Galeria.</span></div>}
+      {offline&&<div className="session-offline-note"><Icon name="hard-drive" size={14}/><span>Você está sem conexão. As imagens serão guardadas neste dispositivo e o post continuará disponível {destination==='project'?'neste projeto':'na Galeria'}.</span></div>}
       <button className={'session-dropzone '+(files.length?'has-files':'')} onClick={()=>inputRef.current?.click()} disabled={saving} type="button">
         <Icon name="image-plus" size={22}/><strong>{files.length?'Adicionar mais imagens':'Arraste imagens aqui'}</strong><span>{files.length?files.length+' de 12 adicionadas':'ou clique para escolher'}</span>
       </button>
@@ -5848,6 +5877,9 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     selectedProjectAny?.title || selectedCategoryAny?.name || 'Sem categoria';
   const selectedTargetLiveExtra = targetKey==='none'?0:(displayUnsaved+pendingSecsRef.current);
   const selectedTargetTotal = targetKey==='none'?0:(((pomoData?.allocations||{})[targetKey]||0)+selectedTargetLiveExtra);
+  // Once a focus session has started, its destination must remain stable even
+  // while paused. Otherwise one session can silently be filed under two targets.
+  const targetLocked = isActive || !!sessionMetaRef.current;
 
   const persist = (active, tLeft, m, fMins) => {
     const fm = fMins ?? focusMinsRef.current;
@@ -5859,7 +5891,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   };
 
   const changeTarget = key => {
-    if(isActiveRef.current)return;
+    if(isActiveRef.current||sessionMetaRef.current)return;
     const next=key||'none';
     targetKeyRef.current=next;
     setTargetKey(next);
@@ -5896,7 +5928,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   };
   const deleteFocusCategory = async id => {
     const key=pomoCategoryKey(id);
-    if(isActiveRef.current&&targetKeyRef.current===key)return;
+    if((isActiveRef.current||sessionMetaRef.current)&&targetKeyRef.current===key)return;
     if(!(await bhConfirm({message:'Excluir esta categoria de foco? O tempo geral por dia sera mantido, mas a alocacao desta categoria sera removida.',danger:true,confirmLabel:'Excluir'})))return;
     setPomoData(prev=>{
       const base=pomoNormalize(prev);
@@ -6333,13 +6365,13 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
               <div style={{display:'flex',alignItems:'center',gap:7,minWidth:0}}>
                 <div ref={targetMenuRef} style={{position:'relative',flex:1,minWidth:0}}>
                   <button type="button"
-                    onClick={()=>{if(!isActive)setShowTargetMenu(v=>!v);}}
-                    disabled={isActive}
-                    title={isActive?'Pause o timer para trocar a categoria':'Vincular o tempo de foco'}
+                    onClick={()=>{if(!targetLocked)setShowTargetMenu(v=>!v);}}
+                    disabled={targetLocked}
+                    title={targetLocked?'Conclua ou reinicie a sessão para trocar a categoria':'Vincular o tempo de foco'}
                     aria-label="Categoria do tempo de foco"
                     aria-haspopup="listbox"
                     aria-expanded={showTargetMenu}
-                    style={{width:'100%',minWidth:0,height:30,display:'flex',alignItems:'center',gap:7,border:'1px solid var(--border)',borderRadius:8,background:'var(--bg)',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.7rem',fontWeight:500,padding:'0 8px',outline:'none',cursor:isActive?'not-allowed':'pointer',opacity:isActive?.65:1,transition:'border-color .15s,background .15s',textAlign:'left'}}>
+                    style={{width:'100%',minWidth:0,height:30,display:'flex',alignItems:'center',gap:7,border:'1px solid var(--border)',borderRadius:8,background:'var(--bg)',color:'var(--text)',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.7rem',fontWeight:500,padding:'0 8px',outline:'none',cursor:targetLocked?'not-allowed':'pointer',opacity:targetLocked?.65:1,transition:'border-color .15s,background .15s',textAlign:'left'}}>
                     <Icon name={targetKey.startsWith('project:')?'folder':'clock'} size={11}
                       style={{color:'var(--muted)',flexShrink:0}}/>
                     <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>
@@ -6349,7 +6381,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
                       style={{color:'var(--muted)',flexShrink:0,transform:showTargetMenu?'rotate(180deg)':'none',transition:'transform .15s'}}/>
                   </button>
 
-                  {showTargetMenu&&!isActive&&(
+                  {showTargetMenu&&!targetLocked&&(
                     <div role="listbox"
                       style={{position:'absolute',left:0,right:0,top:'calc(100% + 5px)',zIndex:120,minWidth:220,maxHeight:280,overflowY:'auto',padding:5,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,boxShadow:'0 10px 30px rgba(var(--ink),.12)',fontFamily:'Alegreya Sans,sans-serif'}}>
                       <button type="button" role="option" aria-selected={targetKey==='none'}
@@ -6506,7 +6538,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
                     const key=pomoCategoryKey(c.id);
                     const total=((pomoData?.allocations||{})[key]||0)+(targetKey===key?displayUnsaved+pendingSecsRef.current:0);
                     const editing=String(editingCategoryId)===String(c.id);
-                    const locked=isActive&&targetKey===key;
+                    const locked=targetLocked&&targetKey===key;
                     const activeTarget=targetKey===key;
                     return <div key={key}
                       style={{display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderBottom:i<categories.length-1?'1px solid var(--border)':'none',background:activeTarget?'rgba(var(--ink),.025)':'transparent'}}>
@@ -6536,7 +6568,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
                             <button className="btn btn-ghost" onClick={()=>{setEditingCategoryId(c.id);setEditingCategoryName(c.name);}}
                               style={{padding:5}} title="Editar"><Icon name="pencil" size={13}/></button>
                             <button className="btn btn-ghost text-link-danger" disabled={locked} onClick={()=>deleteFocusCategory(c.id)}
-                              title={locked?'Pause o timer antes de excluir a categoria em uso':'Excluir categoria'}
+                              title={locked?'Conclua ou reinicie a sessão antes de excluir a categoria em uso':'Excluir categoria'}
                               style={{padding:5,opacity:locked?.35:1,cursor:locked?'not-allowed':'pointer'}}><Icon name="trash-2" size={13}/></button>
                           </>}
                     </div>;
@@ -8055,7 +8087,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           </div>
           {projectFocusPosts.length===0
             ?<div style={{padding:'40px 16px',textAlign:'center',color:'var(--muted)'}}><Icon name="images" size={28} style={{display:'block',margin:'0 auto 9px',opacity:.28}}/><strong style={{display:'block',color:'var(--text)',fontSize:'.86rem',marginBottom:4}}>Nenhum registro visual ainda</strong><span style={{fontSize:'.78rem'}}>Conclua uma sessão vinculada a este projeto e salve as imagens na Galeria.</span></div>
-            :<div className="project-focus-grid">{projectFocusPosts.map(post=>{const src=post.bannerImage||(post.images||[])[0];const sessions=Array.from(new Set([post.sourceSessionId,...(post.sourceSessionIds||[])].filter(Boolean).map(String)));return <div key={post.id} className="card card-click project-focus-post" onClick={()=>setGalleryPopup(post)} {...keyActivate(()=>setGalleryPopup(post),'Abrir post '+(post.title||''))}>
+            :<div className="project-focus-grid">{projectFocusPosts.map(post=>{const images=Array.isArray(post.images)?post.images:[];const src=post.bannerImage||images[0];const sessions=Array.from(new Set([post.sourceSessionId,...(Array.isArray(post.sourceSessionIds)?post.sourceSessionIds:[])].filter(Boolean).map(String)));return <div key={post.id} className="card card-click project-focus-post" onClick={()=>setGalleryPopup(post)} {...keyActivate(()=>setGalleryPopup(post),'Abrir post '+(post.title||''))}>
               <div className="project-focus-post-media">{src?(isVideoSrc(src)?<Vid src={src} muted playsInline preload="metadata"/>:<Img src={src}/>):<Icon name="image" size={24} style={{opacity:.22}}/>}</div>
               <div className="project-focus-post-copy"><strong>{post.title||'Sem título'}</strong><span><Icon name="image" size={11}/>{(post.images||[]).length} {(post.images||[]).length===1?'imagem':'imagens'}{sessions.length>1?' · '+sessions.length+' sessões':''}</span></div>
             </div>;})}</div>}
@@ -8408,9 +8440,15 @@ const normalizeGalleryFolder=f=>({
 });
 const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=>{
   const _galleryUi=useMemo(()=>bhUiLoad('gallery'),[]);
-  const liveFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>!f.deleted&&!f.archived).map(normalizeGalleryFolder),[folders]);
-  const archivedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.archived&&!f.deleted).map(normalizeGalleryFolder),[folders]);
-  const trashedFolders=useMemo(()=>(folders||DEFAULT_GALLERY_FOLDERS).filter(f=>f.deleted),[folders]);
+  const galleryFolderList=Array.isArray(folders)?folders:DEFAULT_GALLERY_FOLDERS;
+  const liveFolders=useMemo(()=>galleryFolderList.filter(f=>f&&!f.deleted&&!f.archived).map(normalizeGalleryFolder),[folders]);
+  const archivedFolders=useMemo(()=>galleryFolderList.filter(f=>f&&f.archived&&!f.deleted).map(normalizeGalleryFolder),[folders]);
+  const trashedFolders=useMemo(()=>galleryFolderList.filter(f=>f&&f.deleted),[folders]);
+  // Project-session posts belong exclusively to their project. Keep them out
+  // of every Gallery view, including its trash, and normalize legacy images.
+  const galleryOnlyPosts=useMemo(()=>(Array.isArray(posts)?posts:[])
+    .filter(p=>p&&p.storageScope!=='project')
+    .map(p=>({...p,images:Array.isArray(p.images)?p.images:[]})),[posts]);
   const FOLDERS=liveFolders;
   const [activeFolder,setActiveFolder]=useState(()=>liveFolders.some(f=>String(f.id)===String(_galleryUi.activeFolder))?_galleryUi.activeFolder:(liveFolders[0]||{id:'work'}).id);
   const [folderTrash,setFolderTrash]=useState(()=>!!_galleryUi.folderTrash);
@@ -8419,13 +8457,39 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   // with items gone, leaving the panel stuck open with no way to hide it).
   useEffect(()=>{if(archivedFolders.length===0&&folderArchive)setFolderArchive(false);},[archivedFolders.length,folderArchive]);
   useEffect(()=>{if(trashedFolders.length===0&&folderTrash)setFolderTrash(false);},[trashedFolders.length,folderTrash]);
+  useEffect(()=>{
+    if(liveFolders.some(f=>String(f.id)===String(activeFolder)))return;
+    setActiveFolder(liveFolders[0]?.id||'');
+  },[liveFolders,activeFolder]);
   const [editingFolderId,setEditingFolderId]=useState(null);
   const [editingLabel,setEditingLabel]=useState('');
   const folderDragRef=useRef(null);
   const postDragRef=useRef(null);
   const postDragEndRef=useRef(0);
-  const [selected,setSelected]=useState(()=>posts.find(p=>String(p.id)===String(_galleryUi.selectedId))||null);
+  const [selected,setSelected]=useState(()=>galleryOnlyPosts.find(p=>String(p.id)===String(_galleryUi.selectedId))||null);
+  const galleryBrowseRef=useRef(null);
+  const hadSelectedPostRef=useRef(!!selected);
   const [lightbox,setLightbox]=useState(null);
+  useEffect(()=>{
+    if(!selected)return;
+    const fresh=galleryOnlyPosts.find(p=>String(p.id)===String(selected.id));
+    if(!fresh){setSelected(null);setLightbox(null);return;}
+    setSelected(fresh);
+  },[galleryOnlyPosts,selected?.id]);
+  // Leaving a post is a fresh return to the gallery list. Reset every possible
+  // scroll owner (the desktop gallery pane, the app main area and the mobile
+  // document) before paint so the list always reappears at its top.
+  React.useLayoutEffect(()=>{
+    const hadSelected=hadSelectedPostRef.current;
+    hadSelectedPostRef.current=!!selected;
+    if(!hadSelected||selected)return;
+    const galleryPane=galleryBrowseRef.current;
+    if(galleryPane)galleryPane.scrollTop=0;
+    const main=galleryPane?.closest?.('main');
+    if(main)main.scrollTop=0;
+    document.documentElement.scrollTop=0;
+    document.body.scrollTop=0;
+  },[selected]);
   // Eager-warm local thumbnails AND network images for the opened study.
   useEffect(()=>{if(selected&&Array.isArray(selected.images))warmSources(selected.images,48,{priority:'high'});},[selected?.id]);
   // A deliberate tab RESET (double-click/double-tap) returns Gallery to its
@@ -8438,6 +8502,14 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
     const first=(liveFolders[0]||{id:'work'}).id;
     setActiveFolder(first);
     bhUiReplace('gallery',{activeFolder:first,folderTrash:false,folderArchive:false,trash:false,selectedId:null});
+    let raf2=0;
+    const raf1=requestAnimationFrame(()=>{raf2=requestAnimationFrame(()=>{
+      if(galleryBrowseRef.current)galleryBrowseRef.current.scrollTop=0;
+      const main=galleryBrowseRef.current?.closest?.('main');
+      if(main)main.scrollTop=0;
+      window.scrollTo(0,0);
+    });});
+    return()=>{cancelAnimationFrame(raf1);if(raf2)cancelAnimationFrame(raf2);};
   },[navTick]);
 
   const addFolder=()=>{const n={id:'folder-'+Date.now(),label:'Nova Pasta',deleted:false,sortMode:'month',manualOrder:[]};setFolders(p=>[...(p||[]),n]);setActiveFolder(n.id);setEditingFolderId(n.id);setEditingLabel(n.label);};
@@ -8446,7 +8518,14 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const restoreFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,deleted:false,deletedAt:null}:f));
   const archiveFolder=id=>{setFolders(p=>p.map(f=>f.id===id?{...f,archived:true}:f));if(activeFolder===id){const next=liveFolders.find(f=>f.id!==id);setActiveFolder(next?.id||'');}};
   const unarchiveFolder=id=>setFolders(p=>p.map(f=>f.id===id?{...f,archived:false}:f));
-  const hardDeleteFolder=async id=>{if(await bhConfirm({message:'Excluir pasta permanentemente?',danger:true,confirmLabel:'Excluir'}))setFolders(p=>p.filter(f=>f.id!==id));};
+  const hardDeleteFolder=async id=>{
+    const linked=galleryOnlyPosts.filter(p=>String(p.folder)===String(id));
+    if(linked.length){
+      await bhAlert(`Esta pasta ainda contém ${linked.length} ${linked.length===1?'post':'posts'}. Restaure a pasta e mova ou exclua ${linked.length===1?'o post':'os posts'} antes de apagá-la permanentemente.`);
+      return;
+    }
+    if(await bhConfirm({message:'Excluir pasta permanentemente?',danger:true,confirmLabel:'Excluir'}))setFolders(p=>p.filter(f=>f.id!==id));
+  };
   const reorderFolders=(from,to)=>{if(from===to)return;setFolders(prev=>{const live=prev.filter(f=>!f.deleted&&!f.archived);const rest=prev.filter(f=>f.deleted||f.archived);const next=[...live];const[m]=next.splice(from,1);next.splice(to,0,m);return[...next,...rest];});};
 
   const [trash,setTrash]=useState(()=>!!_galleryUi.trash);
@@ -8456,7 +8535,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   useEffect(()=>{
     bhUiSave('gallery',{activeFolder,folderTrash,folderArchive,trash,selectedId:selected?.id||null});
   },[activeFolder,folderTrash,folderArchive,trash,selected?.id]);
-  const active=useMemo(()=>posts.filter(p=>trash?p.deleted:(!p.deleted&&p.folder===activeFolder)),[posts,trash,activeFolder]);
+  const active=useMemo(()=>galleryOnlyPosts.filter(p=>trash?p.deleted:(!p.deleted&&String(p.folder)===String(activeFolder))),[galleryOnlyPosts,trash,activeFolder]);
   const activeFolderData=useMemo(()=>liveFolders.find(f=>f.id===activeFolder)||null,[liveFolders,activeFolder]);
   const sortMode=trash?'month':(activeFolderData?.sortMode||'month');
   const sortPostsByDate=list=>[...list].sort((a,b)=>{
@@ -8512,14 +8591,21 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const [uploadProgress,setUploadProgress]=useState(null); // {done,total}|null
   const handleAddImages=async e=>{
     const files=Array.from(e.target.files);
+    if(!files.length)return;
     setUploading(true);
     setUploadProgress({done:0,total:files.length});
-    const urls=await uploadImages(files,(done,total)=>setUploadProgress({done,total}));
-    setUploadProgress(null);
-    setUploading(false);
-    const merged=[...(selected.images||[]),...urls];
-    upd('images',merged);
-    e.target.value='';
+    try{
+      const urls=await uploadImages(files,(done,total)=>setUploadProgress({done,total}));
+      const merged=[...(Array.isArray(selected.images)?selected.images:[]),...urls];
+      upd('images',merged);
+    }catch(err){
+      bhLog('gallery.upload',err,'the selected images were not added');
+      await bhAlert('Não foi possível adicionar as imagens. Tente novamente.');
+    }finally{
+      setUploadProgress(null);
+      setUploading(false);
+      e.target.value='';
+    }
   };
   const removeImg=idx=>{const imgs=[...selected.images];imgs.splice(idx,1);upd('images',imgs);};
   const lightboxImages=useMemo(()=>((selected?.images)||[]).filter(img=>!isVideoSrc(img)),[selected?.images]);
@@ -8554,7 +8640,10 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   },[lightbox,goLightboxPrev,goLightboxNext]);
 
 
-  if(lightbox)return ReactDOM.createPortal(
+  // Keep the post mounted behind the lightbox. Returning only the portal here
+  // used to unmount its scroll container, so closing an image rebuilt the post
+  // at scrollTop 0 instead of returning to the image the user had opened.
+  const lightboxPortal=lightbox?ReactDOM.createPortal(
     <div className="lightbox" onClick={()=>setLightbox(null)}>
       {lightboxImages.length>1&&(
         <>
@@ -8582,9 +8671,11 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
       </button>
     </div>,
     document.body
-  );
+  ):null;
 
   if(selected)return(
+    <>
+    {lightboxPortal}
     <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',overflowY:isMobile?'visible':'auto'}}>
       <input ref={addImgRef} type="file" accept="image/*,video/*,.gif" multiple style={{display:'none'}} onChange={handleAddImages}/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:24}}>
@@ -8644,19 +8735,20 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
       </div>
     </div>
+    </>
   );
 
   return(<>
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
+    <div ref={galleryBrowseRef} className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:isMobile?'auto':'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column',overflowY:isMobile?'visible':'auto',paddingBottom:isMobile?0:24}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:isMobile?'center':'flex-start',marginBottom:isMobile?10:14,gap:10,flexWrap:'wrap',flexShrink:0}}>
         <div style={{flex:1,minWidth:0}}><h1 className="serif stave-title" style={{fontSize:isMobile?'1.75rem':'clamp(1.6rem,2.8vh,2.6rem)',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2}}><StaveTitleNotes fig="e15"/>Galeria</h1>
           {!isMobile&&<p style={{color:'var(--muted)',fontSize:'clamp(.75rem,1.1vh,.85rem)'}}>Acervo visual & estudos</p>}</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>{setTrash(!trash);setSelected(null);}} className={`btn ${trash?'btn-danger':'btn-outline'}`}>
-            <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&posts.filter(p=>p.deleted).length>0&&` (${posts.filter(p=>p.deleted).length})`}
+            <Icon name="trash-2" size={13}/>{trash?'Sair':'Lixeira'}{!trash&&galleryOnlyPosts.filter(p=>p.deleted).length>0&&` (${galleryOnlyPosts.filter(p=>p.deleted).length})`}
           </button>
-          {!trash&&<button className="btn btn-dark" onClick={()=>{
-            const n={id:Date.now(),folder:activeFolder,title:"Novo Estudo",date:localDateISO(),content:"",images:[],deleted:false};
+          {!trash&&activeFolderData&&<button className="btn btn-dark" onClick={()=>{
+            const n={id:Date.now(),folder:activeFolder,storageScope:'gallery',title:"Novo Estudo",date:localDateISO(),content:"",images:[],deleted:false};
             setPosts(prev=>[n,...prev]);
             if(sortMode==='manual')setFolders(prev=>(prev||[]).map(f=>f.id===activeFolder?{...f,manualOrder:[...(f.manualOrder||[]).filter(id=>String(id)!==String(n.id)),n.id]}:f));
             setSelected(n);
@@ -8880,20 +8972,153 @@ const sanitizeHTML=html=>{
   }catch{return html;}
 };
 
+// Note-image grids are driven directly by drag/drop, without React selection
+// state. That keeps contentEditable's DOM and caret stable while images move.
+const _noteGridRowSizes=count=>{
+  if(count<=4)return[count];
+  const rowCount=Math.ceil(count/4);
+  const base=Math.floor(count/rowCount);
+  const extra=count%rowCount;
+  return Array.from({length:rowCount},(_,i)=>base+(i<extra?1:0));
+};
+const _noteImageRatio=img=>{
+  const w=img?.naturalWidth||Number(img?.getAttribute?.('width'))||0;
+  const h=img?.naturalHeight||Number(img?.getAttribute?.('height'))||0;
+  if(w>0&&h>0){
+    const ratio=Math.max(.12,Math.min(8,w/h));
+    img.setAttribute('data-note-ratio',String(ratio));
+    return ratio;
+  }
+  const saved=Number(img?.getAttribute?.('data-note-ratio'));
+  return Number.isFinite(saved)&&saved>0?saved:16/9;
+};
+const _syncNoteImageRow=row=>{
+  if(!row)return;
+  const images=[...row.children].filter(el=>el.tagName==='IMG');
+  row.style.gridTemplateColumns=images.map(img=>`${_noteImageRatio(img)}fr`).join(' ');
+};
+const _NOTE_IMAGE_LEGACY_STYLE_PROPS=[
+  'width','height','max-width','max-height','min-width','min-height',
+  'aspect-ratio','object-fit','object-position','background','background-color',
+  'flex','flex-basis','flex-grow','flex-shrink','grid-column','grid-row'
+];
+const _prepareNoteImage=img=>{
+  if(!img)return;
+  // Old grid implementations and pasted rich HTML could leave inline 16:9,
+  // object-fit and #000 declarations on the element. Inline declarations can
+  // outlive every class change and reappear specifically after a drag/save.
+  // Images in notes are not manually resizable, so these are all app-owned
+  // layout properties and are safe to reset before the row is recalculated.
+  _NOTE_IMAGE_LEGACY_STYLE_PROPS.forEach(prop=>img.style.removeProperty(prop));
+  img.draggable=true;
+  img.setAttribute('data-note-image','true');
+  img.setAttribute('title','Clique para ampliar • Arraste sobre outra imagem para criar uma grade');
+  img.classList.remove('note-image-dragging','note-image-drop-before','note-image-drop-after','note-grid-selected');
+  // A cloud image can still be decoding when a saved note is opened. Updating
+  // only its row's fractional columns after load avoids reconstructing either
+  // the editor or the surrounding text (and therefore avoids a visible flash).
+  if(!img._boardhubNoteRatioBound){
+    img._boardhubNoteRatioBound=true;
+    const syncRatio=()=>{
+      const before=img.getAttribute('data-note-ratio');
+      _syncNoteImageRow(img.closest('.note-image-row'));
+      // Persist a newly discovered ratio. Subsequent opens can lay the grid out
+      // correctly before the network image decodes, avoiding a 16:9-to-real
+      // width jump that looked like the note flickering.
+      if(before!==img.getAttribute('data-note-ratio')){
+        img.closest('.rich-editor')?.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    };
+    img.addEventListener('load',syncRatio);
+    // decode() also resolves for an already-cached image whose load event fired
+    // before the listener was attached. This closes the remaining equal-column
+    // fallback that could survive a drag until the note was reopened.
+    if(img.decode)img.decode().then(syncRatio).catch(()=>{});
+  }
+};
+const _normalizeNoteGrid=grid=>{
+  if(!grid||!grid.isConnected)return null;
+  const images=[...grid.querySelectorAll('img')].filter(img=>img.closest('.note-image-grid')===grid);
+  if(images.length===0){grid.remove();return null;}
+  if(images.length===1){
+    const img=images[0];
+    grid.parentNode.insertBefore(img,grid);
+    grid.remove();
+    _prepareNoteImage(img);
+    return null;
+  }
+  const rowSizes=_noteGridRowSizes(images.length);
+  const cols=Math.max(...rowSizes);
+  grid.className='note-image-grid';
+  // The container is generated by BoardHub; discard every legacy inline grid
+  // declaration so the current proportional row layout is authoritative.
+  grid.removeAttribute('style');
+  grid.setAttribute('data-count',String(images.length));
+  grid.setAttribute('data-cols',String(cols));
+  grid.setAttribute('contenteditable','false');
+  grid.setAttribute('aria-label',`Grade com ${images.length} imagens em ${cols} colunas`);
+  grid.replaceChildren();
+  let cursor=0;
+  rowSizes.forEach(size=>{
+    const row=document.createElement('span');
+    row.className='note-image-row';
+    row.setAttribute('contenteditable','false');
+    images.slice(cursor,cursor+size).forEach(img=>{_prepareNoteImage(img);row.appendChild(img);});
+    cursor+=size;
+    grid.appendChild(row);
+    _syncNoteImageRow(row);
+  });
+  return grid;
+};
+const _normalizeNoteImages=editor=>{
+  if(!editor)return;
+  editor.querySelectorAll('img').forEach(_prepareNoteImage);
+  editor.querySelectorAll('.note-image-grid').forEach(_normalizeNoteGrid);
+};
+let _noteDragGhostEl=null;
+const _getNoteDragGhost=()=>{
+  if(_noteDragGhostEl?.isConnected)return _noteDragGhostEl;
+  const ghost=document.createElement('span');
+  ghost.setAttribute('aria-hidden','true');
+  ghost.style.cssText='position:fixed;left:-20px;top:-20px;width:1px;height:1px;opacity:.01;pointer-events:none;background:transparent;';
+  document.body.appendChild(ghost);
+  _noteDragGhostEl=ghost;
+  return ghost;
+};
+const _noteCaretRangeFromPoint=(x,y)=>{
+  if(document.caretRangeFromPoint)return document.caretRangeFromPoint(x,y);
+  const pos=document.caretPositionFromPoint?.(x,y); // Firefox
+  if(!pos)return null;
+  const range=document.createRange();
+  range.setStart(pos.offsetNode,pos.offset);
+  range.collapse(true);
+  return range;
+};
+
 const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   const ref=useRef(null);
   const saveTimer=useRef(null);
   const lastId=useRef(null);
   const scrollTopRef=useRef((bhUiLoad('noteScroll')[String(noteId)]||0));
   const dragImgRef=useRef(null);
+  const dragTargetRef=useRef(null); // {el,kind:'grid'|'image',side?}
+  const dragEndedAtRef=useRef(-Infinity);
+  const imagePointerRef=useRef(null); // {img,x,y,moved}
   const imgInputRef=useRef(null);
+  const uploadSeqRef=useRef(0);
   const [fmt,setFmt]=useState({});
+  const [noteLightbox,setNoteLightbox]=useState(null); // {images,index}|null
 
-  useEffect(()=>{
+  // Hydrate and normalize the selected note before the browser paints it. A
+  // passive effect briefly exposed the empty editor / legacy 16:9 grid first,
+  // producing a visible flash before the real proportional layout appeared.
+  React.useLayoutEffect(()=>{
     if(!ref.current)return;
     if(lastId.current!==noteId){
       ref.current.innerHTML=sanitizeHTML(initialHTML||'');
+      _normalizeNoteImages(ref.current);
       lastId.current=noteId;
+      setNoteLightbox(null);
       const saved=(bhUiLoad('noteScroll')[String(noteId)]||0);
       scrollTopRef.current=saved;
       ref.current.scrollTop=saved;
@@ -8922,24 +9147,27 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   // Sanitizing on the way out closes the cycle.
   // It is the SAVED VALUE that gets sanitized, never the live DOM: touching the
   // contentEditable while typing would kill the cursor.
+  // Loading placeholders and drag/drop markers belong only to the live UI.
+  // Clone before saving so none can leak into persisted note HTML.
+  const serializedHTML=useCallback(()=>{
+    if(!ref.current)return'';
+    const clone=ref.current.cloneNode(true);
+    clone.querySelectorAll('.note-image-loading').forEach(el=>el.remove());
+    clone.querySelectorAll('.note-image-dragging,.note-image-drop-before,.note-image-drop-after,.note-grid-drop,.note-grid-selected').forEach(el=>el.classList.remove('note-image-dragging','note-image-drop-before','note-image-drop-after','note-grid-drop','note-grid-selected'));
+    return sanitizeHTML(clone.innerHTML);
+  },[]);
+
   const emit=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));},800);
-  },[onSave]);
+    saveTimer.current=setTimeout(()=>{if(ref.current)onSave(serializedHTML());},800);
+  },[onSave,serializedHTML]);
 
   const flushSave=useCallback(()=>{
     clearTimeout(saveTimer.current);
-    if(ref.current)onSave(sanitizeHTML(ref.current.innerHTML));
-  },[onSave]);
+    if(ref.current)onSave(serializedHTML());
+  },[onSave,serializedHTML]);
 
   const exec=(cmd,val)=>{ref.current?.focus();document.execCommand(cmd,false,val||null);emit();};
-
-  const insertImage=useCallback((src)=>{
-    ref.current?.focus();
-    const safe=String(src).replace(/"/g,'&quot;'); // never let a raw URL break out of the attribute
-    document.execCommand('insertHTML',false,`<img src="${safe}" style="max-width:100%;border-radius:8px;margin:10px 0;display:block;" draggable="true"/>`);
-    emit();
-  },[emit]);
 
   // Upload the image instead of embedding it as base64 inline. A single pasted
   // screenshot can be 100-500KB as base64 — embed a couple of those and the
@@ -8950,18 +9178,52 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
   // components, not in raw contentEditable HTML, where it would just render
   // as a broken image. Last-resort here is inline base64, same as before this
   // fix — a working (if heavy) image beats a silently lost paste.
-  const insertImageFile=useCallback(async(file)=>{
+  const uploadNoteImage=useCallback(async(file)=>{
     const compressed=await _compressImage(file);
     if(_fbReady&&_fbAuth?.currentUser){
-      try{insertImage(await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid));return;}
+      try{return await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid);}
       catch(e){console.warn('[BoardHub] Storage upload failed for note image, trying fallback:',e.message);}
     }
-    try{insertImage(await _uploadImgur(compressed));return;}
-    catch(e){console.warn('[BoardHub] Imgur fallback failed for note image, embedding inline:',e.message);}
-    const r=new FileReader();
-    r.onload=ev=>insertImage(ev.target.result);
-    r.readAsDataURL(compressed);
-  },[insertImage]);
+    try{
+      if(await _askImgurConsent())return await _uploadImgur(compressed);
+    }catch(e){console.warn('[BoardHub] Imgur fallback failed for note image, embedding inline:',e.message);}
+    return await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=ev=>resolve(ev.target.result);
+      r.onerror=()=>reject(r.error||new Error('Falha ao ler a imagem'));
+      r.readAsDataURL(compressed);
+    });
+  },[]);
+
+  const insertImageFile=useCallback(async(file)=>{
+    if(!file)return;
+    ref.current?.focus();
+    const uploadId=`note-upload-${Date.now()}-${++uploadSeqRef.current}`;
+    // insertHTML keeps the native contentEditable undo history. The unique
+    // marker lets concurrent pasted images finish in any order without swapping.
+    document.execCommand('insertHTML',false,`<span class="note-image-loading" data-note-upload="${uploadId}" contenteditable="false" role="status" aria-label="Carregando imagem"></span>`);
+    emit();
+    try{
+      const src=await uploadNoteImage(file);
+      const placeholder=ref.current?.querySelector(`[data-note-upload="${uploadId}"]`);
+      if(!placeholder)return; // the user changed note while this upload ran
+      const img=document.createElement('img');
+      img.src=String(src);
+      img.draggable=true;
+      img.setAttribute('data-note-image','true');
+      img.alt='';
+      placeholder.replaceWith(img);
+      _prepareNoteImage(img);
+      emit();
+    }catch(e){
+      console.warn('[BoardHub] Note image upload failed:',e?.message||e);
+      const placeholder=ref.current?.querySelector(`[data-note-upload="${uploadId}"]`);
+      if(placeholder){
+        placeholder.classList.add('note-image-loading-failed');
+        setTimeout(()=>{if(placeholder.isConnected){placeholder.remove();emit();}},2600);
+      }
+    }
+  },[emit,uploadNoteImage]);
 
   // One-time migration: if this note was already carrying heavy inline base64
   // images (from before this fix), lift them out to Storage and shrink the
@@ -8988,7 +9250,7 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
         }catch(e){console.warn('[BoardHub] Legacy note-image migration failed for one image:',e.message);}
       }
       if(changed&&!cancelled&&ref.current){
-        onSave(sanitizeHTML(ref.current.innerHTML));
+        onSave(serializedHTML());
         console.info('[BoardHub] Moved inline note images to cloud storage, freeing up document space.');
       }
     })();
@@ -8996,32 +9258,214 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  const clearDragTarget=useCallback(()=>{
+    const mark=dragTargetRef.current;
+    if(mark?.el){
+      mark.el.classList.remove('note-grid-drop','note-image-drop-before','note-image-drop-after');
+    }
+    dragTargetRef.current=null;
+  },[]);
+
+  const markDragTarget=useCallback((el,kind,side=null)=>{
+    const prev=dragTargetRef.current;
+    if(prev?.el===el&&prev.kind===kind&&prev.side===side)return;
+    clearDragTarget();
+    if(!el)return;
+    if(kind==='grid')el.classList.add('note-grid-drop');
+    else el.classList.add(side==='before'?'note-image-drop-before':'note-image-drop-after');
+    dragTargetRef.current={el,kind,side};
+  },[clearDragTarget]);
+
+  const openNoteImage=useCallback(img=>{
+    const nodes=[...(ref.current?.querySelectorAll('img')||[])];
+    const images=nodes.map(node=>node.currentSrc||node.src).filter(Boolean);
+    const index=Math.max(0,nodes.indexOf(img));
+    if(images.length)setNoteLightbox({images,index});
+  },[]);
+
+  const handleEditorClick=e=>{
+    const img=e.target?.closest?.('img');
+    if(!img||!ref.current?.contains(img))return;
+    e.preventDefault();
+    e.stopPropagation();
+    const gesture=imagePointerRef.current;
+    imagePointerRef.current=null;
+    // Only an actual stationary pointer click opens the viewer. Native drag can
+    // synthesize click before or after dragend depending on the browser; neither
+    // path can pass this movement gate, so the black overlay cannot flash.
+    if(!gesture||gesture.img!==img||gesture.moved||dragImgRef.current||performance.now()-dragEndedAtRef.current<800)return;
+    openNoteImage(img);
+  };
+  const handleEditorPointerDown=e=>{
+    const img=e.target?.closest?.('img');
+    imagePointerRef.current=img&&ref.current?.contains(img)?{img,x:e.clientX,y:e.clientY,moved:false}:null;
+  };
+  const handleEditorPointerMove=e=>{
+    const g=imagePointerRef.current;
+    if(g&&!g.moved&&Math.hypot(e.clientX-g.x,e.clientY-g.y)>5)g.moved=true;
+  };
+  const cancelImagePointer=()=>{imagePointerRef.current=null;};
+
+  useEffect(()=>{
+    if(!noteLightbox)return;
+    const onKey=e=>{
+      if(e.key==='Escape'){setNoteLightbox(null);return;}
+      if(e.key==='ArrowLeft'){e.preventDefault();setNoteLightbox(cur=>cur?{...cur,index:Math.max(0,cur.index-1)}:cur);}
+      if(e.key==='ArrowRight'){e.preventDefault();setNoteLightbox(cur=>cur?{...cur,index:Math.min(cur.images.length-1,cur.index+1)}:cur);}
+    };
+    document.addEventListener('keydown',onKey);
+    return()=>document.removeEventListener('keydown',onKey);
+  },[noteLightbox]);
+
   const handleKeyDown=e=>{if(e.key==='Tab'){e.preventDefault();document.execCommand('insertText',false,'    ');}};
 
+  const finishImageDrag=()=>{
+    dragImgRef.current?.classList.remove('note-image-dragging');
+    clearDragTarget();
+    dragImgRef.current=null;
+    dragEndedAtRef.current=performance.now();
+  };
+
+  const handleDragOver=e=>{
+    const source=dragImgRef.current;
+    if(!source){
+      const hasFiles=[...(e.dataTransfer?.types||[])].includes('Files');
+      if(hasFiles||[...(e.dataTransfer?.items||[])].some(i=>i.type?.startsWith('image/')))e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect='move';
+    const targetImg=e.target?.closest?.('img');
+    if(targetImg===source){clearDragTarget();return;}
+    if(targetImg&&ref.current?.contains(targetImg)){
+      const rect=targetImg.getBoundingClientRect();
+      markDragTarget(targetImg,'image',e.clientX<rect.left+rect.width/2?'before':'after');
+      return;
+    }
+    const targetGrid=e.target?.closest?.('.note-image-grid');
+    if(targetGrid&&ref.current?.contains(targetGrid))markDragTarget(targetGrid,'grid');
+    else clearDragTarget();
+  };
+
   const handleDrop=e=>{
-    if(dragImgRef.current){
+    const source=dragImgRef.current;
+    if(source){
       e.preventDefault();
-      const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
-      if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
-      const clone=dragImgRef.current.cloneNode(true);
-      dragImgRef.current.remove();
-      document.execCommand('insertHTML',false,clone.outerHTML);
-      dragImgRef.current=null;emit();return;
+      const gridsToNormalize=new Set();
+      const oldGrid=source.closest('.note-image-grid');
+      if(oldGrid)gridsToNormalize.add(oldGrid);
+      const originalParent=source.parentNode;
+      const originalNext=source.nextSibling;
+      const targetImg=e.target?.closest?.('img');
+      const targetGrid=e.target?.closest?.('.note-image-grid');
+      let changed=false;
+
+      try{
+        if(targetImg&&targetImg!==source&&ref.current?.contains(targetImg)){
+          const marked=dragTargetRef.current;
+          const rect=targetImg.getBoundingClientRect();
+          const before=marked?.el===targetImg?marked.side==='before':e.clientX<rect.left+rect.width/2;
+          const grid=targetImg.closest('.note-image-grid');
+          if(grid){
+            targetImg.parentNode.insertBefore(source,before?targetImg:targetImg.nextSibling);
+            gridsToNormalize.add(grid);
+          }else{
+            // Dropping one standalone image onto another creates the grid exactly
+            // where the target was, without moving or rewriting surrounding text.
+            const newGrid=document.createElement('span');
+            newGrid.className='note-image-grid';
+            newGrid.setAttribute('contenteditable','false');
+            targetImg.parentNode.insertBefore(newGrid,targetImg);
+            if(before){newGrid.appendChild(source);newGrid.appendChild(targetImg);}
+            else{newGrid.appendChild(targetImg);newGrid.appendChild(source);}
+            gridsToNormalize.add(newGrid);
+          }
+          changed=true;
+        }else if(targetGrid&&ref.current?.contains(targetGrid)){
+          targetGrid.appendChild(source);
+          gridsToNormalize.add(targetGrid);
+          changed=true;
+        }else{
+          // Create/validate the destination marker BEFORE moving the image. The
+          // old implementation removed first, so a failed Firefox caret lookup
+          // made the image disappear. A missing caret falls back just after its
+          // current grid, which is the natural "take this out" destination.
+          const range=_noteCaretRangeFromPoint(e.clientX,e.clientY);
+          if(range&&ref.current?.contains(range.startContainer)){
+            const marker=document.createElement('span');
+            marker.setAttribute('data-note-drop-marker','true');
+            marker.style.display='none';
+            range.insertNode(marker);
+            try{marker.parentNode.insertBefore(source,marker);}finally{marker.remove();}
+            const sel=window.getSelection();
+            range.selectNode(source);range.collapse(false);
+            sel.removeAllRanges();sel.addRange(range);
+            _prepareNoteImage(source);
+            changed=true;
+          }else if(oldGrid?.parentNode){
+            oldGrid.parentNode.insertBefore(source,oldGrid.nextSibling);
+            _prepareNoteImage(source);
+            changed=true;
+          }
+        }
+      }catch(err){
+        console.warn('[BoardHub] Note image move failed; restoring its original position:',err?.message||err);
+        // A failure can happen after a partial DOM move. Restore even when the
+        // image is still connected, otherwise it appears to vanish from its row.
+        if(originalParent?.isConnected){
+          if(originalNext?.parentNode===originalParent)originalParent.insertBefore(source,originalNext);
+          else originalParent.appendChild(source);
+        }
+        changed=false;
+      }
+
+      gridsToNormalize.forEach(grid=>{if(grid.isConnected)_normalizeNoteGrid(grid);});
+      finishImageDrag();
+      if(changed)emit();
+      return;
     }
     const files=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));
     if(!files.length)return;
     e.preventDefault();
-    const range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
+    const range=_noteCaretRangeFromPoint(e.clientX,e.clientY);
     if(range){const s=window.getSelection();s.removeAllRanges();s.addRange(range);}
     files.forEach(f=>insertImageFile(f));
   };
-  const handleDragStart=e=>{if(e.target.tagName==='IMG'){dragImgRef.current=e.target;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','img-drag');}};
+  const handleDragStart=e=>{
+    if(e.target.tagName!=='IMG')return;
+    clearDragTarget();
+    // Suppress every click generated by the native drag gesture, including
+    // browsers that dispatch it before dragend. Otherwise the dark lightbox
+    // can mount for one frame and look like the whole note flashed black.
+    dragEndedAtRef.current=performance.now();
+    if(imagePointerRef.current)imagePointerRef.current.moved=true;
+    dragImgRef.current=e.target;
+    e.target.classList.add('note-image-dragging');
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain','boardhub-note-image');
+    // Firefox can briefly composite a large native image drag preview as a
+    // black rectangle. BoardHub already highlights the source and destination,
+    // so use a harmless 1px preview instead of asking the browser to rasterize
+    // the whole image during the gesture.
+    try{e.dataTransfer.setDragImage(_getNoteDragGhost(),0,0);}catch{/* optional browser API */}
+  };
+  const handleDragEnd=()=>finishImageDrag();
+  const handleDragLeave=e=>{
+    const rect=ref.current?.getBoundingClientRect();
+    if(!rect||e.clientX<=rect.left||e.clientX>=rect.right||e.clientY<=rect.top||e.clientY>=rect.bottom)clearDragTarget();
+  };
   const handlePaste=e=>{
     const items=e.clipboardData?.items||[];
-    const img=[...items].find(i=>i.type.startsWith('image/'));
-    if(img){e.preventDefault();insertImageFile(img.getAsFile());}
+    const images=[...items].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);
+    if(images.length){e.preventDefault();images.forEach(insertImageFile);}
   };
-  const updateFmt=()=>{try{setFmt({bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')});}catch{/*silent-ok: queryCommandState throws when the selection is outside the editor; the toolbar keeps its last state*/}};
+  const updateFmt=()=>{try{
+    const next={bold:document.queryCommandState('bold'),italic:document.queryCommandState('italic'),underline:document.queryCommandState('underline'),strikeThrough:document.queryCommandState('strikeThrough'),insertUnorderedList:document.queryCommandState('insertUnorderedList'),insertOrderedList:document.queryCommandState('insertOrderedList')};
+    // Mouseup used to allocate new state even when no format changed. Image
+    // clicks therefore forced a needless RichEditor render just before click,
+    // which read as a flash on image-heavy notes.
+    setFmt(prev=>Object.keys(next).every(k=>prev[k]===next[k])?prev:next);
+  }catch{/*silent-ok: queryCommandState throws when the selection is outside the editor; the toolbar keeps its last state*/}};
 
   const toolbarBtns=[
     {cmd:'bold',icon:'bold',title:'Negrito'},
@@ -9040,7 +9484,29 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
     {cmd:'removeFormat',icon:'eraser',title:'Limpar formato'},
   ];
 
+  const lightboxSrc=noteLightbox?.images?.[noteLightbox.index]||'';
+  const canNotePrev=!!noteLightbox&&noteLightbox.index>0;
+  const canNoteNext=!!noteLightbox&&noteLightbox.index<noteLightbox.images.length-1;
+  const noteLightboxPortal=noteLightbox?ReactDOM.createPortal(
+    <div className="lightbox" onClick={()=>setNoteLightbox(null)}>
+      {noteLightbox.images.length>1&&<>
+        <button onClick={e=>{e.stopPropagation();if(canNotePrev)setNoteLightbox(cur=>({...cur,index:cur.index-1}));}} disabled={!canNotePrev} aria-label="Imagem anterior" title="Imagem anterior"
+          style={{position:'fixed',left:window.innerWidth<=768?10:230,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canNotePrev?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canNotePrev?1:.35}}><Icon name="arrow-left" size={20}/></button>
+        <button onClick={e=>{e.stopPropagation();if(canNoteNext)setNoteLightbox(cur=>({...cur,index:cur.index+1}));}} disabled={!canNoteNext} aria-label="Próxima imagem" title="Próxima imagem"
+          style={{position:'fixed',right:10,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canNoteNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canNoteNext?1:.35}}><Icon name="arrow-right" size={20}/></button>
+        <div style={{position:'fixed',left:'50%',bottom:18,transform:'translateX(-50%)',padding:'6px 12px',borderRadius:999,background:'rgba(0,0,0,.4)',color:'white',fontSize:'.78rem',fontWeight:600,zIndex:201,pointerEvents:'none'}}>{noteLightbox.index+1} / {noteLightbox.images.length}</div>
+      </>}
+      <div className="lightbox-stage" onClick={()=>setNoteLightbox(null)}>
+        <Img src={lightboxSrc} full priority onClick={e=>e.stopPropagation()} alt=""/>
+      </div>
+      <button onClick={()=>setNoteLightbox(null)} aria-label="Fechar imagem" title="Fechar"
+        style={{position:'fixed',top:20,right:20,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'white',backdropFilter:'blur(4px)',zIndex:201}}><Icon name="x" size={20}/></button>
+    </div>,document.body
+  ):null;
+
   return(
+    <>
+    {noteLightboxPortal}
     <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
       <div style={{display:'flex',gap:1,padding:'4px 0 8px',borderBottom:'1px solid var(--border)',marginBottom:12,flexWrap:'wrap',flexShrink:0,alignItems:'center'}}>
         {toolbarBtns.map((b,i)=>b===null?(
@@ -9052,10 +9518,10 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
           </button>
         ))}
         <div style={{width:1,height:16,background:'var(--border)',margin:'0 4px'}}/>
-        <label className="rich-toolbar-btn" title="Inserir imagem" style={{cursor:'pointer'}}>
-          <input ref={imgInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={async e=>{
-            const f=e.target.files[0];if(!f)return;
-            insertImageFile(f);
+        <label className="rich-toolbar-btn" title="Inserir imagem • Arraste imagens umas sobre as outras para criar grades" style={{cursor:'pointer'}}>
+          <input ref={imgInputRef} type="file" accept="image/*" multiple style={{display:'none'}} onChange={async e=>{
+            const files=[...e.target.files];if(!files.length)return;
+            files.forEach(insertImageFile);
             e.target.value='';
           }}/>
           <Icon name="image" size={13}/>
@@ -9064,11 +9530,12 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave})=>{
       <div ref={ref} className="rich-editor" contentEditable suppressContentEditableWarning
         data-placeholder="Comece a escrever..."
         onScroll={e=>{scrollTopRef.current=e.currentTarget.scrollTop;}}
-        onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={updateFmt} onSelect={updateFmt}
-        onDrop={handleDrop} onDragOver={e=>e.preventDefault()} onDragStart={handleDragStart}
-        onPaste={handlePaste} onBlur={flushSave}
+        onInput={emit} onKeyDown={handleKeyDown} onKeyUp={updateFmt} onMouseUp={e=>{if(e.target.tagName!=='IMG')updateFmt();}} onSelect={updateFmt}
+        onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDragStart={handleDragStart} onDragEnd={handleDragEnd}
+        onPaste={handlePaste} onPointerDown={handleEditorPointerDown} onPointerMove={handleEditorPointerMove} onPointerCancel={cancelImagePointer} onClick={handleEditorClick} onBlur={flushSave}
         style={{flex:1,fontSize:'.95rem',fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.9,color:'var(--text)'}}/>
     </div>
+    </>
   );
 });
 
@@ -9146,8 +9613,27 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
   const handleTitleKey=e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}if(e.key==='Escape'){e.currentTarget.value=localTitle; e.currentTarget.blur();}};
 
   const handleContentSave=useCallback(html=>{
-    if(selected?.kind==='note')setNotes(p=>p.map(n=>n.id===selected.id?{...n,content:html}:n));
-    else if(selected?.kind==='entry')setNotes(p=>p.map(n=>n.id===selected.folderId&&n.type==='project'?{...n,entries:(n.entries||[]).map(e=>e.id===selected.id?{...e,content:html}:e)}:n));
+    if(selected?.kind==='note')setNotes(p=>{
+      let changed=false;
+      const next=p.map(n=>{
+        if(n.id!==selected.id||n.content===html)return n;
+        changed=true;return{...n,content:html};
+      });
+      return changed?next:p;
+    });
+    else if(selected?.kind==='entry')setNotes(p=>{
+      let changed=false;
+      const next=p.map(n=>{
+        if(n.id!==selected.folderId||n.type!=='project')return n;
+        let folderChanged=false;
+        const entries=(n.entries||[]).map(e=>{
+          if(e.id!==selected.id||e.content===html)return e;
+          changed=true;folderChanged=true;return{...e,content:html};
+        });
+        return folderChanged?{...n,entries}:n;
+      });
+      return changed?next:p;
+    });
   },[selected,setNotes]);
 
   // ── CREATE ──
@@ -9396,12 +9882,16 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
 
   const typeMeta=n=>isCategory(n)?{icon:'layers-3',label:'Categoria'}:isFolder(n)?{icon:'folder',label:'Pasta'}:{icon:'file-text',label:'Nota'};
 
-  const DropZone=({children,style={}})=>(
+  // Render helpers are invoked as ordinary functions, not mounted as nested
+  // React component types. A component declared inside IdeasLab gets a new
+  // identity on every notes update; React then unmounts/remounts its complete
+  // subtree at each autosave, which was the visible note flash.
+  const renderRootDropZone=(children,style={})=>(
     <div onDragOver={e=>{e.preventDefault();e.currentTarget.classList.add('drag-over');}} onDragLeave={e=>e.currentTarget.classList.remove('drag-over')} onDrop={rootDrop}
       style={{border:'1px dashed transparent',borderRadius:8,padding:'2px 0',transition:'all .12s',...style}}>{children}</div>
   );
 
-  const Row=({n,depth=0})=>{
+  const renderRow=(n,depth=0)=>{
     const meta=typeMeta(n), open=isExpanded(n.id), kids=isCategory(n)?childrenOf(n.id):[];
     // Use d.parentId from the drag payload (recorded at drag-start) instead of
     // itemById(d.id) which can be stale when parentId was changed by a previous drop.
@@ -9465,7 +9955,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           {isCategory(n)?`${childrenOf(n.id).length} item${childrenOf(n.id).length===1?'':'s'}`:isFolder(n)?`${(n.entries||[]).length} nota${(n.entries||[]).length===1?'':'s'}`:n.date}
         </div>
       </div>
-      {!showTrash&&open&&isCategory(n)&&kids.map(child=><Row key={child.id} n={child} depth={depth+1}/>)}
+      {!showTrash&&open&&isCategory(n)&&kids.map(child=>renderRow(child,depth+1))}
       {!showTrash&&open&&isFolder(n)&&(
         <div style={{marginLeft:26+depth*16,paddingLeft:8,borderLeft:'1px solid var(--border)'}}>
           {(n.entries||[]).length===0&&<div style={{fontSize:'.69rem',color:'var(--muted)',padding:'6px 8px 8px'}}>Nenhuma nota.</div>}
@@ -9495,7 +9985,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
 
   const tree=childrenOf(null);
 
-  const Editor=()=>{
+  const renderEditor=()=>{
     const target=selected?.kind==='entry'?selectedEntry:selectedItem;
     if(!target)return <div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)',minWidth:0}}><Icon name="notebook-pen" size={32} style={{opacity:.3}}/><p style={{fontSize:'.85rem'}}>Abra uma nota para editar</p></div>;
     const date=target.date||'';
@@ -9518,7 +10008,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
   };
 
   if(!isMobile)return(
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
+    <div className="fade-up ideas-view" style={{maxWidth:'100%',boxSizing:'border-box',height:'calc(100vh - clamp(32px,5vh,80px))',display:'flex',flexDirection:'column'}}>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:14,gap:10,flexShrink:0}}>
         <h1 className="serif stave-title" style={{fontSize:'clamp(1.4rem,2.2vh,2rem)',fontWeight:300}}><StaveTitleNotes fig="beam"/>Anotações</h1>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -9548,20 +10038,18 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           ):(
             <div ref={treePaneRef} onScroll={e=>{treeScrollTopRef.current=e.currentTarget.scrollTop;}} style={{flex:1,overflowY:'auto',paddingRight:3}}>
               {tree.length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
-              {tree.map(n=><Row key={n.id} n={n}/>)}
-              <DropZone style={{marginTop:8,padding:'8px 8px',fontSize:'.68rem',color:'var(--muted)',textAlign:'center'}}>
-                Solte aqui para mover para a raiz
-              </DropZone>
+              {tree.map(n=>renderRow(n))}
+              {renderRootDropZone('Solte aqui para mover para a raiz',{marginTop:8,padding:'8px 8px',fontSize:'.68rem',color:'var(--muted)',textAlign:'center'})}
             </div>
           )}
         </div>
-        <div style={{flex:1,minWidth:0,display:'flex',minHeight:0}}>{showTrash?<div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',fontSize:'.85rem'}}>Itens excluídos</div>:<Editor/>}</div>
+        <div style={{flex:1,minWidth:0,display:'flex',minHeight:0}}>{showTrash?<div className="card" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',fontSize:'.85rem'}}>Itens excluídos</div>:renderEditor()}</div>
       </div>
     </div>
   );
 
   return(
-    <div className="fade-up" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,display:'flex',flexDirection:'column',minHeight:'calc(100vh - 70px)'}}>
+    <div className="fade-up ideas-view" style={{maxWidth:'100%',boxSizing:'border-box',paddingBottom:16,display:'flex',flexDirection:'column',minHeight:'calc(100vh - 70px)'}}>
       {!mobileDetail?(
         <>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:10}}>
@@ -9581,8 +10069,8 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           {!showTrash?(
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
               {tree.length===0&&<div style={{fontSize:'.85rem',color:'var(--muted)',padding:'16px 4px',textAlign:'center'}}>Nenhuma anotação ainda.</div>}
-              {tree.map(n=><Row key={n.id} n={n}/>)}
-              <DropZone style={{marginTop:8,padding:'9px 8px',fontSize:'.72rem',color:'var(--muted)',textAlign:'center'}}>Solte aqui para a raiz</DropZone>
+              {tree.map(n=>renderRow(n))}
+              {renderRootDropZone('Solte aqui para a raiz',{marginTop:8,padding:'9px 8px',fontSize:'.72rem',color:'var(--muted)',textAlign:'center'})}
             </div>
           ):(
             <div style={{display:'flex',flexDirection:'column',gap:4}}>
@@ -9596,7 +10084,7 @@ const IdeasLab=React.memo(({notes,setNotes,navTick,isMobile})=>{
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
             <button className="btn btn-ghost" style={{padding:'8px 10px'}} onClick={()=>setMobileDetail(false)}><Icon name="arrow-left" size={16}/> Voltar</button>
           </div>
-          {showTrash?<div style={{color:'var(--muted)',fontSize:'.85rem'}}>Lixeira</div>:<div style={{height:'calc(100vh - 120px)',minHeight:380,display:'flex'}}><Editor/></div>}
+          {showTrash?<div style={{color:'var(--muted)',fontSize:'.85rem'}}>Lixeira</div>:<div style={{height:'calc(100vh - 120px)',minHeight:380,display:'flex'}}>{renderEditor()}</div>}
         </>
       )}
     </div>
@@ -10718,7 +11206,7 @@ const App=()=>{
   const [selectedProject,setSelectedProject]=useState(()=>{
     const{projectId}=parseHash();
     if(!projectId)return null;
-    return(persisted?.projects||[]).find(p=>p.id===projectId)||null;
+    return(Array.isArray(persisted?.projects)?persisted.projects:[]).find(p=>p&&p.id===projectId)||null;
   });
   const tabMemoryRef=useRef(bhUiLoad('tabMemory'));
   const rememberProjectsMode=useCallback((mode,p)=>{
@@ -10739,16 +11227,16 @@ const App=()=>{
   const [identity,setIdentity]=useState(()=>loadIdentity());
 
   // Initialize from localStorage if available, else seed
-  const [projects,setProjects]=useState(()=>persisted?.projects||SEED.projects);
-  const [clients,setClients]=useState(()=>persisted?.clients||SEED.clients);
-  const [mentors,setMentors]=useState(()=>persisted?.mentors||SEED.mentors);
-  const [notes,setNotes]=useState(()=>persisted?.notes||SEED.notes);
-  const [tasks,setTasks]=useState(()=>persisted?.tasks||SEED.tasks);
-  const [socialPosts,setSocialPosts]=useState(()=>persisted?.socialPosts||SEED.socialPosts);
-  const [galleryPosts,setGalleryPosts]=useState(()=>persisted?.galleryPosts||SEED.galleryPosts);
-  const [galleryFolders,setGalleryFolders]=useState(()=>persisted?.galleryFolders||DEFAULT_GALLERY_FOLDERS);
+  const [projects,setProjects]=useState(()=>Array.isArray(persisted?.projects)?persisted.projects:SEED.projects);
+  const [clients,setClients]=useState(()=>Array.isArray(persisted?.clients)?persisted.clients:SEED.clients);
+  const [mentors,setMentors]=useState(()=>Array.isArray(persisted?.mentors)?persisted.mentors:SEED.mentors);
+  const [notes,setNotes]=useState(()=>Array.isArray(persisted?.notes)?persisted.notes:SEED.notes);
+  const [tasks,setTasks]=useState(()=>Array.isArray(persisted?.tasks)?persisted.tasks:SEED.tasks);
+  const [socialPosts,setSocialPosts]=useState(()=>Array.isArray(persisted?.socialPosts)?persisted.socialPosts:SEED.socialPosts);
+  const [galleryPosts,setGalleryPosts]=useState(()=>Array.isArray(persisted?.galleryPosts)?persisted.galleryPosts:SEED.galleryPosts);
+  const [galleryFolders,setGalleryFolders]=useState(()=>Array.isArray(persisted?.galleryFolders)?persisted.galleryFolders:DEFAULT_GALLERY_FOLDERS);
   const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
-  const [noteGroups,setNoteGroups]=useState(()=>persisted?.noteGroups||DEFAULT_NOTE_GROUPS);
+  const [noteGroups,setNoteGroups]=useState(()=>Array.isArray(persisted?.noteGroups)?persisted.noteGroups:DEFAULT_NOTE_GROUPS);
   const [pomoData,setPomoData]=useState(()=>pomoRankMaintain(pomoLoad()));
   const [rankPromotion,setRankPromotion]=useState(null);
   const dismissRankPromotion=useCallback(()=>setRankPromotion(null),[]);
@@ -10779,7 +11267,7 @@ const App=()=>{
     const existing=wantsAppend?galleryPosts.find(p=>{
       if(!p||p.deleted||String(p.id)!==String(session.existingPostId))return false;
       if(destination==='project'){
-        const keys=[p.sourceTargetKey,...(p.sourceTargetKeys||[])].filter(Boolean).map(String);
+        const keys=[p.sourceTargetKey,...(Array.isArray(p.sourceTargetKeys)?p.sourceTargetKeys:[])].filter(Boolean).map(String);
         return p.storageScope==='project'&&keys.includes(String(session.targetKey));
       }
       return p.storageScope!=='project'&&String(p.folder)===String(session.folderId);
@@ -10792,7 +11280,7 @@ const App=()=>{
     const newPost={
       id:postId,folder:folderId,storageScope:destination,projectId:destination==='project'?String(session.targetKey||'').replace(/^project:/,''):null,title:session.title||'Sessão — '+target,date:session.date||localDateISO(),
       content:entry,
-      images:session.images||[],bannerImage:(session.images||[])[0]||'',deleted:false,sourceSessionId:session.id,
+      images:Array.isArray(session.images)?session.images:[],bannerImage:(Array.isArray(session.images)?session.images:[])[0]||'',deleted:false,sourceSessionId:session.id,
       sourceSessionIds:[session.id],sourceTargetKey:session.targetKey||'none',sourceTargetKeys:[session.targetKey||'none'],sourceTargetType:session.targetType||'other',sourceSeasonId:session.seasonId||rankSeasonForDate().id
     };
     if(destination==='gallery')setGalleryFolders(prev=>{
@@ -10802,12 +11290,12 @@ const App=()=>{
     });
     setGalleryPosts(prev=>{
       const list=Array.isArray(prev)?prev:[];
-      if(!existing)return[newPost,...list.filter(p=>String(p.sourceSessionId)!==String(session.id)&&!(p.sourceSessionIds||[]).map(String).includes(String(session.id)))];
+      if(!existing)return[newPost,...list.filter(p=>String(p.sourceSessionId)!==String(session.id)&&!(Array.isArray(p.sourceSessionIds)?p.sourceSessionIds:[]).map(String).includes(String(session.id)))];
       return list.map(post=>{
         if(String(post.id)!==String(existing.id))return post;
-        const sourceSessionIds=Array.from(new Set([post.sourceSessionId,...(post.sourceSessionIds||[]),session.id].filter(Boolean).map(String)));
-        const sourceTargetKeys=Array.from(new Set([post.sourceTargetKey,...(post.sourceTargetKeys||[]),session.targetKey||'none'].filter(Boolean).map(String)));
-        const images=[...(post.images||[]),...(session.images||[])];
+        const sourceSessionIds=Array.from(new Set([post.sourceSessionId,...(Array.isArray(post.sourceSessionIds)?post.sourceSessionIds:[]),session.id].filter(Boolean).map(String)));
+        const sourceTargetKeys=Array.from(new Set([post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[]),session.targetKey||'none'].filter(Boolean).map(String)));
+        const images=[...(Array.isArray(post.images)?post.images:[]),...(Array.isArray(session.images)?session.images:[])];
         return{...post,storageScope:destination,folder:destination==='gallery'?folderId:null,projectId:destination==='project'?String(session.targetKey||'').replace(/^project:/,''):null,images,bannerImage:post.bannerImage||images[0]||'',content:[post.content,entry].filter(Boolean).join('\n\n— — —\n\n'),sourceSessionIds,sourceTargetKeys,lastSessionAt:session.endedAt||new Date().toISOString()};
       });
     });
