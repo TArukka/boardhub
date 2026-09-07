@@ -63,6 +63,15 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.54 — displayed remaining time no longer loses a minute
+  (sep/2026)
+  Elapsed focus is intentionally shown in completed whole minutes. Remaining
+  time was using the same floor operation, so 31m31s elapsed and 1h28m29s left
+  appeared as 31m + 1h28m = 1h59m even though the stored seconds totalled 2h.
+  Remaining obligations now round UP to the next minute; elapsed achievements
+  continue to round down. The display therefore never understates what is left.
+  ──────
+
   BoardHub v23.53 — closing a tab ends the focus as abandoned (sep/2026)
   Closing/reloading the document no longer leaves a focus session resumable.
   A pagehide checkpoint records the exact countdown remainder and, on the next
@@ -5324,6 +5333,14 @@ const pomoFmtSecs = function(secs) {
   return secs + 's';
 };
 
+// Elapsed time shows completed units; an obligation must do the opposite. If
+// 1h28m01s remains, displaying 1h28m would both understate the work left and
+// make it appear not to complement the elapsed whole-minute counter to 2h.
+const pomoFmtRemaining = function(secs) {
+  const value=Math.max(0,Number(secs)||0);
+  return value<=0?'0s':pomoFmtSecs(Math.ceil(value/60)*60);
+};
+
 const pomoFmtDay = function(dateStr) {
   try {
     var d = new Date(dateStr + 'T12:00:00');
@@ -5758,10 +5775,10 @@ const RankProfilePanel=({pomoData,isMobile=false,isSmall=false,onOpenGallery})=>
         <div className="rank-panel-title"><span>{pos.rankName}</span><strong>{pos.divisionRoman}</strong></div>
         <div className="rank-progress-track"><span style={{width:pct+'%'}}/></div>
         <div className="rank-profile-meta"><span>{pos.isMax?'Progressão completa':pos.divisionProgress.toLocaleString('pt-BR')+' / '+pos.needed.toLocaleString('pt-BR')+' pts para a próxima divisão'}</span><span>{rank.points.toLocaleString('pt-BR')} total</span></div>
-        {projectedLoss>0&&<div className="rank-decay-hint"><Icon name="alert-triangle" size={12}/><span><strong>Risco de decay: −{projectedLoss} pts.</strong> {projectedDrop?'Cairia para '+projectedPosition.rankName+' '+projectedPosition.divisionRoman+'. ':''}{pomoFmtSecs(Math.max(0,5400-todaySecs))} de foco evita a perda.</span></div>}
+        {projectedLoss>0&&<div className="rank-decay-hint"><Icon name="alert-triangle" size={12}/><span><strong>Risco de decay: −{projectedLoss} pts.</strong> {projectedDrop?'Cairia para '+projectedPosition.rankName+' '+projectedPosition.divisionRoman+'. ':''}{pomoFmtRemaining(Math.max(0,5400-todaySecs))} de foco evita a perda.</span></div>}
       </div>
       <div className="rank-panel-footer">
-        <div className="rank-panel-metric"><span>Próxima vitória</span><strong>{pomoFmtSecs(Math.max(0,7200-(rank.cycleSeconds||0)))}</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
+        <div className="rank-panel-metric"><span>Próxima vitória</span><strong>{pomoFmtRemaining(Math.max(0,7200-(rank.cycleSeconds||0)))}</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
         <div className="rank-panel-metric"><span>Sessões nesta temporada</span><strong>{seasonSessions}</strong></div>
         <div className="rank-panel-actions">
           <button className="btn btn-outline" onClick={()=>setHistoryView('ranks')}><Icon name="list-checks" size={12}/> Ranks</button>
