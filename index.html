@@ -63,6 +63,32 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.53 — closing a tab ends the focus as abandoned (sep/2026)
+  Closing/reloading the document no longer leaves a focus session resumable.
+  A pagehide checkpoint records the exact countdown remainder and, on the next
+  open, commits only the still-uncredited seconds and adds a “Desistida” row to
+  session history without opening the image/post modal. A per-document id keeps
+  ordinary navigation between BoardHub views resumable; a different document id
+  means the old page really ended. If the browser is killed before pagehide, the
+  last timer checkpoint is used as the conservative close time.
+  ──────
+
+  BoardHub v23.52 — completed Pomodoros reconcile to their configured duration
+  (sep/2026)
+  A naturally completed focus session no longer trusts browser timer callbacks
+  as its source of truth. Browsers may throttle or freeze a background tab; if
+  one of those intervals was never delivered, the countdown could finish while
+  the daily total and session history contained only the callbacks that ran
+  (for example, 22m from a configured 30m session).
+  FIX: each new session stores its planned duration. At natural completion the
+  app compares that invariant with the chunks already credited and commits any
+  missing remainder before creating the history row, calculating rank progress,
+  or opening the image modal. Pausing and resetting still record only time that
+  actually elapsed; the reconciliation runs exclusively at a zero countdown.
+  The duration control is also locked while a paused session exists, preventing
+  its target duration from changing halfway through the same session.
+  ──────
+
   BoardHub v23.51 — post-review cleanup: F-2, F-3, F-6 (aug/2026)
   Three minor items from the same line-by-line review that found F-1. None change
   behaviour; grouped because each is a few lines.
@@ -2613,7 +2639,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .rank-panel-actions{display:flex;gap:6px}.rank-panel-actions .btn{padding:5px 9px;font-size:.68rem;white-space:nowrap}
 .rank-history-list{display:flex;flex-direction:column;gap:7px;max-height:55vh;overflow:auto;padding-right:2px}.rank-history-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--bg)}.rank-history-row>div:not(.rank-session-date){display:flex;flex-direction:column;min-width:0}.rank-history-row strong{font-size:.82rem;color:var(--text)}.rank-history-row span{font-size:.7rem;color:var(--muted)}.rank-history-row>em{font-size:.7rem;font-style:normal;color:var(--muted);white-space:nowrap}.rank-history-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px;color:var(--muted);font-size:.82rem;text-align:center}
 .rank-guide{max-height:68vh;overflow:auto;padding-right:3px}.rank-guide-intro{margin:0 0 13px;color:var(--muted);font-size:.78rem;line-height:1.45}.rank-guide-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.rank-guide-card{display:flex;min-width:0;flex-direction:column;align-items:center;padding:10px 5px 8px;border:1px solid var(--border);border-radius:10px;background:var(--bg);text-align:center}.rank-guide-card strong{margin-top:2px;font-size:.72rem;line-height:1.1}.rank-guide-card span{margin-top:2px;color:var(--muted);font-size:.58rem}.rank-guide-rules{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.rank-guide-rule{padding:11px 12px;border:1px solid var(--border);border-radius:10px}.rank-guide-rule h3{display:flex;align-items:center;gap:6px;margin:0 0 4px;font-size:.72rem}.rank-guide-rule p{margin:0;color:var(--muted);font-size:.68rem;line-height:1.4}.rank-decay-table{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:7px}.rank-decay-table span{display:flex;flex-direction:column;align-items:center;padding:5px 2px;border-radius:6px;background:var(--bg);font-size:.56rem;color:var(--muted)}.rank-decay-table strong{font-size:.62rem;color:var(--text)}
-.rank-session-row{grid-template-columns:62px 1fr auto}.rank-session-date{display:flex;flex-direction:column;border-right:1px solid var(--border)}.rank-session-status{padding:3px 7px;border-radius:20px;font-weight:700;white-space:nowrap}.rank-session-status.saved{color:var(--ok-fg);background:var(--ok-bg)}.rank-session-status.local{color:#28667a;background:#e5f4f7}.rank-session-status.pending{color:#9a5c18;background:#fff3dc}
+.rank-session-row{grid-template-columns:62px 1fr auto}.rank-session-date{display:flex;flex-direction:column;border-right:1px solid var(--border)}.rank-session-status{padding:3px 7px;border-radius:20px;font-weight:700;white-space:nowrap}.rank-session-status.saved{color:var(--ok-fg);background:var(--ok-bg)}.rank-session-status.local{color:#28667a;background:#e5f4f7}.rank-session-status.pending{color:#9a5c18;background:#fff3dc}.rank-session-status.abandoned{color:var(--danger-fg);background:var(--danger-bg)}
 .session-capture-overlay{position:fixed;z-index:110000;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,12,15,.78);backdrop-filter:blur(9px);animation:rankOverlayIn .25s ease both}
 .session-capture-modal{width:min(640px,100%);max-height:92vh;overflow:auto;padding:24px;border:1px solid rgba(255,255,255,.13);border-radius:18px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.42);outline:none;box-sizing:border-box}
 .session-capture-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px}.session-capture-heading span{font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#318ca0}.session-capture-heading h2{margin:2px 0 0;font:500 1.8rem 'Cormorant Garamond',serif}.session-capture-heading p{margin:3px 0 0;font-size:.76rem;color:var(--muted)}
@@ -5702,7 +5728,7 @@ const RankSeasonHistory=({rank,onClose})=>{
 };
 const RankSessionHistory=({rank,onClose,onOpenGallery})=>{
   const rows=[...(rank.sessions||[])].sort((a,b)=>String(b.endedAt||'').localeCompare(String(a.endedAt||'')));
-  const statusInfo=row=>row.postDestination==='project'?{cls:'saved',label:'No projeto'}:row.status==='saved-local'?{cls:'local',label:'Neste dispositivo'}:row.status==='saved'?{cls:'saved',label:'Na galeria'}:{cls:'pending',label:'Imagem pendente'};
+  const statusInfo=row=>row.status==='abandoned'?{cls:'abandoned',label:'Desistida'}:row.postDestination==='project'?{cls:'saved',label:'No projeto'}:row.status==='saved-local'?{cls:'local',label:'Neste dispositivo'}:row.status==='saved'?{cls:'saved',label:'Na galeria'}:{cls:'pending',label:'Imagem pendente'};
   return <Modal title="Histórico de sessões" onClose={onClose} width={620}>
     {rows.length===0?<div className="rank-history-empty"><Icon name="timer" size={24}/><span>As sessões concluídas vão aparecer aqui.</span></div>:
       <div className="rank-history-list">{rows.map(row=>{const status=statusInfo(row);return <div className="rank-history-row rank-session-row" key={row.id}>
@@ -5873,6 +5899,50 @@ const RankPromotionOverlay=({promotion,onDone})=>{
   </div>,document.body);
 };
 
+// A completed countdown represents the duration the user deliberately chose,
+// not the number of callbacks the browser happened to deliver. Keep this pure
+// so the completion path can reconcile a throttled/backgrounded tab exactly.
+const pomoSessionChunkSeconds=meta=>(Array.isArray(meta?.chunks)?meta.chunks:[])
+  .reduce((sum,chunk)=>sum+Math.max(0,Number(chunk?.secs)||0),0);
+const pomoSessionPlannedSeconds=(meta,fallbackMins)=>{
+  const stored=Number(meta?.plannedSeconds);
+  return stored>0?Math.round(stored):Math.max(1,Number(fallbackMins)||30)*60;
+};
+const pomoSessionMissingSeconds=(meta,fallbackMins)=>Math.max(0,
+  pomoSessionPlannedSeconds(meta,fallbackMins)-pomoSessionChunkSeconds(meta)
+);
+const POMO_DOCUMENT_ID='pomo-doc-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+const pomoAbandonedFromTimer=(saved,atMs=Date.now())=>{
+  const meta=saved?.sessionMeta;
+  if(!meta||saved?.mode!=='focus')return null;
+  const planned=pomoSessionPlannedSeconds(meta,saved?.focusMins);
+  const pointer=Math.max(0,Number(saved?.timeLeft)||0);
+  const remaining=saved?.isActive&&Number(saved?.endTimestamp)>0
+    ?Math.max(0,Math.round((Number(saved.endTimestamp)-atMs)/1000))
+    :pointer;
+  const credited=pomoSessionChunkSeconds(meta);
+  const durationSeconds=Math.max(credited,Math.min(planned,planned-Math.min(planned,remaining)));
+  const endedAt=new Date(atMs).toISOString();
+  return {
+    id:meta.id||('focus-session-abandoned-'+atMs+'-'+Math.random().toString(36).slice(2,6)),
+    startedAt:meta.startedAt||new Date(atMs-durationSeconds*1000).toISOString(),
+    endedAt,date:localDateISO(new Date(atMs)),durationSeconds,
+    targetKey:saved?.targetKey||'none',startRank:meta.startRank||null,
+    chunks:Array.isArray(meta.chunks)?meta.chunks:[],
+    uncreditedSeconds:Math.max(0,durationSeconds-credited)
+  };
+};
+// Document-level rather than component-level: the Pomodoro panel unmounts when
+// the user visits Galeria, Projetos or Notas, but closing the browser from those
+// views must still finish the running session at the real close timestamp.
+window.addEventListener('pagehide',()=>{
+  const saved=pomoTimerLoad();
+  if(!saved?.sessionMeta||saved.mode!=='focus')return;
+  const at=Date.now(),abandonedSession=pomoAbandonedFromTimer(saved,at);
+  if(!abandonedSession)return;
+  pomoTimerSave({isActive:false,mode:'focus',timeLeft:(saved.focusMins||30)*60,focusMins:saved.focusMins||30,targetKey:saved.targetKey||'none',sessionMeta:null,documentId:POMO_DOCUMENT_ID,savedAt:at,abandonedSession});
+});
+
 const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }) => {
   const BREAK_SECS = 5 * 60;
   const MAX_FOCUS_MINS = 60;
@@ -5881,6 +5951,11 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     const saved = pomoTimerLoad();
     const focusMins = saved?.focusMins ?? 30;
     const targetKey = saved?.targetKey || 'none';
+    const fromAnotherDocument=saved?.sessionMeta&&saved?.mode==='focus'&&saved?.documentId!==POMO_DOCUMENT_ID;
+    const abandonedSession=saved?.abandonedSession||(fromAnotherDocument?pomoAbandonedFromTimer(saved,Number(saved?.savedAt)||Date.now()):null);
+    if(abandonedSession){
+      return {timeLeft:focusMins*60,isActive:false,mode:'focus',endTimestamp:null,focusMins,targetKey,sessionMeta:null,abandonedSession};
+    }
     if (saved && saved.isActive && saved.endTimestamp) {
       const remaining = Math.max(0, Math.round((saved.endTimestamp - Date.now()) / 1000));
       // Start from the last persisted pointer, not from `remaining`. The first
@@ -5889,9 +5964,9 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
       // finishes the session and opens its capture modal instead of silently
       // resetting it to a fresh session.
       const storedLeft=Number.isFinite(Number(saved.timeLeft))?Math.max(0,Number(saved.timeLeft)):focusMins*60;
-      return { timeLeft: Math.max(storedLeft,remaining), isActive: true, mode: saved.mode||'focus', endTimestamp: saved.endTimestamp, focusMins, targetKey, sessionMeta:saved.sessionMeta||null };
+      return { timeLeft: Math.max(storedLeft,remaining), isActive: true, mode: saved.mode||'focus', endTimestamp: saved.endTimestamp, focusMins, targetKey, sessionMeta:saved.sessionMeta||null, abandonedSession:null };
     }
-    return { timeLeft: saved?.timeLeft ?? focusMins*60, isActive: false, mode: saved?.mode||'focus', endTimestamp: null, focusMins, targetKey, sessionMeta:saved?.sessionMeta||null };
+    return { timeLeft: saved?.timeLeft ?? focusMins*60, isActive: false, mode: saved?.mode||'focus', endTimestamp: null, focusMins, targetKey, sessionMeta:saved?.sessionMeta||null, abandonedSession:null };
   })();
 
   const [focusMins, setFocusMins] = useState(_init.focusMins);
@@ -5919,6 +5994,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   const pendingSecsRef  = useRef(0);
   const targetKeyRef    = useRef(_init.targetKey||'none');
   const sessionMetaRef  = useRef(_init.sessionMeta&&_init.mode==='focus'?_init.sessionMeta:null);
+  const abandonedSessionRef=useRef(_init.abandonedSession||null);
   const circleRef       = useRef(null);
   const [displayUnsaved, setDisplayUnsaved] = useState(0);
 
@@ -5953,10 +6029,53 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     const fm = fMins ?? focusMinsRef.current;
     const tk=targetKeyRef.current||'none';
     if (active && tLeft > 0)
-      pomoTimerSave({ isActive: true, mode: m, endTimestamp: Date.now() + tLeft*1000, timeLeft: tLeft, focusMins: fm, targetKey:tk, sessionMeta:sessionMetaRef.current });
+      pomoTimerSave({ isActive: true, mode: m, endTimestamp: endTimestampRef.current||Date.now() + tLeft*1000, timeLeft: tLeft, focusMins: fm, targetKey:tk, sessionMeta:sessionMetaRef.current,documentId:POMO_DOCUMENT_ID,savedAt:Date.now(),abandonedSession:null });
     else
-      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft, focusMins: fm, targetKey:tk, sessionMeta:sessionMetaRef.current });
+      pomoTimerSave({ isActive: false, mode: m, timeLeft: tLeft, focusMins: fm, targetKey:tk, sessionMeta:sessionMetaRef.current,documentId:POMO_DOCUMENT_ID,savedAt:Date.now(),abandonedSession:null });
   };
+
+  // Resolve a session that belonged to an earlier page document. It is added
+  // directly to history as abandoned: no image modal, no automatic post.
+  useEffect(()=>{
+    const abandoned=abandonedSessionRef.current;
+    if(!abandoned)return;
+    abandonedSessionRef.current=null;
+    const endedDate=new Date(abandoned.endedAt||Date.now());
+    const tk=abandoned.targetKey||'none';
+    const uncredited=Math.max(0,Number(abandoned.uncreditedSeconds)||0);
+    const chunks=[...(Array.isArray(abandoned.chunks)?abandoned.chunks:[])];
+    if(uncredited>0){
+      const last=chunks[chunks.length-1];
+      if(last&&last.targetKey===tk)chunks[chunks.length-1]={...last,secs:(Number(last.secs)||0)+uncredited};
+      else chunks.push({targetKey:tk,secs:uncredited});
+    }
+    setPomoData(prev=>{
+      const base=pomoRankMaintain(prev);
+      const dayKey=abandoned.date||localDateISO(endedDate);
+      const days={...base.days,[dayKey]:(base.days[dayKey]||0)+uncredited};
+      let allocations=base.allocations,dailyAllocations=base.dailyAllocations;
+      if(tk!=='none'&&uncredited>0){
+        allocations={...base.allocations,[tk]:(base.allocations[tk]||0)+uncredited};
+        const dayMap={...(base.dailyAllocations[dayKey]||{})};
+        dayMap[tk]=(dayMap[tk]||0)+uncredited;
+        dailyAllocations={...base.dailyAllocations,[dayKey]:dayMap};
+      }
+      const creditedRank=pomoRankCredit(base.rank,uncredited,tk,endedDate);
+      const startRank=rankNormalize(abandoned.startRank||base.rank,endedDate);
+      const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,endedDate),startRank);
+      const session={
+        id:abandoned.id,seasonId:rankSeasonForDate(endedDate).id,
+        startedAt:abandoned.startedAt,endedAt:abandoned.endedAt,date:dayKey,
+        durationSeconds:Math.max(0,Number(abandoned.durationSeconds)||0),
+        targetKey:tk,targetLabel:selectedTargetLabel,
+        targetType:tk.startsWith('project:')?'project':tk.startsWith('cat:')?'category':'other',
+        pointsAwarded:Math.max(0,scoreAfter.points-startRank.points),
+        victoryProgressSeconds:scoreAfter.cycleSeconds,status:'abandoned',images:[],galleryPostId:null
+      };
+      return {...base,days,allocations,dailyAllocations,rank:pomoRankAddSession(creditedRank,session)};
+    });
+    pomoTimerSave({isActive:false,mode:'focus',timeLeft:focusMinsRef.current*60,focusMins:focusMinsRef.current,targetKey:tk,sessionMeta:null,documentId:POMO_DOCUMENT_ID,savedAt:Date.now(),abandonedSession:null});
+  },[]);
 
   const changeTarget = key => {
     if(isActiveRef.current||sessionMetaRef.current)return;
@@ -6044,7 +6163,28 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     });
   };
   const flushPomoSecs = () => flushPomoSecsRef.current?.();
-  useEffect(() => { return () => flushPomoSecsRef.current?.(); }, [isActive]);
+  useEffect(() => { return () => {
+    flushPomoSecsRef.current?.();
+    if(sessionMetaRef.current)persist(isActiveRef.current,timeLeftRef.current,modeRef.current,focusMinsRef.current);
+  }; }, [isActive]);
+
+  // The document-level listener covers closing from another BoardHub view. This
+  // later listener overwrites that fallback with the live refs when the timer is
+  // mounted, eliminating even the small checkpoint gap.
+  useEffect(()=>{
+    const abandon=()=>{
+      if(modeRef.current!=='focus'||!sessionMetaRef.current)return;
+      const at=Date.now();
+      const remaining=isActiveRef.current&&endTimestampRef.current
+        ?Math.max(0,Math.round((endTimestampRef.current-at)/1000))
+        :Math.max(0,timeLeftRef.current);
+      const snapshot={isActive:isActiveRef.current,mode:'focus',endTimestamp:endTimestampRef.current,timeLeft:remaining,focusMins:focusMinsRef.current,targetKey:targetKeyRef.current||'none',sessionMeta:sessionMetaRef.current};
+      const abandonedSession=pomoAbandonedFromTimer(snapshot,at);
+      if(abandonedSession)pomoTimerSave({isActive:false,mode:'focus',timeLeft:focusMinsRef.current*60,focusMins:focusMinsRef.current,targetKey:targetKeyRef.current||'none',sessionMeta:null,documentId:POMO_DOCUMENT_ID,savedAt:at,abandonedSession});
+    };
+    window.addEventListener('pagehide',abandon);
+    return()=>window.removeEventListener('pagehide',abandon);
+  },[]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -6082,11 +6222,25 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
           // made a 30min session record 29m59s. Credit the remainder before the
           // flush.
           if (timeLeftRef.current > 0) { unsavedSecsRef.current += timeLeftRef.current; setDisplayUnsaved(unsavedSecsRef.current); }
-          flushPomoSecs(); playPomoSound('work_end');
+          flushPomoSecs();
+
+          // Background throttling, suspension and restored tabs are allowed to
+          // skip callbacks, but a countdown that reaches zero still represents
+          // the full configured session. Reconcile the invariant after flushing
+          // measured time and before reading chunks or creating the history row.
+          const missingSeconds=sessionMetaRef.current
+            ?pomoSessionMissingSeconds(sessionMetaRef.current,focusMinsRef.current)
+            :0;
+          if(missingSeconds>0){
+            unsavedSecsRef.current+=missingSeconds;
+            setDisplayUnsaved(unsavedSecsRef.current);
+            flushPomoSecs();
+          }
+          playPomoSound('work_end');
           const endedAt=new Date();
           const meta=sessionMetaRef.current;
           const chunks=Array.isArray(meta?.chunks)?meta.chunks:[];
-          const durationSeconds=chunks.reduce((sum,c)=>sum+Math.max(0,Number(c?.secs)||0),0)||focusMinsRef.current*60;
+          const durationSeconds=pomoSessionChunkSeconds(meta)||pomoSessionPlannedSeconds(meta,focusMinsRef.current);
           const startRank=rankNormalize(meta?.startRank||pomoData?.rank,endedAt);
           const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,endedAt),startRank);
           const pointsAwarded=Math.max(0,scoreAfter.points-startRank.points);
@@ -6137,7 +6291,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
       if (next) {
         if(modeRef.current==='focus'&&!sessionMetaRef.current){
           const start=rankNormalize(pomoData?.rank);
-          sessionMetaRef.current={startedAt:new Date().toISOString(),startRank:{seasonId:start.seasonId,points:start.points,cycleSeconds:start.cycleSeconds,cycleProjectSeconds:start.cycleProjectSeconds},chunks:[]};
+          sessionMetaRef.current={id:'focus-session-'+Date.now()+'-'+Math.random().toString(36).slice(2,6),startedAt:new Date().toISOString(),plannedSeconds:focusMinsRef.current*60,startRank:{seasonId:start.seasonId,points:start.points,cycleSeconds:start.cycleSeconds,cycleProjectSeconds:start.cycleProjectSeconds},chunks:[]};
         }
         playPomoSound('start'); endTimestampRef.current = Date.now() + timeLeftRef.current*1000; persist(true, timeLeftRef.current, modeRef.current);
       }
@@ -6167,7 +6321,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     return Math.max(1, Math.min(MAX_FOCUS_MINS, Math.round(t * MAX_FOCUS_MINS)));
   };
   const handlePointerDown = (e) => {
-    if (isActiveRef.current) return;
+    if (isActiveRef.current||sessionMetaRef.current) return;
     e.preventDefault();
 
     // Editing the metronome weight always prepares a focus session. The old
