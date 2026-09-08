@@ -63,6 +63,17 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.55 — victories are daily cycles (sep/2026)
+  The partial progress toward a 2h victory now belongs to one local calendar
+  day. At the first normalization, credit, or maintenance after midnight,
+  cycleSeconds and cycleProjectSeconds reset to zero; awarded points and session
+  history remain untouched. Existing saves without cycleDate migrate from
+  today's recorded focus (modulo 2h), preserving the progress visibly earned
+  today instead of carrying an unknowable fragment from older days.
+  Session chunks now include their local date so a focus crossing midnight
+  credits each side to the correct daily victory cycle.
+  ──────
+
   BoardHub v23.54 — displayed remaining time no longer loses a minute
   (sep/2026)
   Elapsed focus is intentionally shown in completed whole minutes. Remaining
@@ -5160,7 +5171,7 @@ const rankSeasonNext=id=>{
   return {id:year+'-'+part,year,part,roman:RANK_ROMANS[part-1]};
 };
 const rankDefault=(now=new Date(),history=[],sessions=[],notices=[])=>({
-  seasonId:rankSeasonForDate(now).id,points:0,cycleSeconds:0,cycleProjectSeconds:0,
+  seasonId:rankSeasonForDate(now).id,points:0,cycleDate:rankDateKey(now),cycleSeconds:0,cycleProjectSeconds:0,
   decayApplied:{},startedOn:rankDateKey(now),history:Array.isArray(history)?history.slice(-24):[],
   sessions:Array.isArray(sessions)?sessions.slice(-1000):[],
   notices:Array.isArray(notices)?notices.filter(Boolean).slice(-8):[]
@@ -5168,12 +5179,17 @@ const rankDefault=(now=new Date(),history=[],sessions=[],notices=[])=>({
 const rankNormalize=(value,now=new Date())=>{
   const src=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
   const fallback=rankDefault(now,src.history);
+  const today=rankDateKey(now);
+  const cycleDate=typeof src.cycleDate==='string'?src.cycleDate:today;
+  const sameCycleDay=cycleDate===today;
+  const cycleSeconds=sameCycleDay?Math.max(0,Math.min(7199,Number(src.cycleSeconds)||0)):0;
   return {
     ...fallback,...src,
     seasonId:typeof src.seasonId==='string'?src.seasonId:fallback.seasonId,
     points:Math.max(0,Math.min(RANK_MAX,Number(src.points)||0)),
-    cycleSeconds:Math.max(0,Math.min(7199,Number(src.cycleSeconds)||0)),
-    cycleProjectSeconds:Math.max(0,Number(src.cycleProjectSeconds)||0),
+    cycleDate:today,
+    cycleSeconds,
+    cycleProjectSeconds:sameCycleDay?Math.min(cycleSeconds,Math.max(0,Number(src.cycleProjectSeconds)||0)):0,
     decayApplied:src.decayApplied&&typeof src.decayApplied==='object'&&!Array.isArray(src.decayApplied)?src.decayApplied:{},
     startedOn:typeof src.startedOn==='string'?src.startedOn:fallback.startedOn,
     history:Array.isArray(src.history)?src.history.slice(-24):[],
@@ -5264,7 +5280,7 @@ const pomoRankCredit=(value,secs,targetKey,now=new Date())=>{
     remaining-=take;
     if(rank.cycleSeconds>=7200){
       const reward=Math.round(200+50*(rank.cycleProjectSeconds/7200));
-      rank={...rank,points:Math.min(RANK_MAX,rank.points+reward),cycleSeconds:0,cycleProjectSeconds:0};
+      rank={...rank,points:Math.min(RANK_MAX,rank.points+reward),cycleDate:rankDateKey(now),cycleSeconds:0,cycleProjectSeconds:0};
     }
   }
   return rank;
@@ -5278,13 +5294,24 @@ const pomoRankAddSession=(value,session)=>{
 const pomoEmpty = () => ({days:{},categories:[],allocations:{},dailyAllocations:{},rank:rankDefault()});
 const pomoNormalize = d => {
   const src=(d&&typeof d==='object'&&!Array.isArray(d))?d:{};
+  const days=(src.days&&typeof src.days==='object'&&!Array.isArray(src.days))?src.days:{};
+  const dailyAllocations=(src.dailyAllocations&&typeof src.dailyAllocations==='object'&&!Array.isArray(src.dailyAllocations))?src.dailyAllocations:{};
+  const today=rankDateKey();
+  let rank=rankNormalize(src.rank);
+  if(!(src.rank&&typeof src.rank.cycleDate==='string')){
+    const todaySecs=Math.max(0,Number(days[today])||0);
+    const cycleSeconds=todaySecs%7200;
+    const todayProjectSecs=Object.entries(dailyAllocations[today]||{}).reduce((sum,[key,value])=>sum+(String(key).startsWith('project:')?Math.max(0,Number(value)||0):0),0);
+    const projectRatio=todaySecs>0?Math.min(1,todayProjectSecs/todaySecs):0;
+    rank={...rank,cycleDate:today,cycleSeconds,cycleProjectSeconds:Math.round(cycleSeconds*projectRatio)};
+  }
   return {
     ...src,
-    days:(src.days&&typeof src.days==='object'&&!Array.isArray(src.days))?src.days:{},
+    days,
     categories:Array.isArray(src.categories)?src.categories.filter(c=>c&&c.id&&typeof c.name==='string'):[],
     allocations:(src.allocations&&typeof src.allocations==='object'&&!Array.isArray(src.allocations))?src.allocations:{},
-    dailyAllocations:(src.dailyAllocations&&typeof src.dailyAllocations==='object'&&!Array.isArray(src.dailyAllocations))?src.dailyAllocations:{},
-    rank:rankNormalize(src.rank),
+    dailyAllocations,
+    rank,
   };
 };
 const pomoProjectKey = id => 'project:'+String(id);
@@ -5727,7 +5754,7 @@ const RankGuide=({onClose})=>{
       })}</div>
       <div className="rank-guide-rules">
         <div className="rank-guide-rule"><h3><Icon name="list-checks" size={13}/> Divisões</h3><p>As divisões I–V exigem 1.000 pontos cada. A Divisão VI é a etapa final de cada rank e exige 2.000 pontos.</p></div>
-        <div className="rank-guide-rule"><h3><Icon name="timer" size={13}/> Vitórias</h3><p>Cada ciclo acumulado de 2h concede 200 pontos. O tempo ligado a projetos aumenta proporcionalmente a vitória, até 250 pontos.</p></div>
+        <div className="rank-guide-rule"><h3><Icon name="timer" size={13}/> Vitórias diárias</h3><p>Cada 2h acumuladas no mesmo dia concede 200 pontos. O tempo ligado a projetos aumenta proporcionalmente a vitória, até 250 pontos. O progresso parcial reinicia à meia-noite.</p></div>
         <div className="rank-guide-rule"><h3><Icon name="alert-triangle" size={13}/> Decay em dias úteis</h3><p>O total focado no dia define a perda. Sábados e domingos não aplicam decay, e a pontuação nunca passa de zero.</p><div className="rank-decay-table">{decay.map(([time,loss])=><span key={time}>{time}<strong>{loss}</strong></span>)}</div></div>
         <div className="rank-guide-rule"><h3><Icon name="calendar-days" size={13}/> Temporadas</h3><p>São três por ano: I (jan–abr), II (mai–ago) e III (set–dez). O rank final entra no histórico e os pontos recomeçam do zero.</p></div>
       </div>
@@ -6058,17 +6085,18 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     if(!abandoned)return;
     abandonedSessionRef.current=null;
     const endedDate=new Date(abandoned.endedAt||Date.now());
+    const abandonmentDay=abandoned.date||localDateISO(endedDate);
     const tk=abandoned.targetKey||'none';
     const uncredited=Math.max(0,Number(abandoned.uncreditedSeconds)||0);
     const chunks=[...(Array.isArray(abandoned.chunks)?abandoned.chunks:[])];
     if(uncredited>0){
       const last=chunks[chunks.length-1];
-      if(last&&last.targetKey===tk)chunks[chunks.length-1]={...last,secs:(Number(last.secs)||0)+uncredited};
-      else chunks.push({targetKey:tk,secs:uncredited});
+      if(last&&last.targetKey===tk&&(!last.dateKey||last.dateKey===abandonmentDay))chunks[chunks.length-1]={...last,dateKey:abandonmentDay,secs:(Number(last.secs)||0)+uncredited};
+      else chunks.push({targetKey:tk,dateKey:abandonmentDay,secs:uncredited});
     }
     setPomoData(prev=>{
       const base=pomoRankMaintain(prev);
-      const dayKey=abandoned.date||localDateISO(endedDate);
+      const dayKey=abandonmentDay;
       const days={...base.days,[dayKey]:(base.days[dayKey]||0)+uncredited};
       let allocations=base.allocations,dailyAllocations=base.dailyAllocations;
       if(tk!=='none'&&uncredited>0){
@@ -6078,8 +6106,9 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
         dailyAllocations={...base.dailyAllocations,[dayKey]:dayMap};
       }
       const creditedRank=pomoRankCredit(base.rank,uncredited,tk,endedDate);
-      const startRank=rankNormalize(abandoned.startRank||base.rank,endedDate);
-      const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,endedDate),startRank);
+      const firstDate=chunks[0]?.dateKey?rankDateFromKey(chunks[0].dateKey):endedDate;
+      const startRank=rankNormalize(abandoned.startRank||base.rank,firstDate);
+      const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,chunk.dateKey?rankDateFromKey(chunk.dateKey):endedDate),startRank);
       const session={
         id:abandoned.id,seasonId:rankSeasonForDate(endedDate).id,
         startedAt:abandoned.startedAt,endedAt:abandoned.endedAt,date:dayKey,
@@ -6151,18 +6180,18 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   flushPomoSecsRef.current = () => {
     if (unsavedSecsRef.current <= 0) return;
     const secs = unsavedSecsRef.current;
+    const dayKey=pomoTodayKey();
     unsavedSecsRef.current = 0; setDisplayUnsaved(0);
     pendingSecsRef.current += secs;
     if(modeRef.current==='focus'&&sessionMetaRef.current){
       const tk=targetKeyRef.current||'none',chunks=[...(sessionMetaRef.current.chunks||[])];
       const last=chunks[chunks.length-1];
-      if(last&&last.targetKey===tk)chunks[chunks.length-1]={...last,secs:(Number(last.secs)||0)+secs};
-      else chunks.push({targetKey:tk,secs});
+      if(last&&last.targetKey===tk&&(!last.dateKey||last.dateKey===dayKey))chunks[chunks.length-1]={...last,dateKey:dayKey,secs:(Number(last.secs)||0)+secs};
+      else chunks.push({targetKey:tk,dateKey:dayKey,secs});
       sessionMetaRef.current={...sessionMetaRef.current,chunks};
     }
     setPomoData(prev => {
       const base=pomoRankMaintain(prev);
-      const dayKey = pomoTodayKey();
       const newDays = { ...base.days };
       newDays[dayKey] = (newDays[dayKey] || 0) + secs;
       const tk=targetKeyRef.current||'none';
@@ -6175,7 +6204,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
         dailyAllocations={...base.dailyAllocations,[dayKey]:dayMap};
       }
       pendingSecsRef.current = Math.max(0, pendingSecsRef.current - secs);
-      const rank=pomoRankCredit(base.rank,secs,tk);
+      const rank=pomoRankCredit(base.rank,secs,tk,rankDateFromKey(dayKey));
       return { ...base, days:newDays, allocations, dailyAllocations, rank };
     });
   };
@@ -6258,8 +6287,9 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
           const meta=sessionMetaRef.current;
           const chunks=Array.isArray(meta?.chunks)?meta.chunks:[];
           const durationSeconds=pomoSessionChunkSeconds(meta)||pomoSessionPlannedSeconds(meta,focusMinsRef.current);
-          const startRank=rankNormalize(meta?.startRank||pomoData?.rank,endedAt);
-          const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,endedAt),startRank);
+          const firstDate=chunks[0]?.dateKey?rankDateFromKey(chunks[0].dateKey):endedAt;
+          const startRank=rankNormalize(meta?.startRank||pomoData?.rank,firstDate);
+          const scoreAfter=chunks.reduce((score,chunk)=>pomoRankCredit(score,chunk.secs,chunk.targetKey,chunk.dateKey?rankDateFromKey(chunk.dateKey):endedAt),startRank);
           const pointsAwarded=Math.max(0,scoreAfter.points-startRank.points);
           const tk=targetKeyRef.current||'none';
           sessionMetaRef.current=null;
