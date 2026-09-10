@@ -63,6 +63,24 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.59 — project post deletion and paged session days (sep/2026)
+  Project focus posts can now be permanently deleted from their detail modal,
+  after an explicit confirmation. Their Pomodoro session remains in history,
+  but no longer links to a removed post. Session history is grouped by day and
+  paginated in sets of five days so it stays compact as the archive grows.
+  ──────
+
+  BoardHub v23.58 — session posts become first-class navigation (sep/2026)
+  Session history rows now show the linked post thumbnail and open that exact
+  post in Gallery or in the project's Focus Sessions tab. The generic Open
+  Gallery footer was removed. Pomodoro categories now mirror active Gallery
+  folders one-to-one, including rename/archive/delete changes, with legacy time
+  allocations migrated by id or matching label. Auto-generated post copy keeps
+  only session duration (and the optional note), never rank points. Project post
+  popups are wider, use a four-column image grid, and allow later editing of
+  title, date, text, and images. Gallery's post editor also uses four columns.
+  ──────
+
   BoardHub v23.57 — proportional session receipts repaired (sep/2026)
   Session snapshots now retain the daily cycle date and fractional point units.
   Without those fields, the history could show +0 after the daily victory even
@@ -2678,7 +2696,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .rank-panel-actions{display:flex;gap:6px}.rank-panel-actions .btn{padding:5px 9px;font-size:.68rem;white-space:nowrap}
 .rank-history-list{display:flex;flex-direction:column;gap:7px;max-height:55vh;overflow:auto;padding-right:2px}.rank-history-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--bg)}.rank-history-row>div:not(.rank-session-date){display:flex;flex-direction:column;min-width:0}.rank-history-row strong{font-size:.82rem;color:var(--text)}.rank-history-row span{font-size:.7rem;color:var(--muted)}.rank-history-row>em{font-size:.7rem;font-style:normal;color:var(--muted);white-space:nowrap}.rank-history-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px;color:var(--muted);font-size:.82rem;text-align:center}
 .rank-guide{max-height:68vh;overflow:auto;padding-right:3px}.rank-guide-intro{margin:0 0 13px;color:var(--muted);font-size:.78rem;line-height:1.45}.rank-guide-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.rank-guide-card{display:flex;min-width:0;flex-direction:column;align-items:center;padding:10px 5px 8px;border:1px solid var(--border);border-radius:10px;background:var(--bg);text-align:center}.rank-guide-card strong{margin-top:2px;font-size:.72rem;line-height:1.1}.rank-guide-card span{margin-top:2px;color:var(--muted);font-size:.58rem}.rank-guide-rules{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.rank-guide-rule{padding:11px 12px;border:1px solid var(--border);border-radius:10px}.rank-guide-rule h3{display:flex;align-items:center;gap:6px;margin:0 0 4px;font-size:.72rem}.rank-guide-rule p{margin:0;color:var(--muted);font-size:.68rem;line-height:1.4}.rank-decay-table{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:7px}.rank-decay-table span{display:flex;flex-direction:column;align-items:center;padding:5px 2px;border-radius:6px;background:var(--bg);font-size:.56rem;color:var(--muted)}.rank-decay-table strong{font-size:.62rem;color:var(--text)}
-.rank-session-row{grid-template-columns:62px 1fr auto}.rank-session-date{display:flex;flex-direction:column;border-right:1px solid var(--border)}.rank-session-status{padding:3px 7px;border-radius:20px;font-weight:700;white-space:nowrap}.rank-session-status.saved{color:var(--ok-fg);background:var(--ok-bg)}.rank-session-status.local{color:#28667a;background:#e5f4f7}.rank-session-status.pending{color:#9a5c18;background:#fff3dc}.rank-session-status.abandoned{color:var(--danger-fg);background:var(--danger-bg)}
+.rank-session-row{grid-template-columns:48px 46px 1fr auto}.rank-session-row.is-linked{cursor:pointer;transition:border-color .15s,transform .15s,background .15s}.rank-session-row.is-linked:hover{border-color:color-mix(in srgb,var(--text) 32%,var(--border));background:var(--surface);transform:translateY(-1px)}.rank-session-thumb{width:46px;height:34px;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border)}.rank-session-thumb img,.rank-session-thumb video{width:100%;height:100%;display:block;object-fit:cover}.rank-session-date{display:flex;flex-direction:column;border-right:1px solid var(--border)}.rank-session-date strong{font-variant-numeric:tabular-nums}.rank-session-status{padding:3px 7px;border-radius:20px;font-weight:700;white-space:nowrap}.rank-session-status.saved{color:var(--ok-fg);background:var(--ok-bg)}.rank-session-status.local{color:#28667a;background:#e5f4f7}.rank-session-status.pending{color:#9a5c18;background:#fff3dc}.rank-session-status.abandoned,.rank-session-status.deleted{color:var(--danger-fg);background:var(--danger-bg)}.rank-session-groups{display:flex;flex-direction:column;gap:15px;max-height:55vh;overflow:auto;padding-right:3px}.rank-session-group{display:flex;flex-direction:column;gap:6px}.rank-session-day{display:flex;align-items:center;gap:9px;color:var(--muted);font:700 .68rem Alegreya Sans,sans-serif;letter-spacing:.09em;text-transform:uppercase}.rank-session-day:after{content:'';height:1px;flex:1;background:var(--border)}.rank-session-pagination{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}.rank-session-pagination span{min-width:88px;text-align:center;color:var(--muted);font:600 .72rem Alegreya Sans,sans-serif}.rank-session-pagination .btn{padding:5px 9px}
 .session-capture-overlay{position:fixed;z-index:110000;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,12,15,.78);backdrop-filter:blur(9px);animation:rankOverlayIn .25s ease both}
 .session-capture-modal{width:min(640px,100%);max-height:92vh;overflow:auto;padding:24px;border:1px solid rgba(255,255,255,.13);border-radius:18px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.42);outline:none;box-sizing:border-box}
 .session-capture-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px}.session-capture-heading span{font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#318ca0}.session-capture-heading h2{margin:2px 0 0;font:500 1.8rem 'Cormorant Garamond',serif}.session-capture-heading p{margin:3px 0 0;font-size:.76rem;color:var(--muted)}
@@ -2705,7 +2723,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes rankBadgeRise{0%{opacity:0;transform:translateY(24px) scale(.65) rotate(-5deg)}65%{opacity:1;transform:translateY(-5px) scale(1.06)}100%{transform:none}}
 @keyframes rankBadgeBreak{0%{opacity:0;transform:scale(.48);filter:brightness(2.2) blur(5px)}52%{opacity:1;transform:scale(1.13);filter:brightness(1.55) blur(0)}72%{transform:scale(.96) rotate(-1deg)}100%{transform:none}}
 @keyframes rankCopyIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 1fr}.rank-session-status{grid-column:2;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
+@media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 40px 1fr}.rank-session-thumb{width:40px;height:32px}.rank-session-status{grid-column:3;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
 /* 1280×720 desktop mode: one deliberate vertical flow replaces the nested
    scroll areas that used to squeeze projects and Pomodoro into thin strips. */
 @media(max-width:1366px) and (max-height:800px) and (min-width:769px){
@@ -2961,6 +2979,15 @@ const isProjectScopedPost=post=>{
   if(post.projectId!=null&&String(post.projectId)!=='')return true;
   const keys=[post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[])];
   return keys.some(key=>String(key||'').startsWith('project:'));
+};
+const normalizeFocusPostCopy=post=>{
+  if(!post||(post.sourceSessionId==null&&!Array.isArray(post.sourceSessionIds)))return post;
+  const before=String(post.content||'');
+  const content=before
+    .replace(/(^|\n)Foco:\s*/g,'$1Duração da sessão: ')
+    .replace(/(^|\n)\s*Pontos:\s*\+?\d+(?:[.,]\d+)?(?:\s*pts?)?\s*(?=\n|$)/gi,'$1')
+    .replace(/\n{3,}/g,'\n\n').trim();
+  return content===before?post:{...post,content};
 };
 // - DEVICE/ACCOUNT SYNC MARKERS -
 // SYNCED_UID_KEY: the account this browser profile has actually completed a sync
@@ -5371,6 +5398,28 @@ const pomoNormalize = d => {
     rank,
   };
 };
+const pomoSyncGalleryCategories=(data,folders)=>{
+  const base=pomoNormalize(data);
+  const live=(Array.isArray(folders)?folders:[]).filter(f=>f&&!f.deleted&&!f.archived&&f.id!=null).map(f=>({id:f.id,name:String(f.label||'Sem nome'),source:'gallery'}));
+  const clean=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+  const alias=value=>({gestuais:'gesture',gestures:'gesture'}[clean(value)]||clean(value));
+  const byName=new Map(live.map(c=>[alias(c.name),String(c.id)]));
+  const byId=new Set(live.map(c=>String(c.id)));
+  const remap=new Map((base.categories||[]).map(c=>[String(c.id),byId.has(String(c.id))?String(c.id):(byName.get(alias(c.name))||String(c.id))]));
+  const moveMap=source=>{
+    const out={};
+    for(const[key,value]of Object.entries(source||{})){
+      if(!String(key).startsWith('cat:')){out[key]=(out[key]||0)+(Number(value)||0);continue;}
+      const old=String(key).slice(4),next='cat:'+(remap.get(old)||old);
+      out[next]=(out[next]||0)+(Number(value)||0);
+    }
+    return out;
+  };
+  const allocations=moveMap(base.allocations);
+  const dailyAllocations=Object.fromEntries(Object.entries(base.dailyAllocations||{}).map(([day,map])=>[day,moveMap(map)]));
+  const next={...base,categories:live,allocations,dailyAllocations};
+  return JSON.stringify(base.categories)===JSON.stringify(live)&&JSON.stringify(base.allocations)===JSON.stringify(allocations)&&JSON.stringify(base.dailyAllocations)===JSON.stringify(dailyAllocations)?base:next;
+};
 const pomoProjectKey = id => 'project:'+String(id);
 const pomoCategoryKey = id => 'cat:'+String(id);
 
@@ -5827,20 +5876,46 @@ const RankSeasonHistory=({rank,onClose})=>{
       </div>)}</div>}
   </Modal>;
 };
-const RankSessionHistory=({rank,onClose,onOpenGallery})=>{
+const RankSessionHistory=({rank,onClose,onOpenPost,galleryPosts=[]})=>{
   const rows=[...(rank.sessions||[])].sort((a,b)=>String(b.endedAt||'').localeCompare(String(a.endedAt||'')));
-  const statusInfo=row=>row.status==='abandoned'?{cls:'abandoned',label:'Desistida'}:row.postDestination==='project'?{cls:'saved',label:'No projeto'}:row.status==='saved-local'?{cls:'local',label:'Neste dispositivo'}:row.status==='saved'?{cls:'saved',label:'Na galeria'}:{cls:'pending',label:'Imagem pendente'};
-  return <Modal title="Histórico de sessões" onClose={onClose} width={620}>
+  const [page,setPage]=useState(0);
+  const daysPerPage=5;
+  const dayGroups=useMemo(()=>{
+    const groups=[];
+    rows.forEach(row=>{
+      const date=new Date(row.endedAt);
+      const key=Number.isNaN(date.getTime())?'sem-data':date.toLocaleDateString('en-CA');
+      let group=groups[groups.length-1];
+      if(!group||group.key!==key){group={key,date,rows:[]};groups.push(group);}
+      group.rows.push(row);
+    });
+    return groups;
+  },[rank.sessions]);
+  const pageCount=Math.max(1,Math.ceil(dayGroups.length/daysPerPage));
+  useEffect(()=>{setPage(current=>Math.min(current,pageCount-1));},[pageCount]);
+  const visibleGroups=dayGroups.slice(page*daysPerPage,(page+1)*daysPerPage);
+  const statusInfo=(row,post)=>((row.projectPostId||row.galleryPostId)&&!post)?{cls:'deleted',label:'Post apagado'}:row.status==='abandoned'?{cls:'abandoned',label:'Desistida'}:row.postDestination==='project'?{cls:'saved',label:'No projeto'}:row.status==='saved-local'?{cls:'local',label:'Neste dispositivo'}:row.status==='saved'?{cls:'saved',label:'Na galeria'}:{cls:'pending',label:'Imagem pendente'};
+  return <Modal title="Histórico de sessões" onClose={onClose} width={680}>
     {rows.length===0?<div className="rank-history-empty"><Icon name="timer" size={24}/><span>As sessões concluídas vão aparecer aqui.</span></div>:
-      <div className="rank-history-list">{rows.map(row=>{const status=statusInfo(row);return <div className="rank-history-row rank-session-row" key={row.id}>
-        <div className="rank-session-date"><strong>{new Date(row.endedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</strong><span>{new Date(row.endedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span></div>
-        <div><strong>{row.title||row.targetLabel||'Sem categoria'}</strong><span>{pomoFmtSecs(row.durationSeconds||0)} de foco · +{Number(row.pointsAwarded||0)} pts</span></div>
-        <span className={'rank-session-status '+status.cls}>{status.label}</span>
-      </div>})}</div>}
-    {rows.some(r=>r.galleryPostId)&&<div style={{display:'flex',justifyContent:'flex-end',marginTop:14}}><button className="btn btn-outline" onClick={()=>{onClose();onOpenGallery();}}><Icon name="image" size={13}/> Abrir Galeria</button></div>}
+      <>
+        <div className="rank-session-groups">{visibleGroups.map(group=><section className="rank-session-group" key={group.key}>
+          <div className="rank-session-day">{Number.isNaN(group.date.getTime())?'Data indisponível':group.date.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
+          {group.rows.map(row=>{const postId=row.projectPostId||row.galleryPostId;const post=postId?(galleryPosts||[]).find(p=>p&&!p.deleted&&String(p.id)===String(postId)):null;const status=statusInfo(row,post);const images=Array.isArray(post?.images)?post.images:[];const thumb=post?.bannerImage||images[0]||null;return <div className={'rank-history-row rank-session-row '+(post?'is-linked':'')} key={row.id} onClick={()=>{if(post){onClose();onOpenPost?.(row,post);}}} {...keyActivate(()=>{if(post){onClose();onOpenPost?.(row,post);}},post?'Abrir post '+(post.title||row.title||'da sessão'):undefined,!!post)}>
+            <div className="rank-session-date"><strong>{new Date(row.endedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</strong></div>
+            <div className="rank-session-thumb">{thumb?(isVideoSrc(thumb)?<Vid src={thumb} muted playsInline preload="metadata"/>:<Img src={thumb}/>):<Icon name={post?'image':'minus'} size={14} style={{opacity:.28}}/>}</div>
+            <div><strong>{row.title||row.targetLabel||'Sem categoria'}</strong><span>{pomoFmtSecs(row.durationSeconds||0)} de foco · +{Number(row.pointsAwarded||0)} pts</span></div>
+            <span className={'rank-session-status '+status.cls}>{status.label}</span>
+          </div>})}
+        </section>)}</div>
+        {pageCount>1&&<div className="rank-session-pagination">
+          <button className="btn btn-outline" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))} aria-label="Página anterior"><Icon name="arrow-left" size={13}/> Anterior</button>
+          <span>Página {page+1} de {pageCount}</span>
+          <button className="btn btn-outline" disabled={page>=pageCount-1} onClick={()=>setPage(p=>Math.min(pageCount-1,p+1))}>Próxima <Icon name="arrow-right" size={13}/></button>
+        </div>}
+      </>}
   </Modal>;
 };
-const RankProfilePanel=({pomoData,isMobile=false,isSmall=false,onOpenGallery})=>{
+const RankProfilePanel=({pomoData,isMobile=false,isSmall=false,onOpenPost,galleryPosts=[]})=>{
   const [historyView,setHistoryView]=useState(null);
   const rank=rankNormalize(pomoData?.rank);
   const pos=rankPosition(rank.points),season=rankSeasonForDate();
@@ -5873,7 +5948,7 @@ const RankProfilePanel=({pomoData,isMobile=false,isSmall=false,onOpenGallery})=>
     </section>
     {historyView==='ranks'&&<RankGuide onClose={()=>setHistoryView(null)}/>} 
     {historyView==='seasons'&&<RankSeasonHistory rank={rank} onClose={()=>setHistoryView(null)}/>} 
-    {historyView==='sessions'&&<RankSessionHistory rank={rank} onClose={()=>setHistoryView(null)} onOpenGallery={onOpenGallery}/>} 
+    {historyView==='sessions'&&<RankSessionHistory rank={rank} onClose={()=>setHistoryView(null)} onOpenPost={onOpenPost} galleryPosts={galleryPosts}/>} 
   </>;
 };
 
@@ -5881,14 +5956,13 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
   const defaultTitle='Sessão — '+(session.targetLabel||'Sem categoria');
   const isProjectSession=session.targetType==='project';
   const liveFolders=useMemo(()=>{
-    const available=(galleryFolders||[]).filter(f=>f&&!f.deleted&&!f.archived);
-    return available.some(f=>String(f.id)==='focus-sessions')?available:[...available,{id:'focus-sessions',label:'Sessões de foco'}];
+    return (galleryFolders||[]).filter(f=>f&&!f.deleted&&!f.archived);
   },[galleryFolders]);
   const [files,setFiles]=useState([]),[title,setTitle]=useState(session.title||defaultTitle),[note,setNote]=useState(''),[saving,setSaving]=useState(false),[progress,setProgress]=useState(null),[error,setError]=useState('');
   const savingRef=useRef(false);
   const [destination,setDestination]=useState(isProjectSession?'project':'gallery');
   const [saveMode,setSaveMode]=useState('new');
-  const [folderId,setFolderId]=useState(()=>String((liveFolders.find(f=>String(f.id)==='focus-sessions')||liveFolders[0]||{id:'focus-sessions'}).id));
+  const [folderId,setFolderId]=useState(()=>String((liveFolders[0]||{id:''}).id));
   const eligiblePosts=useMemo(()=>(galleryPosts||[]).filter(p=>{
     if(!p||p.deleted)return false;
     if(destination==='project'){
@@ -6044,7 +6118,7 @@ window.addEventListener('pagehide',()=>{
   pomoTimerSave({isActive:false,mode:'focus',timeLeft:(saved.focusMins||30)*60,focusMins:saved.focusMins||30,targetKey:saved.targetKey||'none',sessionMeta:null,documentId:POMO_DOCUMENT_ID,savedAt:at,abandonedSession});
 });
 
-const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }) => {
+const PomodoroTimer = ({ pomoData, setPomoData, projects=[], galleryFolders=[], onSessionComplete }) => {
   const BREAK_SECS = 5 * 60;
   const MAX_FOCUS_MINS = 60;
 
@@ -6077,9 +6151,6 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   const [showStats, setShowStats] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [showTargetMenu, setShowTargetMenu] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [editingCategoryId, setEditingCategoryId] = useState(null);
-  const [editingCategoryName, setEditingCategoryName] = useState('');
   const [targetKey, setTargetKey] = useState(_init.targetKey||'none');
   const targetMenuRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -6105,7 +6176,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
   isActiveRef.current  = isActive;
   targetKeyRef.current = targetKey;
 
-  const categories = Array.isArray(pomoData?.categories)?pomoData.categories:[];
+  const categories = useMemo(()=>(galleryFolders||[]).filter(f=>f&&!f.deleted&&!f.archived&&f.id!=null).map(f=>({id:f.id,name:f.label||'Sem nome',source:'gallery'})),[galleryFolders]);
   const activeProjects = useMemo(()=>(projects||[]).filter(p=>p&&!p.deleted&&p.status==='Em Andamento'),[projects]);
   const selectedProjectAny = useMemo(()=>{
     if(!targetKey.startsWith('project:'))return null;
@@ -6196,42 +6267,6 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
     document.addEventListener('keydown',onKey);
     return()=>{document.removeEventListener('mousedown',onPointer);document.removeEventListener('keydown',onKey);};
   },[showTargetMenu]);
-
-  const addFocusCategory = () => {
-    const name=newCategoryName.trim();
-    if(!name)return;
-    const id='focus-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
-    setPomoData(prev=>{
-      const base=pomoRankMaintain(prev);
-      return {...base,categories:[...base.categories,{id,name}]};
-    });
-    setNewCategoryName('');
-  };
-  const saveFocusCategory = id => {
-    const name=editingCategoryName.trim();
-    if(!name)return;
-    setPomoData(prev=>{
-      const base=pomoNormalize(prev);
-      return {...base,categories:base.categories.map(c=>String(c.id)===String(id)?{...c,name}:c)};
-    });
-    setEditingCategoryId(null);setEditingCategoryName('');
-  };
-  const deleteFocusCategory = async id => {
-    const key=pomoCategoryKey(id);
-    if((isActiveRef.current||sessionMetaRef.current)&&targetKeyRef.current===key)return;
-    if(!(await bhConfirm({message:'Excluir esta categoria de foco? O tempo geral por dia sera mantido, mas a alocacao desta categoria sera removida.',danger:true,confirmLabel:'Excluir'})))return;
-    setPomoData(prev=>{
-      const base=pomoNormalize(prev);
-      const allocations={...base.allocations};delete allocations[key];
-      const dailyAllocations={};
-      for(const[day,map]of Object.entries(base.dailyAllocations||{})){
-        const next={...(map||{})};delete next[key];
-        if(Object.keys(next).length)dailyAllocations[day]=next;
-      }
-      return {...base,categories:base.categories.filter(c=>String(c.id)!==String(id)),allocations,dailyAllocations};
-    });
-    if(targetKeyRef.current===key)changeTarget('none');
-  };
 
   const flushPomoSecsRef = useRef(null);
   flushPomoSecsRef.current = () => {
@@ -6807,7 +6842,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
         <Modal title="Categorias de Foco" onClose={()=>setShowCategories(false)} width={520}>
           <div style={{display:'flex',flexDirection:'column',gap:18}}>
             <p style={{margin:'-8px 0 0',fontSize:'.8rem',lineHeight:1.5,color:'var(--muted)'}}>
-              Organize onde o tempo de foco será contabilizado. Projetos em andamento entram automaticamente nesta lista.
+              Projetos em andamento entram automaticamente. As demais categorias são exatamente as pastas ativas da Galeria.
             </p>
 
             <section>
@@ -6840,63 +6875,28 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
 
             <section>
               <span className="label label-section" style={{display:'block',marginBottom:9}}>
-                <StaveGlyph name="quarter"/>Categorias personalizadas
+                <StaveGlyph name="quarter"/>Categorias da Galeria
               </span>
-
-              <Field label="Nova categoria">
-                <div style={{display:'flex',gap:8}}>
-                  <input value={newCategoryName} onChange={e=>setNewCategoryName(e.target.value)}
-                    onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addFocusCategory();}}}
-                    className="input-box" placeholder="Ex.: Estudos, Portfólio, Administrativo..." style={{flex:1,minWidth:0}}/>
-                  <button className="btn btn-dark" onClick={addFocusCategory} disabled={!newCategoryName.trim()}
-                    style={{padding:'7px 12px',flexShrink:0}}>
-                    <Icon name="plus" size={13}/> Adicionar
-                  </button>
-                </div>
-              </Field>
-
-              <div className="card" style={{padding:0,overflow:'hidden',boxShadow:'none',marginTop:12}}>
+              <p style={{margin:'-2px 0 10px',fontSize:'.76rem',lineHeight:1.45,color:'var(--muted)'}}>Esta lista é a mesma da Galeria. Criar, renomear, arquivar ou excluir uma pasta lá atualiza o Pomodoro automaticamente.</p>
+              <div className="card" style={{padding:0,overflow:'hidden',boxShadow:'none'}}>
                 {categories.length===0
                   ?<div style={{padding:'16px 14px',fontSize:'.8rem',color:'var(--muted)',textAlign:'center'}}>
-                    Nenhuma categoria personalizada.
+                    Crie uma pasta na Galeria para usá-la como categoria de foco.
                   </div>
                   :categories.map((c,i)=>{
                     const key=pomoCategoryKey(c.id);
                     const total=((pomoData?.allocations||{})[key]||0)+(targetKey===key?displayUnsaved+pendingSecsRef.current:0);
-                    const editing=String(editingCategoryId)===String(c.id);
-                    const locked=targetLocked&&targetKey===key;
                     const activeTarget=targetKey===key;
                     return <div key={key}
                       style={{display:'flex',alignItems:'center',gap:8,padding:'9px 10px',borderBottom:i<categories.length-1?'1px solid var(--border)':'none',background:activeTarget?'rgba(var(--ink),.025)':'transparent'}}>
                       <span style={{width:26,height:26,borderRadius:7,background:'var(--bg)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:activeTarget?'var(--text)':'var(--muted)',flexShrink:0}}>
-                        <Icon name="clock" size={12}/>
+                        <Icon name="image" size={12}/>
                       </span>
-
-                      {editing
-                        ?<input autoFocus value={editingCategoryName} onChange={e=>setEditingCategoryName(e.target.value)}
-                            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();saveFocusCategory(c.id);}if(e.key==='Escape'){setEditingCategoryId(null);setEditingCategoryName('');}}}
-                            className="input-box" style={{flex:1,minWidth:0,padding:'5px 8px'}}/>
-                        :<div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:'.82rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
-                            <div style={{fontSize:'.67rem',color:'var(--muted)',marginTop:1}}>Categoria</div>
-                          </div>}
-
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:'.82rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.name}</div>
+                        <div style={{fontSize:'.67rem',color:'var(--muted)',marginTop:1}}>Pasta da Galeria</div>
+                      </div>
                       <span style={{fontSize:'.7rem',fontWeight:600,color:'var(--muted)',whiteSpace:'nowrap'}}>{pomoFmtSecs(total)}</span>
-
-                      {editing
-                        ?<>
-                            <button className="btn btn-ghost" onClick={()=>{setEditingCategoryId(null);setEditingCategoryName('');}}
-                              style={{padding:5}} title="Cancelar edição"><Icon name="x" size={13}/></button>
-                            <button className="btn btn-dark" onClick={()=>saveFocusCategory(c.id)} disabled={!editingCategoryName.trim()}
-                              style={{padding:'5px 8px'}} title="Salvar"><Icon name="check" size={13}/></button>
-                          </>
-                        :<>
-                            <button className="btn btn-ghost" onClick={()=>{setEditingCategoryId(c.id);setEditingCategoryName(c.name);}}
-                              style={{padding:5}} title="Editar"><Icon name="pencil" size={13}/></button>
-                            <button className="btn btn-ghost text-link-danger" disabled={locked} onClick={()=>deleteFocusCategory(c.id)}
-                              title={locked?'Conclua ou reinicie a sessão antes de excluir a categoria em uso':'Excluir categoria'}
-                              style={{padding:5,opacity:locked?.35:1,cursor:locked?'not-allowed':'pointer'}}><Icon name="trash-2" size={13}/></button>
-                          </>}
                     </div>;
                   })}
               </div>
@@ -7014,7 +7014,7 @@ const noteTextPreview=value=>{
 };
 
 // - DASHBOARD -
-const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,isMobile,setSelectedProject,onSessionComplete})=>{
+const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,galleryFolders,galleryPosts,isMobile,setSelectedProject,onSessionComplete,onOpenSessionPost})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>{
     const list=Array.isArray(notes)?notes:[];
@@ -7094,7 +7094,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         ))}
 
       </div>
-      <RankProfilePanel pomoData={pomoData} isMobile={isMobile} isSmall={isSmall} onOpenGallery={()=>setView('gallery')}/>
+      <RankProfilePanel pomoData={pomoData} isMobile={isMobile} isSmall={isSmall} onOpenPost={onOpenSessionPost} galleryPosts={galleryPosts}/>
       {/* Main grid - fills remaining height */}
       <div className="dashboard-main-grid" style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:isSmall?10:14,flex:1,minHeight:0,overflow:isMobile?'visible':'hidden'}}>
         {/* LEFT: projects + project tasks */}
@@ -7213,7 +7213,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
 
         {/* RIGHT: pomodoro + activities + recent notes */}
         <div className="dashboard-column dashboard-column-right" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
-          <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} projects={projects} onSessionComplete={onSessionComplete}/></div>
+          <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} projects={projects} galleryFolders={galleryFolders} onSessionComplete={onSessionComplete}/></div>
           {/* Atividades gerais */}
           <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
@@ -7975,12 +7975,14 @@ const applyAutoLate=tasks=>{
   });
 };
 
-const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,galleryFolders,pomoData,isMobile})=>{
+const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,setGalleryPosts,galleryFolders,pomoData,isMobile})=>{
   const [local,setLocal]=useState(()=>{
     const tasks=applyAutoLate(project.projectTasks);
     return{...project,projectTasks:tasks};
   });
   const [tab,setTab]=useState(()=>{
+    const open=bhUiLoad('openFocusPost');
+    if(String(open.projectId||'')===String(project.id)&&open.postId)return'Sessões de foco';
     const saved=bhUiLoad('projectTabs');
     return saved[String(project.id)]||'Visão Geral';
   });
@@ -7996,11 +7998,51 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     const keys=[post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[])].filter(Boolean).map(String);
     return isProjectScopedPost(post)&&(keys.includes(String(projectFocusKey))||String(post.projectId||'')===String(project.id));
   }).map(post=>({...post,images:Array.isArray(post.images)?post.images:[]})).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))),[galleryPosts,projectFocusKey]);
-  const [galleryPopup,setGalleryPopup]=useState(null);
+  const [galleryPopup,setGalleryPopup]=useState(()=>{
+    const open=bhUiLoad('openFocusPost');
+    return String(open.projectId||'')===String(project.id)?projectFocusPosts.find(p=>String(p.id)===String(open.postId))||null:null;
+  });
+  const [galleryPopupEditing,setGalleryPopupEditing]=useState(false);
+  const [galleryPopupUploading,setGalleryPopupUploading]=useState(false);
+  const galleryPopupImgRef=useRef(null);
+  useEffect(()=>{
+    const open=bhUiLoad('openFocusPost');
+    if(String(open.projectId||'')===String(project.id))bhUiReplace('openFocusPost',{});
+  },[project.id]);
+  const updateGalleryPopup=(field,value)=>{
+    setGalleryPopup(prev=>prev?{...prev,[field]:value}:prev);
+    setGalleryPosts(prev=>(prev||[]).map(post=>String(post.id)===String(galleryPopup?.id)?{...post,[field]:value}:post));
+  };
+  const addGalleryPopupImages=async e=>{
+    const files=Array.from(e.target.files||[]);e.target.value='';
+    if(!files.length||galleryPopupUploading)return;
+    setGalleryPopupUploading(true);
+    try{
+      const urls=await uploadImages(files);
+      const images=[...(galleryPopup?.images||[]),...urls];
+      updateGalleryPopup('images',images);
+      if(!galleryPopup?.bannerImage&&images[0])updateGalleryPopup('bannerImage',images[0]);
+    }catch(err){bhLog('project.focusPost.upload',err);await bhAlert('Não foi possível adicionar as imagens. Tente novamente.');}
+    finally{setGalleryPopupUploading(false);}
+  };
+  const removeGalleryPopupImage=index=>{
+    const images=[...(galleryPopup?.images||[])];const[removed]=images.splice(index,1);
+    updateGalleryPopup('images',images);
+    if(galleryPopup?.bannerImage===removed)updateGalleryPopup('bannerImage',images[0]||'');
+  };
+  const deleteGalleryPopup=async()=>{
+    if(!galleryPopup)return;
+    const confirmed=await bhConfirm({message:'Excluir este post do projeto permanentemente? A sessão continuará no histórico.',danger:true,confirmLabel:'Excluir post'});
+    if(!confirmed)return;
+    const postId=galleryPopup.id;
+    setGalleryPosts(prev=>(prev||[]).filter(post=>String(post.id)!==String(postId)));
+    setGalleryPopup(null);
+    setGalleryPopupEditing(false);
+  };
   const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>f&&!f.deleted),[galleryFolders]);
   const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>p&&!isProjectScopedPost(p)&&!p.deleted&&p.folder===local.galleryFolder).map(p=>({...p,images:Array.isArray(p.images)?p.images:[]})).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
   const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
-  useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape')setGalleryPopup(null);};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
+  useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape'){setGalleryPopup(null);setGalleryPopupEditing(false);}};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
   const coverRef=useRef();
   // Eager-warm every local image in this project when it opens, so shot/frame
@@ -8761,27 +8803,41 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
         </div>
       )}
       {galleryPopup&&ReactDOM.createPortal(
-        <div onClick={()=>setGalleryPopup(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(10,8,6,.6)',backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)',display:'flex',alignItems:'center',justifyContent:'center',padding:isMobile?12:24}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'var(--surface)',borderRadius:16,maxWidth:680,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+        <div onClick={()=>{setGalleryPopup(null);setGalleryPopupEditing(false);}} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(10,8,6,.6)',backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)',display:'flex',alignItems:'center',justifyContent:'center',padding:isMobile?12:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--surface)',borderRadius:16,maxWidth:1120,width:'100%',maxHeight:'92vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <input ref={galleryPopupImgRef} type="file" accept="image/*,video/*,.gif" multiple hidden onChange={addGalleryPopupImages}/>
             <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,padding:isMobile?'18px 18px 0':'24px 28px 0'}}>
-              <div style={{minWidth:0}}>
-                <h3 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,margin:0,lineHeight:1.2,color:'var(--text)'}}>{galleryPopup.title}</h3>
-                <div style={{fontSize:'.74rem',color:'var(--muted)',marginTop:3}}>{(()=>{try{return new Date(galleryPopup.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});}catch{return galleryPopup.date;}})()}</div>
+              <div style={{minWidth:0,flex:1}}>
+                {galleryPopupEditing
+                  ?<input value={galleryPopup.title||''} onChange={e=>updateGalleryPopup('title',e.target.value)} placeholder="Título do post" style={{width:'100%',boxSizing:'border-box',fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,color:'var(--text)',background:'transparent',border:0,borderBottom:'1px solid var(--border)',outline:'none',padding:'0 0 4px'}}/>
+                  :<h3 style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.5rem',fontWeight:500,margin:0,lineHeight:1.2,color:'var(--text)'}}>{galleryPopup.title}</h3>}
+                {galleryPopupEditing
+                  ?<input type="date" value={(galleryPopup.date||'').slice(0,10)} onChange={e=>updateGalleryPopup('date',e.target.value)} style={{marginTop:7,border:'1px solid var(--border)',borderRadius:7,padding:'4px 8px',fontSize:'.74rem',color:'var(--text)',background:'var(--bg)',outline:'none'}}/>
+                  :<div style={{fontSize:'.74rem',color:'var(--muted)',marginTop:3}}>{(()=>{try{return new Date(galleryPopup.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});}catch{return galleryPopup.date;}})()}</div>}
               </div>
-              <button onClick={()=>setGalleryPopup(null)} className="btn btn-ghost" style={{padding:'6px 8px',flexShrink:0}}><Icon name="x" size={18}/></button>
+              <div style={{display:'flex',gap:6,flexShrink:0}}>
+                <button onClick={deleteGalleryPopup} className="btn btn-danger" title="Excluir post" style={{padding:'6px 10px'}}><Icon name="trash-2" size={13}/>{!isMobile&&'Excluir'}</button>
+                <button onClick={()=>setGalleryPopupEditing(v=>!v)} className={galleryPopupEditing?'btn btn-dark':'btn btn-outline'} style={{padding:'6px 10px'}}><Icon name={galleryPopupEditing?'check':'pencil'} size={13}/>{galleryPopupEditing?'Concluir':'Editar'}</button>
+                <button onClick={()=>{setGalleryPopup(null);setGalleryPopupEditing(false);}} className="btn btn-ghost" style={{padding:'6px 8px'}}><Icon name="x" size={18}/></button>
+              </div>
             </div>
             <div style={{padding:isMobile?'14px 18px 20px':'18px 28px 26px'}}>
-              {galleryPopup.content&&<p style={{fontSize:'.9rem',lineHeight:1.7,color:'var(--text)',margin:'0 0 16px',whiteSpace:'pre-wrap'}}>{galleryPopup.content}</p>}
+              {galleryPopupEditing
+                ?<textarea value={galleryPopup.content||''} onChange={e=>updateGalleryPopup('content',e.target.value)} placeholder="Notas da sessão (opcional)" style={{width:'100%',boxSizing:'border-box',minHeight:84,resize:'vertical',border:'1px solid var(--border)',borderRadius:9,padding:'11px 13px',background:'var(--bg)',color:'var(--text)',font:'400 .88rem Alegreya Sans,sans-serif',lineHeight:1.6,outline:'none',margin:'0 0 16px'}}/>
+                :galleryPopup.content&&<p style={{fontSize:'.9rem',lineHeight:1.7,color:'var(--text)',margin:'0 0 16px',whiteSpace:'pre-wrap'}}>{galleryPopup.content}</p>}
               {(galleryPopup.images||[]).length>0&&(
-                <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',gap:isMobile?8:12}}>
                   {(galleryPopup.images||[]).map((img,i,list)=>(
-                    isVideoSrc(img)
-                      ?<Vid key={imgKey(img,i,list)} src={img} controls playsInline style={{width:'100%',borderRadius:10,display:'block',background:'#000'}}/>
-                      :<Img key={imgKey(img,i,list)} full src={img} style={{width:'100%',borderRadius:10,display:'block'}}/>
+                    <div key={imgKey(img,i,list)} style={{position:'relative',aspectRatio:'16/9',overflow:'hidden',borderRadius:9,background:'#000'}}>
+                      {isVideoSrc(img)?<Vid src={img} controls playsInline style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}/>:<Img full src={img} style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}/>}
+                      {galleryPopupEditing&&<button onClick={()=>removeGalleryPopupImage(i)} title="Remover imagem" style={{position:'absolute',top:6,right:6,width:25,height:25,border:0,borderRadius:'50%',background:'rgba(20,18,16,.72)',color:'white',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}><Icon name="x" size={12}/></button>}
+                    </div>
                   ))}
+                  {galleryPopupEditing&&<button onClick={()=>galleryPopupImgRef.current?.click()} disabled={galleryPopupUploading} style={{aspectRatio:'16/9',border:'1px dashed var(--border)',borderRadius:9,background:'var(--bg)',color:'var(--muted)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,cursor:'pointer',font:'600 .76rem Alegreya Sans,sans-serif'}}><Icon name={galleryPopupUploading?'loader':'image-plus'} size={18}/>{galleryPopupUploading?'Enviando…':'Adicionar imagens'}</button>}
                 </div>
               )}
-              {!galleryPopup.content&&(galleryPopup.images||[]).length===0&&<div style={{color:'var(--muted)',fontSize:'.85rem',fontStyle:'italic'}}>Sem conteúdo neste post.</div>}
+              {(galleryPopup.images||[]).length===0&&galleryPopupEditing&&<button onClick={()=>galleryPopupImgRef.current?.click()} disabled={galleryPopupUploading} className="upload-zone" style={{width:'100%',minHeight:130}}><Icon name={galleryPopupUploading?'loader':'image-plus'} size={20}/><span>{galleryPopupUploading?'Enviando…':'Adicionar imagens'}</span></button>}
+              {!galleryPopupEditing&&!galleryPopup.content&&(galleryPopup.images||[]).length===0&&<div style={{color:'var(--muted)',fontSize:'.85rem',fontStyle:'italic'}}>Sem conteúdo neste post.</div>}
             </div>
           </div>
         </div>,
@@ -9070,7 +9126,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         </div>
         <textarea value={selected.content} onChange={e=>upd('content',e.target.value)} placeholder="Análise, insights, observações..."
           style={{width:'100%',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',fontSize:'.92rem',outline:'none',resize:'vertical',minHeight:160,fontFamily:'Alegreya Sans,sans-serif',lineHeight:1.8,color:'var(--text)',backgroundColor:'var(--bg)',marginBottom:24}}/>
-        <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(3,1fr)',gap:isMobile?10:14}}>
+        <div className="cv-grid" style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:isMobile?10:14}}>
           {selected.images.map((img,i,list)=>(
             <div key={imgKey(img,i,list)} style={{position:'relative',borderRadius:10,overflow:'hidden',aspectRatio:'16/9',background:'var(--bg)',cursor:isVideoSrc(img)?'default':'zoom-in'}} onClick={()=>!isVideoSrc(img)&&setLightbox(img)}>
               {isVideoSrc(img)
@@ -11616,11 +11672,12 @@ const App=()=>{
   const [notes,setNotes]=useState(()=>bhRecordArray(persisted?.notes,SEED.notes));
   const [tasks,setTasks]=useState(()=>bhRecordArray(persisted?.tasks,SEED.tasks));
   const [socialPosts,setSocialPosts]=useState(()=>bhRecordArray(persisted?.socialPosts,SEED.socialPosts));
-  const [galleryPosts,setGalleryPosts]=useState(()=>bhRecordArray(persisted?.galleryPosts,SEED.galleryPosts));
+  const [galleryPosts,setGalleryPosts]=useState(()=>bhRecordArray(persisted?.galleryPosts,SEED.galleryPosts).map(normalizeFocusPostCopy));
   const [galleryFolders,setGalleryFolders]=useState(()=>bhRecordArray(persisted?.galleryFolders,DEFAULT_GALLERY_FOLDERS));
   const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
   const [noteGroups,setNoteGroups]=useState(()=>bhRecordArray(persisted?.noteGroups,DEFAULT_NOTE_GROUPS));
   const [pomoData,setPomoData]=useState(()=>pomoRankMaintain(pomoLoad()));
+  useEffect(()=>{setPomoData(prev=>pomoSyncGalleryCategories(prev,galleryFolders));},[galleryFolders]);
   const [rankPromotion,setRankPromotion]=useState(null);
   const dismissRankPromotion=useCallback(()=>setRankPromotion(null),[]);
   const _remoteApplyId=useRef(0);
@@ -11659,19 +11716,14 @@ const App=()=>{
     if(wantsAppend&&!existing)throw new Error('o post escolhido não está mais disponível');
     const postId=existing?.id||('focus-post-'+Date.now()+'-'+Math.random().toString(36).slice(2,6));
     const target=session.targetLabel||'Sem categoria';
-    const folderId=destination==='gallery'?String(session.folderId||existing?.folder||'focus-sessions'):null;
-    const entry=['Foco: '+pomoFmtSecs(session.durationSeconds||0),'Pontos: +'+Number(session.pointsAwarded||0),session.note||''].filter(Boolean).join('\n\n');
+    const folderId=destination==='gallery'?String(session.folderId||existing?.folder||''):null;
+    const entry=['Duração da sessão: '+pomoFmtSecs(session.durationSeconds||0),session.note||''].filter(Boolean).join('\n\n');
     const newPost={
       id:postId,folder:folderId,storageScope:destination,projectId:destination==='project'?String(session.targetKey||'').replace(/^project:/,''):null,title:session.title||'Sessão — '+target,date:session.date||localDateISO(),
       content:entry,
       images:Array.isArray(session.images)?session.images:[],bannerImage:(Array.isArray(session.images)?session.images:[])[0]||'',deleted:false,sourceSessionId:session.id,
       sourceSessionIds:[session.id],sourceTargetKey:session.targetKey||'none',sourceTargetKeys:[session.targetKey||'none'],sourceTargetType:session.targetType||'other',sourceSeasonId:session.seasonId||rankSeasonForDate().id
     };
-    if(destination==='gallery')setGalleryFolders(prev=>{
-      const list=Array.isArray(prev)?prev:DEFAULT_GALLERY_FOLDERS;
-      if(list.some(f=>f&&String(f.id)===folderId))return list.map(f=>f&&String(f.id)===folderId?{...f,deleted:false,deletedAt:null,archived:false}:f);
-      return folderId==='focus-sessions'?[...list,{id:'focus-sessions',label:'Sessões de foco',deleted:false,sortMode:'month',manualOrder:[]}]:list;
-    });
     setGalleryPosts(prev=>{
       const list=Array.isArray(prev)?prev:[];
       if(!existing)return[newPost,...list.filter(p=>String(p.sourceSessionId)!==String(session.id)&&!(Array.isArray(p.sourceSessionIds)?p.sourceSessionIds:[]).map(String).includes(String(session.id)))];
@@ -11954,7 +12006,7 @@ const App=()=>{
       if(data.notes&&isArr2(data.notes))setNotes(bhRecordArray(data.notes));
       if(data.tasks&&isArr2(data.tasks))setTasks(bhRecordArray(data.tasks));
       if(data.socialPosts&&isArr2(data.socialPosts))setSocialPosts(bhRecordArray(data.socialPosts));
-      if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(bhRecordArray(data.galleryPosts));
+      if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(bhRecordArray(data.galleryPosts).map(normalizeFocusPostCopy));
       if(data.galleryFolders&&isArr2(data.galleryFolders))setGalleryFolders(bhRecordArray(data.galleryFolders));
       if(data.noteGroups&&isArr2(data.noteGroups))setNoteGroups(bhRecordArray(data.noteGroups));
       if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(pomoRankMaintain(data.pomoData));
@@ -12207,6 +12259,25 @@ const App=()=>{
     rememberCurrentScroll();rememberProjectsMode('list',null);setView('projects');
     if(window.location.hash!=='#projects')window.history.pushState(null,'','#projects');
   },[rememberCurrentScroll,rememberProjectsMode]);
+  const handleOpenSessionPost=useCallback((session,post)=>{
+    if(!post)return;
+    rememberCurrentScroll();
+    if(isProjectScopedPost(post)){
+      const projectId=String(post.projectId||session?.targetKey||'').replace(/^project:/,'');
+      const project=projects.find(p=>p&&!p.deleted&&String(p.id)===projectId);
+      if(!project)return;
+      const tabs=bhUiLoad('projectTabs');
+      bhUiReplace('projectTabs',{...tabs,[String(project.id)]:'Sessões de foco'});
+      bhUiReplace('openFocusPost',{projectId:String(project.id),postId:String(post.id)});
+      setSelectedProject(project);rememberProjectsMode('detail',project);setView('project-detail');
+      window.history.pushState(null,'',`#project-detail/${project.id}`);
+      return;
+    }
+    const ui=bhUiLoad('gallery');
+    bhUiReplace('gallery',{...ui,activeFolder:post.folder,selectedId:post.id,trash:false,folderTrash:false,folderArchive:false});
+    setView('gallery');
+    if(window.location.hash!=='#gallery')window.history.pushState(null,'','#gallery');
+  },[projects,rememberCurrentScroll,rememberProjectsMode]);
   const handleAddGlobalMentor=useCallback(m=>{setMentors(prev=>[...prev,m]);},[]);
   const handleResetIdentity=useCallback(()=>{saveIdentity(null);localStorage.removeItem(ID_KEY);setIdentity(null);},[]);
 
@@ -12290,7 +12361,7 @@ const App=()=>{
     if(A(ingested.notes)){setNotes(bhRecordArray(ingested.notes));applied++;}
     if(A(ingested.tasks)){setTasks(bhRecordArray(ingested.tasks));applied++;}
     if(A(ingested.socialPosts)){setSocialPosts(bhRecordArray(ingested.socialPosts));applied++;}
-    if(A(ingested.galleryPosts)){setGalleryPosts(bhRecordArray(ingested.galleryPosts));applied++;}
+    if(A(ingested.galleryPosts)){setGalleryPosts(bhRecordArray(ingested.galleryPosts).map(normalizeFocusPostCopy));applied++;}
     if(A(ingested.galleryFolders)){setGalleryFolders(bhRecordArray(ingested.galleryFolders));applied++;}
     if(A(ingested.noteGroups)){setNoteGroups(bhRecordArray(ingested.noteGroups));applied++;}
     if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(pomoRankMaintain(ingested.pomoData));applied++;}
@@ -12331,9 +12402,9 @@ const App=()=>{
         :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
       }
       <main ref={mainRef} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
-        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} isMobile={isMobile} setSelectedProject={setSelectedProject} onSessionComplete={handleSessionComplete}/>} 
+        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} galleryFolders={galleryFolders} galleryPosts={galleryPosts} isMobile={isMobile} setSelectedProject={setSelectedProject} onSessionComplete={handleSessionComplete} onOpenSessionPost={handleOpenSessionPost}/>} 
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
-        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} galleryFolders={galleryFolders} pomoData={pomoData} isMobile={isMobile}/>}
+        {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} setGalleryPosts={setGalleryPosts} galleryFolders={galleryFolders} pomoData={pomoData} isMobile={isMobile}/>} 
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} navTick={navTick} isMobile={isMobile}/>}
         {view==='ideas'          &&<IdeasLab notes={notes} setNotes={setNotes} navTick={navTick} isMobile={isMobile}/>}
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
