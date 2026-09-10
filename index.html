@@ -63,7 +63,8 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
-  BoardHub v23.76 — unlimited images in every post and visible project counts (sep/2026)
+  BoardHub v23.77 — hide image counts on project post cards (sep/2026)
+  BoardHub v23.76 — unlimited images in every post (sep/2026)
   BoardHub v23.74 — backup safety and compact rank fixes (sep/2026)
   BoardHub v23.73 — non-destructive backup restore for rank, sessions and posts (sep/2026)
   BoardHub v23.72 — responsive dashboard tiers + direct project navigation (sep/2026)
@@ -8676,7 +8677,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
             ?<div style={{padding:'40px 16px',textAlign:'center',color:'var(--muted)'}}><Icon name="images" size={28} style={{display:'block',margin:'0 auto 9px',opacity:.28}}/><strong style={{display:'block',color:'var(--text)',fontSize:'.86rem',marginBottom:4}}>Nenhum registro visual ainda</strong><span style={{fontSize:'.78rem'}}>Conclua uma sessão vinculada a este projeto e salve as imagens na Galeria.</span></div>
             :<div className="project-focus-grid">{projectFocusPosts.map(post=>{const images=Array.isArray(post.images)?post.images:[];const src=post.bannerImage||images[0];const sessions=Array.from(new Set([post.sourceSessionId,...(Array.isArray(post.sourceSessionIds)?post.sourceSessionIds:[])].filter(Boolean).map(String)));const dateLabel=(()=>{const raw=String(post.date||'');const dt=new Date(raw.length===10?raw+'T12:00:00':raw);return Number.isNaN(dt.getTime())?(raw||'Data indisponível'):dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}).replace('.','');})();return <div key={post.id} className="card card-click project-focus-post" onClick={()=>setGalleryPopup(post)} {...keyActivate(()=>setGalleryPopup(post),'Abrir post '+(post.title||''))}>
               <div className="project-focus-post-media">{src?(isVideoSrc(src)?<Vid src={src} muted playsInline preload="metadata"/>:<Img src={src}/>):<Icon name="image" size={24} style={{opacity:.22}}/>}</div>
-              <div className="project-focus-post-copy"><strong>{post.title||'Sem título'}</strong><div className="project-focus-post-date"><Icon name="calendar-days" size={11}/>{dateLabel}</div><span><Icon name="image" size={11}/>{(post.images||[]).length} {(post.images||[]).length===1?'imagem':'imagens'}{sessions.length>1?' · '+sessions.length+' sessões':''}</span></div>
+              <div className="project-focus-post-copy"><strong>{post.title||'Sem título'}</strong><div className="project-focus-post-date"><Icon name="calendar-days" size={11}/>{dateLabel}</div>{sessions.length>1&&<span><Icon name="history" size={11}/>{sessions.length} sessões</span>}</div>
             </div>;})}</div>}
         </div>
       )}
