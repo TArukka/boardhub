@@ -63,6 +63,14 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.72 — responsive dashboard tiers + direct project navigation (sep/2026)
+  BoardHub v23.71 — restore missing project posts from backup snapshots (sep/2026)
+  When a project session still references a post absent from live state, the app
+  searches its rotating and emergency snapshots by post id and restores the
+  complete post, including image references. Explicitly deleted posts remain
+  deletable after this one-time compatibility recovery.
+  ──────
+
   BoardHub v23.70 — recover project focus posts from session links (sep/2026)
   Project posts created during intermediate versions are repaired from their
   session history links. A projectId is now authoritative when old scope fields
@@ -2805,17 +2813,17 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes rankBadgeBreak{0%{opacity:0;transform:scale(.48);filter:brightness(2.2) blur(5px)}52%{opacity:1;transform:scale(1.13);filter:brightness(1.55) blur(0)}72%{transform:scale(.96) rotate(-1deg)}100%{transform:none}}
 @keyframes rankCopyIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 40px 1fr}.rank-session-thumb{width:40px;height:32px}.rank-session-status{grid-column:3;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
-/* At 1280×720 the overview fits in one viewport. The removed summary row makes
-   room for a shorter greeting and rank panel without squeezing the work area. */
-@media(max-width:1366px) and (max-height:800px) and (min-width:769px){
+/* Dashboard density tiers. Each target viewport gets its own composition instead
+   of one blanket scale, keeping the central work panes legible at every size. */
+@media(max-width:1300px) and (max-height:740px) and (min-width:769px){
   .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;padding-right:0}
-  .dashboard-header{margin-bottom:4px!important}
-  .dashboard-header h1{font-size:1.7rem!important;line-height:1!important;margin-bottom:0!important}
+  .dashboard-header{margin-bottom:3px!important;padding-top:7px}
+  .dashboard-header h1{font-size:1.62rem!important;line-height:1.14!important;margin-bottom:0!important;overflow:visible}
   .dashboard-header p{font-size:.68rem!important;line-height:1.15}
-  .rank-profile-panel{grid-template-columns:148px 1fr;min-height:136px!important;height:136px;margin-bottom:6px}
+  .rank-profile-panel{grid-template-columns:136px 1fr;min-height:126px!important;height:126px;margin-bottom:5px}
   .rank-panel-emblem{padding:6px}
-  .rank-panel-emblem .rank-badge{width:120px!important;height:120px!important}
-  .rank-panel-main{padding:7px 14px 5px}
+  .rank-panel-emblem .rank-badge{width:110px!important;height:110px!important}
+  .rank-panel-main{padding:6px 12px 4px}
   .rank-profile-kicker{font-size:.52rem}
   .rank-panel-title{gap:8px;margin:0 0 5px}
   .rank-panel-title span{font-size:1.55rem}
@@ -2825,14 +2833,48 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .rank-panel-footer{grid-template-columns:minmax(125px,1fr) minmax(108px,.7fr) auto;gap:10px;padding:6px 14px}
   .rank-panel-metric>span{font-size:.5rem}.rank-panel-metric>strong{font-size:.84rem}
   .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:3px 6px;font-size:.59rem;min-height:0}
-  .dashboard-main-grid{grid-template-columns:minmax(0,.84fr) minmax(0,1.16fr)!important;gap:12px!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
+  .dashboard-main-grid{grid-template-columns:minmax(0,.84fr) minmax(0,1.16fr)!important;gap:10px!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
+  .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
+  .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
+  .dashboard-project-pane{flex-basis:174px!important;height:174px!important;min-height:174px!important}
+  .dashboard-activity-pane{flex-basis:198px!important;height:198px!important;min-height:198px!important}
+  .dashboard-mentors{margin-top:4px!important;padding-bottom:1px}
+  .dashboard-mentors .card{min-width:0}
+  .dashboard-mentor-cover{height:32px!important}
+}
+@media(min-width:1301px) and (max-width:1439px) and (max-height:820px) and (min-width:769px){
+  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;padding-right:0}
+  .dashboard-header{margin-bottom:5px!important;padding-top:6px}
+  .dashboard-header h1{font-size:1.82rem!important;line-height:1.15!important;margin-bottom:0!important;overflow:visible}
+  .dashboard-header p{font-size:.72rem!important;line-height:1.2}
+  .rank-profile-panel{grid-template-columns:150px 1fr;min-height:138px!important;height:138px;margin-bottom:7px}
+  .rank-panel-emblem{padding:7px}.rank-panel-emblem .rank-badge{width:122px!important;height:122px!important}
+  .rank-panel-main{padding:8px 14px 5px}.rank-panel-title{margin-bottom:5px}.rank-panel-footer{padding:7px 14px}
+  .dashboard-main-grid{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)!important;gap:12px!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
   .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
   .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
   .dashboard-project-pane{flex-basis:190px!important;height:190px!important;min-height:190px!important}
-  .dashboard-activity-pane{flex-basis:215px!important;height:215px!important;min-height:215px!important}
-  .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}
-  .dashboard-mentors .card{min-width:0}
-  .dashboard-mentor-cover{height:38px!important}
+  .dashboard-activity-pane{flex-basis:212px!important;height:212px!important;min-height:212px!important}
+  .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}.dashboard-mentors .card{min-width:0}.dashboard-mentor-cover{height:38px!important}
+}
+@media(min-width:1600px) and (min-height:900px) and (max-width:2559px){
+  .dashboard-shell{max-width:1320px!important;height:100%!important;overflow:hidden!important}
+  .dashboard-header{margin-bottom:14px!important}.dashboard-header h1{font-size:2.65rem!important}
+  .rank-profile-panel{grid-template-columns:210px 1fr;min-height:190px!important;height:190px}
+  .rank-panel-emblem .rank-badge{width:168px!important;height:168px!important}
+  .dashboard-main-grid{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)!important;gap:18px!important}
+  .dashboard-project-pane,.dashboard-activity-pane{flex-basis:clamp(250px,29vh,320px)!important;height:clamp(250px,29vh,320px)!important;min-height:250px!important}
+  .dashboard-mentor-cover{height:76px!important}
+}
+@media(min-width:2560px) and (min-height:1400px){
+  .dashboard-shell{max-width:1760px!important;height:100%!important;overflow:hidden!important}
+  .dashboard-header{margin-bottom:18px!important}.dashboard-header h1{font-size:3.15rem!important}.dashboard-header p{font-size:1rem!important}
+  .rank-profile-panel{grid-template-columns:260px 1fr;min-height:230px!important;height:230px}
+  .rank-panel-emblem .rank-badge{width:204px!important;height:204px!important}
+  .rank-panel-main{padding:24px 30px 18px}.rank-panel-footer{padding:16px 30px}.rank-panel-title span{font-size:2.65rem}.rank-panel-title strong{font-size:1.65rem}
+  .dashboard-main-grid{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)!important;gap:24px!important}
+  .dashboard-project-pane,.dashboard-activity-pane{flex-basis:clamp(330px,28vh,430px)!important;height:clamp(330px,28vh,430px)!important;min-height:330px!important}
+  .dashboard-mentor-cover{height:108px!important}
 }
 @media(prefers-reduced-motion:reduce){.rank-promotion,.rank-promotion-aura,.rank-promotion-mark,.rank-promotion-copy{animation:none}.rank-progress-track span{transition:none}}
 </style>
@@ -3100,6 +3142,45 @@ const repairProjectFocusPostScopes=(posts,sessions)=>{
     return{...post,storageScope:'project',projectId,folder:null,sourceTargetKey:String(post.sourceTargetKey||targetKey),sourceTargetKeys:keys};
   });
   return changed?repaired:posts;
+};
+const missingProjectPostLinks=(posts,sessions)=>{
+  const liveIds=new Set((Array.isArray(posts)?posts:[]).filter(post=>post&&!post.deleted).map(post=>String(post.id)));
+  const links=new Map();
+  (Array.isArray(sessions)?sessions:[]).forEach(session=>{
+    if(!session||session.targetType!=='project'||session.postDestination==='gallery')return;
+    const postId=session.projectPostId||(session.postDestination!=='gallery'?session.galleryPostId:null);
+    const projectId=String(session.targetKey||'').replace(/^project:/,'');
+    if(postId!=null&&String(postId)!==''&&projectId&&!liveIds.has(String(postId)))links.set(String(postId),projectId);
+  });
+  return links;
+};
+const PROJECT_POST_RECOVERY_KEY='boardhub_project_post_recovery_v1';
+const recoverMissingProjectPosts=async(posts,sessions)=>{
+  const links=missingProjectPostLinks(posts,sessions);
+  if(!links.size)return{posts,recovered:0,missing:0,checked:true,restored:[]};
+  const states=[];
+  let checked=false;
+  try{
+    if(!_bhReady)await bhHistoryInit();
+    if(_bhReady){(await bhHistoryFull()).forEach(entry=>{if(entry?.state)states.push(entry.state);});checked=true;}
+  }catch(e){bhLog('projectPosts.recover.history',e,'project post recovery could not read rotating backups');}
+  try{bhLsBackupStates().forEach(state=>states.push(state));checked=true;}
+  catch(e){bhLog('projectPosts.recover.emergency',e,'project post recovery could not read emergency backups');}
+  const found=new Map();
+  for(const state of states){
+    for(const post of (Array.isArray(state?.galleryPosts)?state.galleryPosts:[])){
+      const id=String(post?.id??'');
+      if(!id||found.has(id)||!links.has(id))continue;
+      const projectId=links.get(id),targetKey='project:'+projectId;
+      const keys=Array.from(new Set([post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[]),targetKey].filter(Boolean).map(String)));
+      found.set(id,{...post,deleted:false,deletedAt:null,storageScope:'project',projectId,folder:null,sourceTargetKey:targetKey,sourceTargetKeys:keys});
+    }
+    if(found.size===links.size)break;
+  }
+  if(!found.size)return{posts,recovered:0,missing:links.size,checked,restored:[]};
+  const current=Array.isArray(posts)?posts:[],foundIds=new Set(found.keys());
+  const merged=current.filter(post=>!foundIds.has(String(post?.id))).concat([...found.values()]);
+  return{posts:merged,recovered:found.size,missing:links.size,checked,restored:[...found.values()]};
 };
 const normalizeFocusPostCopy=post=>{
   if(!post||(post.sourceSessionId==null&&!Array.isArray(post.sourceSessionIds)))return post;
@@ -7134,7 +7215,7 @@ const noteTextPreview=value=>{
 };
 
 // - DASHBOARD -
-const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,galleryFolders,galleryPosts,isMobile,setSelectedProject,onSessionComplete,onOpenSessionPost})=>{
+const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNotes,pomoData,setPomoData,galleryFolders,galleryPosts,isMobile,onSelectProject,onSessionComplete,onOpenSessionPost})=>{
   const active=useMemo(()=>projects.filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const recentNotes=useMemo(()=>{
     const list=Array.isArray(notes)?notes:[];
@@ -7170,10 +7251,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
   const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
   const [showAllTasks,setShowAllTasks]=useState(false);
-  const [expandedProjectId,setExpandedProjectId]=useState(()=>active[0]?.id||null);
-  useEffect(()=>{
-    setExpandedProjectId(current=>active.some(p=>p.id===current)?current:(active[0]?.id||null));
-  },[active]);
   const streakDays=useMemo(()=>{
     // pomoData.days values are plain seconds (numbers), not {total} objects —
     // the old .total read made the streak permanently 0.
@@ -7192,7 +7269,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
       {/* Header */}
       <div className="dashboard-header" style={{marginBottom:isMobile?10:isSmall?8:12,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',gap:isMobile?9:18,flexDirection:isMobile?'column':'row'}}>
         <div style={{minWidth:0,width:isMobile?'100%':'auto',flex:1}}>
-          <h1 className="serif stave-title" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1}}><StaveTitleNotes fig="big" w={66}/>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
+          <h1 className="serif stave-title" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1,overflow:'visible'}}><StaveTitleNotes fig="big" w={66} style={{top:'calc(50% + 4px)'}}/>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
           <p style={{color:'var(--muted)',fontSize:isSmall?'.76rem':'.82rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
         </div>
       </div>
@@ -7223,11 +7300,9 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               {active.map(p=>{
                 const pt=p.projectTasks||[];const total=pt.length;const done=pt.filter(t=>t.status==='Concluído').length;
                 const pct=total>0?Math.round((done/total)*100):0;const r=10;const c=2*Math.PI*r;const offset=c-(pct/100)*c;
-                const expanded=expandedProjectId===p.id;
                 return(
-                <div key={p.id} className="card card-project">
-                  <div className="card-click" onClick={()=>setExpandedProjectId(id=>id===p.id?null:p.id)}
-                    {...keyActivate(()=>setExpandedProjectId(id=>id===p.id?null:p.id),'Expandir projeto '+(p.title||''))} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
+                <div key={p.id} className="card card-project card-click" onClick={()=>onSelectProject?.(p)}
+                  {...keyActivate(()=>onSelectProject?.(p),'Abrir projeto '+(p.title||''))} style={{padding:isSmall?'7px 10px':'9px 12px',display:'flex',alignItems:'center',gap:10}}>
                     <BgImg src={p.cover} style={{width:28,height:28,borderRadius:6,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,fontSize:'.8rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.title}</div>
@@ -7246,27 +7321,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                           strokeDasharray={c} strokeDashoffset={offset}/>
                       </svg>
                     )}
-                    <span aria-hidden="true" style={{width:20,height:20,border:'1px solid var(--border)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',flexShrink:0}}><Icon name={expanded?'minus':'plus'} size={11}/></span>
-                  </div>
-                  {expanded&&(
-                    <div style={{padding:isSmall?'2px 10px 10px':'2px 12px 12px',display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid var(--border)'}}>
-                      <div style={{paddingTop:8}}>
-                        <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',display:'block',marginBottom:5}}>Tarefas{total>0?' · '+done+'/'+total:''}</span>
-                        {pt.length===0
-                          ?<div style={{fontSize:'.72rem',color:'var(--muted)',fontStyle:'italic'}}>Sem tarefas</div>
-                          :<div style={{display:'flex',flexDirection:'column',gap:3}}>
-                            {pt.map(t=>{const col=GANTT_COLORS[t.status]||GANTT_COLORS['Pendente'];const ok=t.status==='Concluído';const range=(t.startDate&&t.dueDate)?fmtShort(t.startDate)+' → '+fmtShort(t.dueDate):'';return(
-                              <div key={t.id} style={{display:'flex',alignItems:'center',gap:7}}>
-                                <span style={{width:6,height:6,borderRadius:'50%',background:col.dot,flexShrink:0}}/>
-                                <span style={{fontSize:'.74rem',color:ok?'var(--muted)':'var(--text)',textDecoration:ok?'line-through':'none',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{t.text}</span>
-                                {range&&<span style={{fontSize:'.62rem',color:'var(--muted)',flexShrink:0,fontVariantNumeric:'tabular-nums'}}>{range}</span>}
-                              </div>
-                            );})}
-                          </div>}
-                      </div>
-                      <button className="btn btn-outline" style={{alignSelf:'flex-start',padding:'4px 10px',fontSize:'.7rem',marginTop:2}} onClick={e=>{e.stopPropagation();setSelectedProject(p);setView('project-detail');}}>Abrir projeto <Icon name="arrow-right" size={10}/></button>
-                    </div>
-                  )}
+                    <span aria-hidden="true" style={{color:'var(--muted)',display:'flex',alignItems:'center',flexShrink:0}}><Icon name="arrow-right" size={13}/></span>
                 </div>
                 );
               })}
@@ -11790,6 +11845,30 @@ const App=()=>{
   useEffect(()=>{
     setGalleryPosts(prev=>repairProjectFocusPostScopes(prev,pomoData?.rank?.sessions));
   },[pomoData?.rank?.sessions]);
+  const projectPostRecoveryAttemptedRef=useRef(false);
+  useEffect(()=>{
+    if(projectPostRecoveryAttemptedRef.current)return;
+    try{if(localStorage.getItem(PROJECT_POST_RECOVERY_KEY)==='1')return;}catch{/* retry safely without a marker */}
+    const sessions=pomoData?.rank?.sessions||[];
+    if(!missingProjectPostLinks(galleryPosts,sessions).size)return;
+    projectPostRecoveryAttemptedRef.current=true;
+    (async()=>{
+      const result=await recoverMissingProjectPosts(galleryPosts,sessions);
+      if(result.recovered>0){
+        const restoredIds=new Set(result.restored.map(post=>String(post.id)));
+        setGalleryPosts(prev=>{
+          const current=Array.isArray(prev)?prev:[];
+          const merged=[...current.filter(post=>!restoredIds.has(String(post?.id))),...result.restored];
+          return repairProjectFocusPostScopes(merged,sessions);
+        });
+        if(result.recovered>=result.missing)try{localStorage.setItem(PROJECT_POST_RECOVERY_KEY,'1');}catch(e){bhLog('projectPosts.recover.marker',e);}
+      }else if(!result.checked){
+        // The stores were unavailable rather than empty. Permit a later retry
+        // in this same session after the browser finishes opening IndexedDB.
+        projectPostRecoveryAttemptedRef.current=false;
+      }
+    })().catch(e=>{projectPostRecoveryAttemptedRef.current=false;bhLog('projectPosts.recover',e,'missing project posts were not restored');});
+  },[galleryPosts,pomoData?.rank?.sessions]);
   const [rankPromotion,setRankPromotion]=useState(null);
   const dismissRankPromotion=useCallback(()=>setRankPromotion(null),[]);
   const _remoteApplyId=useRef(0);
@@ -12522,7 +12601,7 @@ const App=()=>{
         :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} themeMode={themeMode} onToggleTheme={toggleTheme}/>
       }
       <main ref={mainRef} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
-        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} galleryFolders={galleryFolders} galleryPosts={galleryPosts} isMobile={isMobile} setSelectedProject={setSelectedProject} onSessionComplete={handleSessionComplete} onOpenSessionPost={handleOpenSessionPost}/>} 
+        {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} galleryFolders={galleryFolders} galleryPosts={galleryPosts} isMobile={isMobile} onSelectProject={handleSelectProject} onSessionComplete={handleSessionComplete} onOpenSessionPost={handleOpenSessionPost}/>} 
         {view==='projects'       &&<ProjectsList projects={projects} setProjects={setProjects} onSelect={handleSelectProject} onAdd={handleAddProject} isMobile={isMobile}/>}
         {view==='project-detail' &&selectedProject&&<ProjectDetail project={selectedProject} onBack={handleBackToProjects} onUpdate={handleUpdateProject} onSoftDelete={handleSoftDeleteSelected} globalMentors={mentors} onAddGlobalMentor={handleAddGlobalMentor} galleryPosts={galleryPosts} setGalleryPosts={setGalleryPosts} galleryFolders={galleryFolders} pomoData={pomoData} isMobile={isMobile}/>} 
         {view==='gallery'        &&<Gallery posts={galleryPosts} setPosts={setGalleryPosts} folders={galleryFolders} setFolders={setGalleryFolders} navTick={navTick} isMobile={isMobile}/>}
