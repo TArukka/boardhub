@@ -63,6 +63,17 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.56 — one daily victory, continuous points afterward (sep/2026)
+  The first 2h milestone of each local day grants the daily victory: 200 points
+  for regular focus, rising proportionally to 250 when those first 2h belong to
+  projects. After the victory, focus keeps awarding points continuously at the
+  same rates instead of opening another 2h victory cycle. Fractional points are
+  retained between sessions with integer accounting, so short sessions never
+  lose credited time. The daily milestone and its fraction reset at midnight.
+  Existing v23.55 saves migrate from today's recorded focus without awarding
+  completed time a second time.
+  ──────
+
   BoardHub v23.55 — victories are daily cycles (sep/2026)
   The partial progress toward a 2h victory now belongs to one local calendar
   day. At the first normalization, credit, or maintenance after midnight,
@@ -5172,6 +5183,7 @@ const rankSeasonNext=id=>{
 };
 const rankDefault=(now=new Date(),history=[],sessions=[],notices=[])=>({
   seasonId:rankSeasonForDate(now).id,points:0,cycleDate:rankDateKey(now),cycleSeconds:0,cycleProjectSeconds:0,
+  postVictoryPointUnits:0,
   decayApplied:{},startedOn:rankDateKey(now),history:Array.isArray(history)?history.slice(-24):[],
   sessions:Array.isArray(sessions)?sessions.slice(-1000):[],
   notices:Array.isArray(notices)?notices.filter(Boolean).slice(-8):[]
@@ -5182,7 +5194,7 @@ const rankNormalize=(value,now=new Date())=>{
   const today=rankDateKey(now);
   const cycleDate=typeof src.cycleDate==='string'?src.cycleDate:today;
   const sameCycleDay=cycleDate===today;
-  const cycleSeconds=sameCycleDay?Math.max(0,Math.min(7199,Number(src.cycleSeconds)||0)):0;
+  const cycleSeconds=sameCycleDay?Math.max(0,Math.min(7200,Number(src.cycleSeconds)||0)):0;
   return {
     ...fallback,...src,
     seasonId:typeof src.seasonId==='string'?src.seasonId:fallback.seasonId,
@@ -5190,6 +5202,7 @@ const rankNormalize=(value,now=new Date())=>{
     cycleDate:today,
     cycleSeconds,
     cycleProjectSeconds:sameCycleDay?Math.min(cycleSeconds,Math.max(0,Number(src.cycleProjectSeconds)||0)):0,
+    postVictoryPointUnits:sameCycleDay?Math.max(0,Math.min(7199,Math.floor(Number(src.postVictoryPointUnits)||0))):0,
     decayApplied:src.decayApplied&&typeof src.decayApplied==='object'&&!Array.isArray(src.decayApplied)?src.decayApplied:{},
     startedOn:typeof src.startedOn==='string'?src.startedOn:fallback.startedOn,
     history:Array.isArray(src.history)?src.history.slice(-24):[],
@@ -5274,14 +5287,19 @@ const pomoRankCredit=(value,secs,targetKey,now=new Date())=>{
   if(rank.seasonId!==rankSeasonForDate(now).id)return rank;
   let remaining=Math.max(0,Number(secs)||0);
   const isProject=String(targetKey||'').startsWith('project:');
-  while(remaining>0){
+  if(remaining>0&&rank.cycleSeconds<7200){
     const take=Math.min(remaining,7200-rank.cycleSeconds);
     rank={...rank,cycleSeconds:rank.cycleSeconds+take,cycleProjectSeconds:rank.cycleProjectSeconds+(isProject?take:0)};
     remaining-=take;
     if(rank.cycleSeconds>=7200){
       const reward=Math.round(200+50*(rank.cycleProjectSeconds/7200));
-      rank={...rank,points:Math.min(RANK_MAX,rank.points+reward),cycleDate:rankDateKey(now),cycleSeconds:0,cycleProjectSeconds:0};
+      rank={...rank,points:Math.min(RANK_MAX,rank.points+reward),cycleDate:rankDateKey(now),cycleSeconds:7200};
     }
+  }
+  if(remaining>0&&rank.cycleSeconds>=7200){
+    const units=rank.postVictoryPointUnits+remaining*(isProject?250:200);
+    const earned=Math.floor(units/7200);
+    rank={...rank,points:Math.min(RANK_MAX,rank.points+earned),postVictoryPointUnits:units%7200};
   }
   return rank;
 };
@@ -5298,12 +5316,14 @@ const pomoNormalize = d => {
   const dailyAllocations=(src.dailyAllocations&&typeof src.dailyAllocations==='object'&&!Array.isArray(src.dailyAllocations))?src.dailyAllocations:{};
   const today=rankDateKey();
   let rank=rankNormalize(src.rank);
-  if(!(src.rank&&typeof src.rank.cycleDate==='string')){
+  if(!(src.rank&&Object.prototype.hasOwnProperty.call(src.rank,'postVictoryPointUnits'))){
     const todaySecs=Math.max(0,Number(days[today])||0);
-    const cycleSeconds=todaySecs%7200;
     const todayProjectSecs=Object.entries(dailyAllocations[today]||{}).reduce((sum,[key,value])=>sum+(String(key).startsWith('project:')?Math.max(0,Number(value)||0):0),0);
     const projectRatio=todaySecs>0?Math.min(1,todayProjectSecs/todaySecs):0;
-    rank={...rank,cycleDate:today,cycleSeconds,cycleProjectSeconds:Math.round(cycleSeconds*projectRatio)};
+    const reachedVictory=todaySecs>=7200;
+    const remainderSecs=reachedVictory?todaySecs%7200:0;
+    const remainderUnits=Math.round(remainderSecs*(200+50*projectRatio))%7200;
+    rank={...rank,cycleDate:today,cycleSeconds:Math.min(7200,todaySecs),cycleProjectSeconds:reachedVictory?Math.round(7200*projectRatio):Math.min(todaySecs,todayProjectSecs),postVictoryPointUnits:remainderUnits};
   }
   return {
     ...src,
@@ -5754,7 +5774,7 @@ const RankGuide=({onClose})=>{
       })}</div>
       <div className="rank-guide-rules">
         <div className="rank-guide-rule"><h3><Icon name="list-checks" size={13}/> Divisões</h3><p>As divisões I–V exigem 1.000 pontos cada. A Divisão VI é a etapa final de cada rank e exige 2.000 pontos.</p></div>
-        <div className="rank-guide-rule"><h3><Icon name="timer" size={13}/> Vitórias diárias</h3><p>Cada 2h acumuladas no mesmo dia concede 200 pontos. O tempo ligado a projetos aumenta proporcionalmente a vitória, até 250 pontos. O progresso parcial reinicia à meia-noite.</p></div>
+        <div className="rank-guide-rule"><h3><Icon name="timer" size={13}/> Vitória diária</h3><p>As primeiras 2h do dia concedem uma vitória: 200 pontos em foco comum, chegando proporcionalmente a 250 em projetos. Depois disso, cada minuto continua valendo pontos na mesma proporção, sem exigir outro bloco de 2h. O marco diário reinicia à meia-noite.</p></div>
         <div className="rank-guide-rule"><h3><Icon name="alert-triangle" size={13}/> Decay em dias úteis</h3><p>O total focado no dia define a perda. Sábados e domingos não aplicam decay, e a pontuação nunca passa de zero.</p><div className="rank-decay-table">{decay.map(([time,loss])=><span key={time}>{time}<strong>{loss}</strong></span>)}</div></div>
         <div className="rank-guide-rule"><h3><Icon name="calendar-days" size={13}/> Temporadas</h3><p>São três por ano: I (jan–abr), II (mai–ago) e III (set–dez). O rank final entra no histórico e os pontos recomeçam do zero.</p></div>
       </div>
@@ -5805,7 +5825,7 @@ const RankProfilePanel=({pomoData,isMobile=false,isSmall=false,onOpenGallery})=>
         {projectedLoss>0&&<div className="rank-decay-hint"><Icon name="alert-triangle" size={12}/><span><strong>Risco de decay: −{projectedLoss} pts.</strong> {projectedDrop?'Cairia para '+projectedPosition.rankName+' '+projectedPosition.divisionRoman+'. ':''}{pomoFmtRemaining(Math.max(0,5400-todaySecs))} de foco evita a perda.</span></div>}
       </div>
       <div className="rank-panel-footer">
-        <div className="rank-panel-metric"><span>Próxima vitória</span><strong>{pomoFmtRemaining(Math.max(0,7200-(rank.cycleSeconds||0)))}</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
+        <div className="rank-panel-metric"><span>{rank.cycleSeconds>=7200?'Vitória do dia':'Próxima vitória'}</span><strong>{rank.cycleSeconds>=7200?'Concluída':pomoFmtRemaining(Math.max(0,7200-(rank.cycleSeconds||0)))}</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
         <div className="rank-panel-metric"><span>Sessões nesta temporada</span><strong>{seasonSessions}</strong></div>
         <div className="rank-panel-actions">
           <button className="btn btn-outline" onClick={()=>setHistoryView('ranks')}><Icon name="list-checks" size={12}/> Ranks</button>
@@ -5882,7 +5902,7 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
       <div className="session-capture-heading"><div><span>Sessão concluída</span><h2 id="session-capture-title">Registre o que você fez</h2><p>{session.targetLabel||'Sem categoria'} · {pomoFmtSecs(session.durationSeconds||0)}</p></div><RankBadge rankIndex={rankIndex} size={54}/></div>
       <div className="session-result-strip">
         <div className="session-result-card"><span>Pontos conquistados</span><strong>+{Number(session.pointsAwarded||0)} pts</strong></div>
-        <div className="session-result-card"><span>Próxima vitória de 2h</span><strong>{pomoFmtSecs(victorySeconds)} / 2h</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
+        <div className="session-result-card"><span>{victorySeconds>=7200?'Vitória do dia':'Próxima vitória de 2h'}</span><strong>{victorySeconds>=7200?'Concluída':pomoFmtSecs(victorySeconds)+' / 2h'}</strong><i><b style={{width:victoryPct+'%'}}/></i></div>
       </div>
       {isProjectSession&&<><div className="session-post-mode" role="group" aria-label="Destino do post">
         <button type="button" className={destination==='project'?'active':''} onClick={()=>{setDestination('project');setExistingPostId('');}} disabled={saving}>No projeto</button>
