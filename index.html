@@ -63,6 +63,7 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.76 — unlimited images in every post and visible project counts (sep/2026)
   BoardHub v23.74 — backup safety and compact rank fixes (sep/2026)
   BoardHub v23.73 — non-destructive backup restore for rank, sessions and posts (sep/2026)
   BoardHub v23.72 — responsive dashboard tiers + direct project navigation (sep/2026)
@@ -6213,14 +6214,19 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
   useEffect(()=>{boxRef.current?.focus();return()=>previewUrlsRef.current.forEach(u=>URL.revokeObjectURL(u));},[]);
   useEffect(()=>{const online=()=>setOffline(false),offlineNow=()=>setOffline(true);window.addEventListener('online',online);window.addEventListener('offline',offlineNow);return()=>{window.removeEventListener('online',online);window.removeEventListener('offline',offlineNow);};},[]);
   useEffect(()=>{if(saveMode==='append'&&!eligiblePosts.some(p=>String(p.id)===String(existingPostId)))setExistingPostId(eligiblePosts[0]?.id||'');},[saveMode,eligiblePosts,existingPostId]);
+  // Both destinations accept any number of images. Keeping this as a named
+  // flag makes the UI copy explicit and prevents a future destination-specific
+  // cap from silently returning to the upload path.
+  const projectImagesUnlimited=true;
   const addFiles=list=>{
     const incoming=Array.from(list||[]);
     const images=incoming.filter(f=>/^image\//.test(f.type||''));
     if(!images.length){if(incoming.length)setError('Escolha arquivos de imagem.');return;}
-    const room=Math.max(0,12-files.length),next=images.slice(0,room);
-    if(!next.length){setError('O limite é de 12 imagens por sessão.');return;}
+    const room=Infinity;
+    const next=images;
+    if(!next.length)return;
     const entries=next.map(file=>{const preview=URL.createObjectURL(file);previewUrlsRef.current.push(preview);return{file,preview,id:Date.now()+'-'+Math.random()};});
-    setFiles(prev=>[...prev,...entries]);setError(images.length>room?'As primeiras 12 imagens foram adicionadas.':'');
+    setFiles(prev=>[...prev,...entries]);setError('');
   };
   const removeFile=id=>setFiles(prev=>{const hit=prev.find(x=>x.id===id);if(hit){URL.revokeObjectURL(hit.preview);previewUrlsRef.current=previewUrlsRef.current.filter(u=>u!==hit.preview);}return prev.filter(x=>x.id!==id);});
   const save=async()=>{
@@ -6249,7 +6255,7 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
       </div>
       {isProjectSession&&<><div className="session-post-mode" role="group" aria-label="Destino do post">
         <button type="button" className={destination==='project'?'active':''} onClick={()=>{setDestination('project');setExistingPostId('');}} disabled={saving}>No projeto</button>
-        <button type="button" className={destination==='gallery'?'active':''} onClick={()=>{setDestination('gallery');setExistingPostId('');}} disabled={saving}>Na Galeria</button>
+        <button type="button" className={destination==='gallery'?'active':''} onClick={()=>{setDestination('gallery');setExistingPostId('');setError('');}} disabled={saving}>Na Galeria</button>
       </div><div style={{marginTop:5,fontSize:'.67rem',color:'var(--muted)',textAlign:'center'}}>O post ficará somente no destino escolhido.</div></>}
       <div className="session-post-mode" role="group" aria-label="Destino das imagens">
         <button type="button" className={saveMode==='new'?'active':''} onClick={()=>setSaveMode('new')} disabled={saving}>Criar novo post</button>
@@ -6263,7 +6269,7 @@ const SessionCaptureModal=({session,onSave,rankIndex=0,galleryFolders=[],gallery
       {saveMode==='append'&&existingPost&&<div className="session-offline-note"><Icon name="images" size={14}/><span>As novas imagens serão anexadas a <strong>{existingPost.title}</strong>. O post original e sua categoria serão preservados.</span></div>}
       {offline&&<div className="session-offline-note"><Icon name="hard-drive" size={14}/><span>Você está sem conexão. As imagens serão guardadas neste dispositivo e o post continuará disponível {destination==='project'?'neste projeto':'na Galeria'}.</span></div>}
       <button className={'session-dropzone '+(files.length?'has-files':'')} onClick={()=>inputRef.current?.click()} disabled={saving} type="button">
-        <Icon name="image-plus" size={22}/><strong>{files.length?'Adicionar mais imagens':'Arraste imagens aqui'}</strong><span>{files.length?files.length+' de 12 adicionadas':'ou clique para escolher'}</span>
+        <Icon name="image-plus" size={22}/><strong>{files.length?'Adicionar mais imagens':'Arraste imagens aqui'}</strong><span>{files.length?files.length+' adicionadas · sem limite':'ou clique para escolher · sem limite'}</span>
       </button>
       <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={e=>{addFiles(e.target.files);e.target.value='';}}/>
       {files.length>0&&<div className="session-capture-grid">{files.map(item=><div key={item.id}><img src={item.preview} alt="Prévia da sessão"/><button onClick={()=>removeFile(item.id)} disabled={saving} aria-label="Remover imagem" type="button"><Icon name="x" size={11}/></button></div>)}</div>}
