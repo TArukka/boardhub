@@ -63,6 +63,20 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.64 — compact 1280×720 overview and lightbox framing (sep/2026)
+  The overview now uses the available desktop viewport height at 1280×720;
+  project and activity panes keep their content contained instead of pushing
+  the whole page into a second scroll. Lightbox navigation is symmetric and
+  the compact viewport adds a stable frame around opened artwork.
+  ──────
+
+  BoardHub v23.63 — fixed dashboard panes and automatic theme (sep/2026)
+  Project and activity panes now keep stable viewport-sized dimensions while
+  their internal content scrolls. The theme control cycles through mattinata,
+  notturno and automatico; automatico uses light from 08:00–17:59 and dark from
+  18:00–07:59, updating at the boundary without a reload.
+  ──────
+
   BoardHub v23.62 — silent autosave feedback (sep/2026)
   Autosave continues to run and sync, but the repeated “Salvo!” flash is no
   longer shown after every write. Errors and meaningful sync states remain
@@ -2274,7 +2288,7 @@
    would make notturno users see a flash of light paper on EVERY open, and here
    React only mounts after Babel — hundreds of ms on a cold cache. Synchronous,
    tiny, and tolerant of localStorage being unavailable (private mode). */
-try{var _bhT=localStorage.getItem('boardhub_theme');if(_bhT==='notturno')document.documentElement.setAttribute('data-theme','notturno');}catch(e){/*silent-ok: no localStorage (private mode) means no stored preference, and the default IS the paper theme*/}
+try{var _bhT=localStorage.getItem('boardhub_theme');var _bhH=new Date().getHours();var _bhNight=_bhT==='automatico'?(_bhH<8||_bhH>=18):_bhT==='notturno';if(_bhNight)document.documentElement.setAttribute('data-theme','notturno');}catch(e){/*silent-ok: no localStorage (private mode) means no stored preference, and the default IS the paper theme*/}
 </script>
 <style>
 :root{--bg:#F4F1ED;--surface:#FDFCFA;--border:#E8E3DC;--border-2:#D5CCBF;--text:#1C1917;--muted:#78716C;--accent:#4A3728;--focus-ring:rgba(var(--ink),.18);
@@ -2529,6 +2543,13 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   /* Lightbox: follow the narrower sidebar */
   .lightbox{left:180px!important;padding:12px 0!important;}
 }
+/* At the target 1280×720 viewport keep a clear frame around opened artwork.
+   The frame is part of the stage (not the image), so contain never crops the
+   artwork and navigation controls stay in the same safe gutter on both sides. */
+@media(min-width:1200px) and (max-width:1366px) and (min-height:680px) and (max-height:760px){
+  .lightbox{left:180px!important;padding:24px!important;}
+  .lightbox-stage{padding:28px 36px!important;box-sizing:border-box;}
+}
 @media(max-width:768px){
   /* Prevent horizontal scroll */
   html,body{overflow-x:hidden!important;max-width:100vw!important;}
@@ -2748,7 +2769,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 /* 1280×720 desktop mode: one deliberate vertical flow replaces the nested
    scroll areas that used to squeeze projects and Pomodoro into thin strips. */
 @media(max-width:1366px) and (max-height:800px) and (min-width:769px){
-  .dashboard-shell{max-width:none!important;height:calc(100vh - 26px)!important;overflow-y:auto!important;overflow-x:hidden!important;padding-right:5px;scrollbar-gutter:stable;overscroll-behavior:contain}
+  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;overflow-x:hidden!important;padding-right:5px;scrollbar-gutter:stable;overscroll-behavior:contain}
   .dashboard-shell::-webkit-scrollbar{width:5px}.dashboard-shell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
   .dashboard-header{margin-bottom:6px!important}
   .dashboard-stats{gap:8px!important;margin-bottom:7px!important}
@@ -2766,9 +2787,9 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .rank-panel-footer{grid-template-columns:minmax(130px,1fr) minmax(115px,.72fr) auto;gap:12px;padding:8px 16px}
   .rank-panel-metric>span{font-size:.54rem}.rank-panel-metric>strong{font-size:.92rem}
   .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:4px 7px;font-size:.62rem}
-  .dashboard-main-grid{flex:0 0 auto!important;min-height:260px!important;overflow:visible!important;align-items:start}
-  .dashboard-column{height:auto!important;min-height:260px;overflow:visible!important;padding-right:0!important}
-  .dashboard-mentors{margin-top:10px!important;padding-bottom:10px}
+  .dashboard-main-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
+  .dashboard-column{height:auto!important;min-height:0!important;overflow:auto!important;padding-right:0!important}
+  .dashboard-mentors{margin-top:8px!important;padding-bottom:4px}
   .dashboard-mentors .card{min-width:0}
 }
 @media(prefers-reduced-motion:reduce){.rank-promotion,.rank-promotion-aura,.rank-promotion-mark,.rank-promotion-copy{animation:none}.rank-progress-track span{transition:none}}
@@ -2927,17 +2948,20 @@ const bhLogClear=()=>{
 };
 
 // - M3: THEME -
-// 'mattinata' (the default) and 'notturno'. The default is the warm paper by your
-// decision, not by system preference: the app has an identity and it is light.
-// Whoever wants the dark one switches it on, and the choice persists.
+// 'mattinata', 'notturno' and 'automatico'. Automatico follows the local clock:
+// paper from 08:00 (inclusive) through 17:59, notturno from 18:00 through 07:59.
 const THEME_KEY='boardhub_theme';
-const themeLoad=()=>{try{return localStorage.getItem(THEME_KEY)==='notturno'?'notturno':'mattinata';}catch{return 'mattinata';}};
-const themeApply=t=>{
+const themeModeLoad=()=>{try{const t=localStorage.getItem(THEME_KEY);if(t==='notturno'||t==='automatico')return t;return 'mattinata';}catch{return 'mattinata';}};
+const themeResolve=mode=>mode==='automatico'?((new Date().getHours()<8||new Date().getHours()>=18)?'notturno':'mattinata'):mode;
+const themeLoad=()=>themeResolve(themeModeLoad());
+const themeApply=(mode,save=true)=>{
+  const t=themeResolve(mode);
   try{
     if(t==='notturno')document.documentElement.setAttribute('data-theme','notturno');
     else document.documentElement.removeAttribute('data-theme');
   }catch(e){bhLog('themeApply',e);}
-  try{localStorage.setItem(THEME_KEY,t);}catch(e){bhLog('themeSave',e,'the theme reverts to the default on the next boot');}
+  if(save)try{localStorage.setItem(THEME_KEY,mode);}catch(e){bhLog('themeSave',e,'the theme reverts to the default on the next boot');}
+  return t;
 };
 
 // - LOCAL STORAGE -
@@ -5048,7 +5072,7 @@ const SetupModal=({onDone})=>{
 const splitHubName=name=>{const m=(name||'BoardHub').match(/^([A-Z][a-z]*)([A-Z].*)$/);return m?[m[1],m[2]]:[(name||'BoardHub'),''];};
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,resetView,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
+const SidebarDesktop=React.memo(({activeView,setView,resetView,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,themeMode,onToggleTheme})=>{
   const activeProjects=useMemo(()=>(projects||[]).filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const badges={'projects':activeProjects.length||0};
   return(
@@ -5093,10 +5117,10 @@ const SidebarDesktop=React.memo(({activeView,setView,resetView,isMobile,setForce
       {/* M3: the label says what the click DOES, not which state you are in — a
           "Notturno" button on the light theme is ambiguous under both readings. */}
       <button onClick={onToggleTheme} className="hover-border-text hover-text"
-        title={theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
-        aria-label={theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
+        title={themeMode==='automatico'?'Tema automático (08:00–18:00 claro) · clique para modo manual':theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
+        aria-label={themeMode==='automatico'?'Tema automático (08:00–18:00 claro) · clique para modo manual':theme==='notturno'?'Voltar ao tema mattinata':'Mudar para o tema notturno'}
         style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
-        <Icon name={theme==='notturno'?'sun':'moon'} size={12}/> {theme==='notturno'?'Mattinata':'Notturno'}
+        <Icon name={themeMode==='automatico'?'clock':theme==='notturno'?'sun':'moon'} size={12}/> {themeMode==='automatico'?'Automático':theme==='notturno'?'Mattinata':'Notturno'}
       </button>
       <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.7rem',color:'var(--muted)',padding:'0 4px'}}>
         <Icon name="hard-drive" size={11}/>Auto-save ativo
@@ -5119,7 +5143,7 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,resetView,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
+const SidebarMobile=React.memo(({activeView,setView,resetView,setForceMobile,hubName,onOpenCmd,theme,themeMode,onToggleTheme})=>{
   const [moreOpen,setMoreOpen]=useState(false);
   const lastTabTapRef=useRef({id:null,at:0});
   const go=id=>{
@@ -5182,7 +5206,7 @@ const SidebarMobile=React.memo(({activeView,setView,resetView,setForceMobile,hub
               <button onClick={()=>{onToggleTheme();setMoreOpen(false);}}
                 className="more-sheet-item"
                 style={{color:'var(--muted)',fontSize:'.88rem'}}>
-                <Icon name={theme==='notturno'?'sun':'moon'} size={18}/> {theme==='notturno'?'Tema mattinata':'Tema notturno'}
+                <Icon name={themeMode==='automatico'?'clock':theme==='notturno'?'sun':'moon'} size={18}/> {themeMode==='automatico'?'Tema automático':theme==='notturno'?'Tema mattinata':'Tema notturno'}
               </button>
               <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
                 <Icon name="hard-drive" size={12}/>Auto-save ativo
@@ -7121,7 +7145,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         {/* LEFT: projects + recent notes */}
         <div className="dashboard-column dashboard-column-left" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
           {/* Projetos ativos */}
-          <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
+          <div style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7}}>
               <span className="label label-section"><StaveGlyph name="half"/>Em andamento</span>
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={10}/></button>
@@ -7138,7 +7162,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                 <Icon name="plus" size={12}/> Criar Projeto
               </button>
             </div>}
-            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6,flex:1,minHeight:0,overflow:'auto'}}>
+            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6,flex:1,minHeight:0,overflow:'auto',paddingRight:2}}>
               {active.map(p=>{
                 const pt=p.projectTasks||[];const total=pt.length;const done=pt.filter(t=>t.status==='Concluído').length;
                 const pct=total>0?Math.round((done/total)*100):0;const r=10;const c=2*Math.PI*r;const offset=c-(pct/100)*c;
@@ -7213,7 +7237,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         <div className="dashboard-column dashboard-column-right" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
           <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} projects={projects} galleryFolders={galleryFolders} onSessionComplete={onSessionComplete}/></div>
           {/* Atividades gerais */}
-          <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
+          <div style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
               <span className="label label-section"><StaveGlyph name="beamed"/>Lista de Atividades</span>
               <div style={{display:'flex',gap:2}}>
@@ -9060,6 +9084,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
   const canLightboxNext=lightboxIndex>=0&&lightboxIndex<lightboxImages.length-1;
   const goLightboxPrev=()=>{if(canLightboxPrev)setLightbox(lightboxImages[lightboxIndex-1]);};
   const goLightboxNext=()=>{if(canLightboxNext)setLightbox(lightboxImages[lightboxIndex+1]);};
+  const lightboxTight=!isMobile&&typeof window!=='undefined'&&window.innerWidth>=1200&&window.innerWidth<=1366&&window.innerHeight>=680&&window.innerHeight<=760;
   useEffect(()=>{
     if(lightboxIndex<0)return;
     const neighbours=[lightboxImages[lightboxIndex-1],lightboxImages[lightboxIndex+1]].filter(Boolean);
@@ -9095,12 +9120,12 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
         <>
           <button onClick={e=>{e.stopPropagation();goLightboxPrev();}} aria-label="Imagem anterior" title="Imagem anterior"
             disabled={!canLightboxPrev}
-            style={{position:'fixed',left:isMobile?10:((window.innerWidth<=1366&&window.innerHeight<=800)?190:230),top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxPrev?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxPrev?1:.35}}>
+            style={{position:'fixed',left:isMobile?10:(lightboxTight?204:244),top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxPrev?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxPrev?1:.35}}>
             <Icon name="arrow-left" size={20}/>
           </button>
           <button onClick={e=>{e.stopPropagation();goLightboxNext();}} aria-label="Próxima imagem" title="Próxima imagem"
             disabled={!canLightboxNext}
-            style={{position:'fixed',right:10,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxNext?1:.35}}>
+            style={{position:'fixed',right:isMobile?10:(lightboxTight?24:24),top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxNext?1:.35}}>
             <Icon name="arrow-right" size={20}/>
           </button>
           <div style={{position:'fixed',left:'50%',bottom:18,transform:'translateX(-50%)',padding:'6px 12px',borderRadius:999,background:'rgba(0,0,0,.4)',color:'white',fontSize:'.78rem',fontWeight:600,letterSpacing:'.02em',backdropFilter:'blur(4px)',zIndex:201,pointerEvents:'none'}}>
@@ -11837,13 +11862,25 @@ const App=()=>{
   })());
   // Which account this device has already completed a sync with ('' = none).
   const _deviceSyncedUid=useRef((()=>{try{return localStorage.getItem(SYNCED_UID_KEY)||'';}catch{return '';}})());
-  // M3: the theme was already applied to <html> by the <head> script before the
-  // first paint; here React merely gets to know the value so it can draw the
-  // right button.
+  // The head script already applied the effective theme before first paint.
+  // Keep the selected mode separately so automatico can follow the clock while
+  // the control still communicates which mode is active.
+  const [themeMode,setThemeMode]=useState(themeModeLoad);
   const [theme,setTheme]=useState(themeLoad);
   const toggleTheme=useCallback(()=>{
-    setTheme(t=>{const n=t==='notturno'?'mattinata':'notturno';themeApply(n);return n;});
+    setThemeMode(mode=>{
+      const next=mode==='mattinata'?'notturno':mode==='notturno'?'automatico':'mattinata';
+      setTheme(themeApply(next));
+      return next;
+    });
   },[]);
+  useEffect(()=>{
+    if(themeMode!=='automatico')return;
+    const refresh=()=>setTheme(themeApply('automatico',false));
+    refresh();
+    const timer=setInterval(refresh,60*1000);
+    return()=>clearInterval(timer);
+  },[themeMode]);
   const _didInitialReconcile=useRef(false);
   // F2(A): signature of the last remote state archived because of a conflict. The
   // listener redelivers the same document in several situations (reconnection,
@@ -12418,8 +12455,8 @@ const App=()=>{
       {pendingRankNotice&&!pendingSession&&<RankStatusOverlay notice={pendingRankNotice} onDone={dismissRankNotice}/>} 
       {rankPromotion&&!pendingSession&&!pendingRankNotice&&<RankPromotionOverlay promotion={rankPromotion} onDone={dismissRankPromotion}/>} 
       {isMobile
-        ?<SidebarMobile activeView={view} setView={navigate} resetView={resetView} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
-        :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
+        ?<SidebarMobile activeView={view} setView={navigate} resetView={resetView} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} themeMode={themeMode} onToggleTheme={toggleTheme}/>
+        :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} themeMode={themeMode} onToggleTheme={toggleTheme}/>
       }
       <main ref={mainRef} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} galleryFolders={galleryFolders} galleryPosts={galleryPosts} isMobile={isMobile} setSelectedProject={setSelectedProject} onSessionComplete={handleSessionComplete} onOpenSessionPost={handleOpenSessionPost}/>} 
