@@ -63,6 +63,12 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.70 — recover project focus posts from session links (sep/2026)
+  Project posts created during intermediate versions are repaired from their
+  session history links. A projectId is now authoritative when old scope fields
+  disagree, while sessions explicitly published to Gallery remain there only.
+  ──────
+
   BoardHub v23.69 — fitted 1280×720 overview with compact rank and header (sep/2026)
   With the summary counters gone, the overview again fits in one viewport at
   1280×720. The greeting and ranked profile lose vertical weight while the
@@ -3055,11 +3061,45 @@ const bhRecordArray=(value,fallback=[])=>Array.isArray(value)
 // be deliberately published only to the Gallery.
 const isProjectScopedPost=post=>{
   if(!post||typeof post!=='object')return false;
+  // projectId is written only for project-destination posts. Some builds wrote
+  // an outdated storageScope beside it; the concrete project link must win.
+  if(post.projectId!=null&&String(post.projectId)!=='')return true;
   if(post.storageScope==='gallery')return false;
   if(post.storageScope==='project')return true;
-  if(post.projectId!=null&&String(post.projectId)!=='')return true;
   const keys=[post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[])];
   return keys.some(key=>String(key||'').startsWith('project:'));
+};
+const repairProjectFocusPostScopes=(posts,sessions)=>{
+  const projectByPost=new Map(),galleryOnly=new Set();
+  (Array.isArray(sessions)?sessions:[]).forEach(session=>{
+    if(!session||session.targetType!=='project')return;
+    if(session.postDestination==='gallery'){
+      if(session.galleryPostId!=null)galleryOnly.add(String(session.galleryPostId));
+      return;
+    }
+    const postId=session.projectPostId||(session.postDestination!=='gallery'?session.galleryPostId:null);
+    const projectId=String(session.targetKey||'').replace(/^project:/,'');
+    if(postId!=null&&String(postId)!==''&&projectId)projectByPost.set(String(postId),projectId);
+  });
+  let changed=false;
+  const repaired=(Array.isArray(posts)?posts:[]).map(post=>{
+    if(!post||typeof post!=='object')return post;
+    const linkedProject=projectByPost.get(String(post.id));
+    if(!linkedProject&&galleryOnly.has(String(post.id))){
+      if(post.storageScope==='gallery'&&(post.projectId==null||String(post.projectId)===''))return post;
+      changed=true;
+      return{...post,storageScope:'gallery',projectId:null};
+    }
+    const existingProject=post.projectId!=null&&String(post.projectId)!==''?String(post.projectId):'';
+    const projectId=linkedProject||existingProject;
+    if(!projectId)return post;
+    const targetKey='project:'+projectId;
+    const keys=Array.from(new Set([post.sourceTargetKey,...(Array.isArray(post.sourceTargetKeys)?post.sourceTargetKeys:[]),targetKey].filter(Boolean).map(String)));
+    if(post.storageScope==='project'&&String(post.projectId)===projectId&&post.folder==null&&keys.length===(post.sourceTargetKeys||[]).length&&keys.every((key,index)=>key===String(post.sourceTargetKeys[index])))return post;
+    changed=true;
+    return{...post,storageScope:'project',projectId,folder:null,sourceTargetKey:String(post.sourceTargetKey||targetKey),sourceTargetKeys:keys};
+  });
+  return changed?repaired:posts;
 };
 const normalizeFocusPostCopy=post=>{
   if(!post||(post.sourceSessionId==null&&!Array.isArray(post.sourceSessionIds)))return post;
@@ -11744,6 +11784,12 @@ const App=()=>{
   const [noteGroups,setNoteGroups]=useState(()=>bhRecordArray(persisted?.noteGroups,DEFAULT_NOTE_GROUPS));
   const [pomoData,setPomoData]=useState(()=>pomoRankMaintain(pomoLoad()));
   useEffect(()=>{setPomoData(prev=>pomoSyncGalleryCategories(prev,galleryFolders));},[galleryFolders]);
+  // Repair posts produced while project/gallery destination metadata was in
+  // transition. The session ledger is the durable source of truth, and an
+  // explicit Gallery choice is never moved.
+  useEffect(()=>{
+    setGalleryPosts(prev=>repairProjectFocusPostScopes(prev,pomoData?.rank?.sessions));
+  },[pomoData?.rank?.sessions]);
   const [rankPromotion,setRankPromotion]=useState(null);
   const dismissRankPromotion=useCallback(()=>setRankPromotion(null),[]);
   const _remoteApplyId=useRef(0);
