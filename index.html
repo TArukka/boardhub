@@ -63,6 +63,8 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.74 — backup safety and compact rank fixes (sep/2026)
+  BoardHub v23.73 — non-destructive backup restore for rank, sessions and posts (sep/2026)
   BoardHub v23.72 — responsive dashboard tiers + direct project navigation (sep/2026)
   BoardHub v23.71 — restore missing project posts from backup snapshots (sep/2026)
   When a project session still references a post absent from live state, the app
@@ -2847,14 +2849,19 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .dashboard-header{margin-bottom:5px!important;padding-top:6px}
   .dashboard-header h1{font-size:1.82rem!important;line-height:1.15!important;margin-bottom:0!important;overflow:visible}
   .dashboard-header p{font-size:.72rem!important;line-height:1.2}
-  .rank-profile-panel{grid-template-columns:150px 1fr;min-height:138px!important;height:138px;margin-bottom:7px}
+  .rank-profile-panel{grid-template-columns:150px minmax(0,1fr);grid-template-rows:auto auto;min-height:170px!important;height:auto!important;margin-bottom:7px;overflow:visible}
+  .rank-panel-main{min-height:0}.rank-decay-hint{white-space:normal;margin-top:5px;padding:4px 7px}
+  .rank-panel-title span{font-size:1.8rem}.rank-panel-title strong{font-size:1.25rem}
+  .rank-panel-footer{grid-template-columns:minmax(0,1fr) minmax(0,.8fr) auto;gap:8px}
+  .rank-panel-actions{flex-wrap:wrap;justify-content:flex-end}.rank-panel-actions .btn{padding:4px 7px;font-size:.65rem}
+  .dashboard-project-pane,.dashboard-activity-pane{flex-shrink:1!important}
   .rank-panel-emblem{padding:7px}.rank-panel-emblem .rank-badge{width:122px!important;height:122px!important}
   .rank-panel-main{padding:8px 14px 5px}.rank-panel-title{margin-bottom:5px}.rank-panel-footer{padding:7px 14px}
   .dashboard-main-grid{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)!important;gap:12px!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
   .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
   .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
-  .dashboard-project-pane{flex-basis:190px!important;height:190px!important;min-height:190px!important}
-  .dashboard-activity-pane{flex-basis:212px!important;height:212px!important;min-height:212px!important}
+  .dashboard-project-pane{flex-basis:172px!important;height:172px!important;min-height:160px!important}
+  .dashboard-activity-pane{flex:1 1 180px!important;height:auto!important;min-height:145px!important}
   .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}.dashboard-mentors .card{min-width:0}.dashboard-mentor-cover{height:38px!important}
 }
 @media(min-width:1600px) and (min-height:900px) and (max-width:2559px){
@@ -3154,7 +3161,6 @@ const missingProjectPostLinks=(posts,sessions)=>{
   });
   return links;
 };
-const PROJECT_POST_RECOVERY_KEY='boardhub_project_post_recovery_v1';
 const recoverMissingProjectPosts=async(posts,sessions)=>{
   const links=missingProjectPostLinks(posts,sessions);
   if(!links.size)return{posts,recovered:0,missing:0,checked:true,restored:[]};
@@ -3214,6 +3220,15 @@ if(!persisted){try{localStorage.setItem(SEEDED_KEY,'1');}catch(e){bhLog('seed.ma
 //   • quota-safe: drops oldest entries (and strips base64) before giving up
 // F1: the history lives in IndexedDB, in ITS OWN DATABASE. The key below is only
 // the migration SOURCE — once migrated and verified, it ceases to exist.
+const bhBackupSig=s=>{
+  const str=JSON.stringify(s||{});let h=5381;
+  for(let i=0;i<str.length;i++)h=((h<<5)+h+str.charCodeAt(i))|0;
+  return 'backup-v2:'+h;
+};
+const bhBackupFailure=e=>{
+  bhLog('backup.failed',e);
+  window.dispatchEvent(new CustomEvent('bh-backup-error',{detail:'Falha ao salvar backup. Confira o espaço disponível e exporte uma cópia antes de restaurar.'}));
+};
 const BH_HISTORY_KEY='boardhub_backup_history';
 const BH_DB_NAME='boardhub_backups';
 const BH_STORE='snapshots';   // the whole entry, with state
@@ -3226,7 +3241,7 @@ const BH_MAX_TOTAL=12;    // cap on the ROTATING tier only — the weekly tier a
 const bhStateHasData=s=>{
   if(!s)return false;
   const ne=a=>Array.isArray(a)&&a.length>0;
-  return ne(s.projects)||ne(s.clients)||ne(s.mentors)||ne(s.notes)||ne(s.tasks)||ne(s.socialPosts)||ne(s.galleryPosts)||ne(s.noteGroups);
+  return ne(s.projects)||ne(s.clients)||ne(s.mentors)||ne(s.notes)||ne(s.tasks)||ne(s.socialPosts)||ne(s.galleryPosts)||ne(s.noteGroups)||Object.keys(s.pomoData?.days||{}).length>0||ne(s.pomoData?.rank?.sessions)||Number(s.pomoData?.rank?.points)>0;
 };
 const bhSig=s=>{ // cheap content hash (djb2) for dedup — volatile-free copy
   const {pomoData,...rest}=s||{};
@@ -3302,6 +3317,10 @@ const bhCounts=s=>({
   clients:(s.clients||[]).filter(c=>!c.deleted).length,
   notes:(s.notes||[]).filter(n=>!n.deleted).length,
   tasks:(s.tasks||[]).length,
+  posts:(s.galleryPosts||[]).filter(p=>p&&!p.deleted).length,
+  sessions:(s.pomoData?.rank?.sessions||[]).length,
+  points:Number(s.pomoData?.rank?.points)||0,
+  localMedia:collectIdbKeys(s).size,
 });
 // ── F1: history storage ─────────────────────────────────────────────────────
 // ITS OWN DATABASE, not one more store in the image database. gcIdb sweeps the
@@ -3463,8 +3482,8 @@ const bhRetention=list=>{
   const keptDailies=[...byWeekday.values()];
   const keptOthers=[];const seenDays=new Set();
   others.forEach((e,i)=>{
-    if(i<BH_KEEP_RECENT){keptOthers.push(e);seenDays.add(e.at.slice(0,10));return;}
-    const day=e.at.slice(0,10);
+    if(i<BH_KEEP_RECENT){keptOthers.push(e);seenDays.add(localDateISO(new Date(e.at)));return;}
+    const day=localDateISO(new Date(e.at));
     if(!seenDays.has(day)){keptOthers.push(e);seenDays.add(day);}
   });
   return [...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
@@ -3553,6 +3572,7 @@ const bhLsBackupStates=()=>{
 // first had just evicted.
 let _bhChain=Promise.resolve();
 const bhCapture=(state,reason)=>{
+  try{state=JSON.parse(JSON.stringify(state));}catch(e){bhBackupFailure(e);return Promise.resolve(false);}
   const run=async()=>{
     try{
       if(!bhStateHasData(state))return false; // never snapshot emptiness
@@ -3567,12 +3587,13 @@ const bhCapture=(state,reason)=>{
         // data:image) but it is a backup, and gcIdb reads its references back
         // through bhLsBackupStates so its blobs are not taken for orphans.
         const at0=new Date().toISOString();
-        const degraded={at:at0,reason,sig:bhSig(state),counts:bhCounts(state),state};
+        const degraded={at:at0,reason,sig:bhBackupSig(state),counts:bhCounts(state),state};
         const wrote=bhFallbackSave(degraded);
         bhEmergencySave(degraded);
-        return wrote;
+        bhBackupFailure(new Error('Backup principal indisponível; emergência pode ser parcial.'));
+        return false;
       }
-      const sig=bhSig(state);
+      const sig=bhBackupSig(state);
       const list=_bhMeta;
       if(reason==='daily'){
         // Weekly-slot dedup: compare against the slot this capture would replace
@@ -3580,9 +3601,9 @@ const bhCapture=(state,reason)=>{
         // slot whenever nothing changed since the last auto snapshot.
         const wd=new Date().getDay();
         const sameSlot=list.find(e=>e.reason==='daily'&&new Date(e.at).getDay()===wd);
-        if(sameSlot&&sameSlot.sig===sig&&sameSlot.at.slice(0,10)===localDateISO())return false;
+        if(sameSlot&&sameSlot.sig===sig&&localDateISO(new Date(sameSlot.at))===localDateISO())return false;
       }else{
-        if(list[0]&&list[0].sig===sig)return false; // identical to latest — skip
+        if(reason!=='pre-restore'&&reason!=='import-source'&&list[0]&&list[0].sig===sig)return false;
       }
       // `at` is the store's primary key. Two captures in the same millisecond
       // would silently overwrite one another; push 1ms until it is unique.
@@ -3594,17 +3615,7 @@ const bhCapture=(state,reason)=>{
       const keptAts=new Set(kept.map(e=>e.at));
       if(!keptAts.has(at))return false; // retention discarded the newborn itself
       const dels=list.filter(e=>!keptAts.has(e.at)).map(e=>e.at);
-      try{await bhIdbWrite([entry],dels);}
-      catch(e){
-        // The IDB quota is ~2.8GB on this origin, but it is derived from free
-        // disk and can run out. Last resort: the same entry without the embedded
-        // data:image — which preserves idb://, otherwise the backup would lose
-        // precisely the references gcIdb uses (v23.3).
-        try{
-          const lean={...entry,state:(typeof stripInlineImages==='function'?stripInlineImages(state):state)};
-          await bhIdbWrite([lean],dels);
-        }catch{return false;}
-      }
+      try{await bhIdbWrite([entry],dels);}catch(e){bhBackupFailure(e);return false;}
       _bhMeta=kept;
       bhMarkCaptured(at);
       // F1.1 — mirror the newest snapshot into the single localStorage slot.
@@ -3612,7 +3623,7 @@ const bhCapture=(state,reason)=>{
       // left on the device. It never throws, so it cannot break this path.
       bhEmergencySave(entry);
       return true;
-    }catch{return false;}
+    }catch(e){bhBackupFailure(e);return false;}
   };
   const p=_bhChain.then(run,run);
   _bhChain=p.then(()=>{},()=>{});
@@ -4750,13 +4761,13 @@ const stripInlineImages=obj=>{
 // Resolve idb:// keys \u2192 base64 data URLs (used for manual JSON export)
 const blobToBase64=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
 const resolveIdbRefs=async obj=>{
-  if(Array.isArray(obj))return Promise.all(obj.map(resolveIdbRefs));
-  if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await resolveIdbRefs(obj[k]);return out;}
-  if(typeof obj==='string'&&obj.startsWith('idb://')){
-    try{const blob=await idbGet(obj.slice(6));if(blob)return await blobToBase64(blob);}catch{/*silent-ok: an unreadable blob falls through to '' below, which the export treats as a missing image*/}
-    return '';
+  const keys=[...collectIdbKeys(obj)],map={},missing=[];
+  for(const key of keys){
+    try{const blob=await idbGet(key);if(!blob)throw Error('missing');map['idb://'+key]=await blobToBase64(blob);}
+    catch{missing.push(key);}
   }
-  return obj;
+  if(missing.length)throw new Error(missing.length+' mídia(s) indisponível(is). Exportação interrompida para não gerar backup incompleto.');
+  return rehydrateIdbRefs(obj,map);
 };
 
 // Build a self-contained JSON export (images embedded as base64)
@@ -4769,10 +4780,13 @@ const buildSyncPayload=async(state,includeImages=true)=>{
 };
 
 // Collect every unique idb:// key referenced in the state tree
-const collectIdbKeys=(obj,set=new Set())=>{
+function collectIdbKeys(obj,set=new Set()){
   if(Array.isArray(obj)){obj.forEach(x=>collectIdbKeys(x,set));}
   else if(obj&&typeof obj==='object'){Object.values(obj).forEach(x=>collectIdbKeys(x,set));}
-  else if(typeof obj==='string'&&obj.startsWith('idb://'))set.add(obj.slice(6));
+  else if(typeof obj==='string'){
+    // Rich-text notes contain references inside HTML, not only standalone fields.
+    for(const match of obj.matchAll(/idb:\/\/[A-Za-z0-9_.-]+/g))set.add(match[0].slice(6));
+  }
   return set;
 };
 
@@ -4780,7 +4794,7 @@ const collectIdbKeys=(obj,set=new Set())=>{
 const rehydrateIdbRefs=(obj,map)=>{
   if(Array.isArray(obj))return obj.map(x=>rehydrateIdbRefs(x,map));
   if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=rehydrateIdbRefs(obj[k],map);return out;}
-  if(typeof obj==='string'&&obj.startsWith('idb://')&&map[obj])return map[obj];
+  if(typeof obj==='string')return obj.replace(/idb:\/\/[A-Za-z0-9_.-]+/g,ref=>map[ref]||ref);
   return obj;
 };
 
@@ -5596,6 +5610,23 @@ const pomoNormalize = d => {
     dailyAllocations,
     rank,
   };
+};
+// Backup imports are allowed to restore older creative records, but cumulative
+// focus progress must never travel backwards. Merge ledgers by stable id and
+// keep the strongest same-season counters; this also retains sessions created
+// after the exported backup was made.
+const bhMergeRecords=(current,incoming,{incomingWins=false}={})=>{
+  const out=[],seen=new Set();
+  const add=item=>{if(!item||typeof item!=='object'||Array.isArray(item))return;const id=String(item.id??'');if(id&&seen.has(id))return;if(id)seen.add(id);out.push(item);};
+  const first=incomingWins?incoming:current,second=incomingWins?current:incoming;
+  (Array.isArray(first)?first:[]).forEach(add);(Array.isArray(second)?second:[]).forEach(add);
+  return out;
+};
+const pomoMergeProgress=(currentValue,incomingValue)=>{
+  // Keep coherent counters: max(points) would undo legitimate decay.
+  const current=pomoNormalize(currentValue),incoming=pomoNormalize(incomingValue);
+  const has=Object.keys(current.days).length||current.rank.sessions.length||current.rank.points||current.rank.history.length;
+  return pomoRankMaintain(has?current:incoming);
 };
 const pomoSyncGalleryCategories=(data,folders)=>{
   const base=pomoNormalize(data);
@@ -11040,7 +11071,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   const refreshHistory=()=>{bhHistoryInit().then(()=>setBackupHistory(bhHistoryMeta().slice()));};
   useEffect(()=>{refreshHistory();},[]);
 
-  const BH_REASON_LABEL={'pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login','remoto-concorrente':'Nuvem (edição simultânea)','concurrent-superseded':'Local (edição simultânea)'};
+  const BH_REASON_LABEL={'import-source':'Arquivo importado','pre-sync':'Antes do sync','daily':'Diário','auto':'Automático','pre-restore':'Antes de restaurar','pre-login-edit':'Edição pré-login','cloud-superseded':'Nuvem substituída','descartado':'Local descartado','local-prelogin':'Local antes do 1º login','remoto-concorrente':'Nuvem (edição simultânea)','concurrent-superseded':'Local (edição simultânea)'};
   const handleRestoreFromHistory=async(entry)=>{
     const dt=new Date(entry.at).toLocaleString('pt-BR');
     const c=entry.counts||{};
@@ -11052,11 +11083,14 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
     let full=null;
     try{full=await bhHistoryGet(entry.at);}catch{}
     if(!full||!full.state){showStatus('err','Não foi possível ler esse backup. Nada foi alterado.');return;}
-    // Make the restore itself undoable: snapshot current state first
-    try{const cur=lsLoad();if(cur)await bhCapture(cur,'pre-restore');}catch{}
-    onImport(full.state);
-    showStatus('ok','✓ Backup de '+dt+' restaurado!');
-    refreshHistory();
+    setLoading(true);
+    try{
+      const incomingWins=await bhConfirm({title:'Conteúdo em conflito',confirmLabel:'Usar versões do backup',cancelLabel:'Manter versões atuais',
+        message:'Usar o backup nos registros repetidos? Isso pode reverter edições recentes. Manter versões atuais acrescenta só itens ausentes. O progresso de foco atual será preservado.'});
+      if(!await onImport(full.state,{incomingWins}))throw new Error('Backup sem seções reconhecidas.');
+      showStatus('ok','✓ Backup mesclado. Progresso de foco atual preservado.');refreshHistory();
+    }catch(e){showStatus('err',e.message||'Falha ao restaurar.');}
+    finally{setLoading(false);}
   };
 
   const showStatus=(type,msg)=>{setStatus({type,msg});if(type!=='err')setTimeout(()=>setStatus(null),8000);};
@@ -11106,7 +11140,7 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
     setReuploadProgress({done:0,total:keys.length});
     try{
       const updatedState=await reuploadLocalImages(appState,(done,total)=>setReuploadProgress({done,total}));
-      onImport(updatedState);
+      await onImport(updatedState,{incomingWins:true,mediaUpdate:true});
       setReuploadProgress(null);
       showStatus('ok','✓ Imagens enviadas para a nuvem!');
     }catch(e){setReuploadProgress(null);showStatus('err','Falha: '+e.message);}
@@ -11114,25 +11148,28 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
   };
 
   const exportData=async()=>{
-    const data=await buildSyncPayload(appState,true);
-    const blob=new Blob([data],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${localDateISO()}.json`;a.click();URL.revokeObjectURL(url);
+    setLoading(true);
+    try{
+      const data=await buildSyncPayload(appState,true);
+      const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+      const a=document.createElement('a');a.href=url;a.download=`boardhub-backup-${localDateISO()}.json`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
+      showStatus('ok','✓ Exportado com mídias locais. Imagens remotas permanecem como links.');
+    }catch(e){showStatus('err',e.message||'Falha ao exportar.');}
+    finally{setLoading(false);}
   };
-  const handleImportFile=e=>{
-    const file=e.target.files[0];if(!file)return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      try{
-        const data=JSON.parse(ev.target.result);
-        Promise.resolve(onImport(data)).then(ok=>{
-          if(ok===false)showStatus('err','O arquivo não parece um backup do BoardHub (nenhuma seção reconhecida).');
-          else{showStatus('ok','✓ Importado!');refreshHistory();}
-        });
-      }
-      catch{showStatus('err','Arquivo inválido (JSON malformado).');}
-    };
-    reader.readAsText(file);e.target.value='';
+  const handleImportFile=async e=>{
+    const file=e.target.files[0];e.target.value='';if(!file)return;
+    setLoading(true);
+    try{
+      const data=JSON.parse(await file.text());
+      if(!await bhConfirm({title:'Importar arquivo',message:'Importar este backup? Uma cópia do estado atual será gravada antes de qualquer alteração.',confirmLabel:'Continuar'}))return;
+      const incomingWins=await bhConfirm({title:'Importar backup',confirmLabel:'Usar versões do backup',cancelLabel:'Manter versões atuais',
+        message:'Usar o backup em registros repetidos? Pode reverter edições. Manter versões atuais acrescenta itens ausentes. O progresso de foco atual será preservado.'});
+      if(!await onImport(data,{incomingWins}))throw new Error('Arquivo sem seções reconhecidas.');
+      showStatus('ok','✓ Backup mesclado; original arquivado no histórico.');refreshHistory();
+    }catch(e){showStatus('err',e.message||'Arquivo inválido.');}
+    finally{setLoading(false);}
   };
 
   const counts=[
@@ -11291,9 +11328,10 @@ const SyncHub=React.memo(({appState,onImport,onClearSave,fbUser,syncStatus,syncD
                     </div>
                     <div style={{fontSize:'.7rem',color:'var(--muted)'}}>
                       {c.projects??0} projetos · {c.notes??0} notas · {c.clients??0} clientes · {c.tasks??0} tarefas
+                      <br/>{c.posts??'—'} posts · {c.sessions??'—'} sessões · {c.points??'—'} pts · {c.localMedia??'—'} mídias locais
                     </div>
                   </div>
-                  <button onClick={()=>handleRestoreFromHistory(entry)} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.72rem',flexShrink:0}}>
+                  <button disabled={loading} onClick={()=>handleRestoreFromHistory(entry)} className="btn btn-outline" style={{padding:'4px 10px',fontSize:'.72rem',flexShrink:0}}>
                     <Icon name="undo-2" size={12}/> Restaurar
                   </button>
                 </div>
@@ -11762,7 +11800,7 @@ const App=()=>{
         await bhHistoryInit();
         if(!vivo)return;
         const today=localDateISO();
-        if(bhHistoryMeta().some(e=>e.reason==='daily'&&e.at.slice(0,10)===today))return;
+        if(bhHistoryMeta().some(e=>e.reason==='daily'&&localDateISO(new Date(e.at))===today))return;
         const snap=lsLoad();
         if(snap)bhCapture(snap,'daily');
       }catch(e){bhLog('backup.daily',e,'today\'s weekly-tier slot was not captured, so the 7-day coverage has a hole');}
@@ -11823,6 +11861,8 @@ const App=()=>{
   const [showShortcuts,setShowShortcuts]=useState(false);
   const [quickCaptureType,setQuickCaptureType]=useState('task');
   const [fbUser,setFbUser]=useState(null);
+  const [backupError,setBackupError]=useState('');
+  useEffect(()=>{const report=e=>setBackupError(e.detail);window.addEventListener('bh-backup-error',report);return()=>window.removeEventListener('bh-backup-error',report);},[]);
   const [syncStatus,setSyncStatus]=useState('idle'); // 'idle'|'syncing'|'synced'|'error'
   const [identity,setIdentity]=useState(()=>loadIdentity());
 
@@ -11838,6 +11878,7 @@ const App=()=>{
   const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
   const [noteGroups,setNoteGroups]=useState(()=>bhRecordArray(persisted?.noteGroups,DEFAULT_NOTE_GROUPS));
   const [pomoData,setPomoData]=useState(()=>pomoRankMaintain(pomoLoad()));
+  // No automatic restoration at startup.
   useEffect(()=>{setPomoData(prev=>pomoSyncGalleryCategories(prev,galleryFolders));},[galleryFolders]);
   // Repair posts produced while project/gallery destination metadata was in
   // transition. The session ledger is the durable source of truth, and an
@@ -11845,30 +11886,7 @@ const App=()=>{
   useEffect(()=>{
     setGalleryPosts(prev=>repairProjectFocusPostScopes(prev,pomoData?.rank?.sessions));
   },[pomoData?.rank?.sessions]);
-  const projectPostRecoveryAttemptedRef=useRef(false);
-  useEffect(()=>{
-    if(projectPostRecoveryAttemptedRef.current)return;
-    try{if(localStorage.getItem(PROJECT_POST_RECOVERY_KEY)==='1')return;}catch{/* retry safely without a marker */}
-    const sessions=pomoData?.rank?.sessions||[];
-    if(!missingProjectPostLinks(galleryPosts,sessions).size)return;
-    projectPostRecoveryAttemptedRef.current=true;
-    (async()=>{
-      const result=await recoverMissingProjectPosts(galleryPosts,sessions);
-      if(result.recovered>0){
-        const restoredIds=new Set(result.restored.map(post=>String(post.id)));
-        setGalleryPosts(prev=>{
-          const current=Array.isArray(prev)?prev:[];
-          const merged=[...current.filter(post=>!restoredIds.has(String(post?.id))),...result.restored];
-          return repairProjectFocusPostScopes(merged,sessions);
-        });
-        if(result.recovered>=result.missing)try{localStorage.setItem(PROJECT_POST_RECOVERY_KEY,'1');}catch(e){bhLog('projectPosts.recover.marker',e);}
-      }else if(!result.checked){
-        // The stores were unavailable rather than empty. Permit a later retry
-        // in this same session after the browser finishes opening IndexedDB.
-        projectPostRecoveryAttemptedRef.current=false;
-      }
-    })().catch(e=>{projectPostRecoveryAttemptedRef.current=false;bhLog('projectPosts.recover',e,'missing project posts were not restored');});
-  },[galleryPosts,pomoData?.rank?.sessions]);
+  // Recovery is now an explicit user operation.
   const [rankPromotion,setRankPromotion]=useState(null);
   const dismissRankPromotion=useCallback(()=>setRankPromotion(null),[]);
   const _remoteApplyId=useRef(0);
@@ -12275,11 +12293,11 @@ const App=()=>{
     const timer=setTimeout(()=>{
       const state={projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
       lsSave(state);
-      // Session snapshot: while actively editing, keep a history point every ~30 min
+      // Checkpoint every ~5 minutes while changes are being made.
       try{
         const last=bhLastAt(); // the light key, not the whole history (P1-3)
-        if(!last||Date.now()-new Date(last).getTime()>30*60*1000)bhCapture(state,'auto');
-      }catch(e){bhLog('backup.session',e,'the ~30min session snapshot did not happen; the history stops advancing while editing continues');}
+        if(!last||Date.now()-new Date(last).getTime()>5*60*1000)bhCapture(state,'auto');
+      }catch(e){bhBackupFailure(e);}
       // Only push if the user actually made changes (not a remote echo)
       if(!fbUser||!_hasPendingLocalEdit.current)return;
       clearTimeout(fbPushTimer.current);
@@ -12360,6 +12378,10 @@ const App=()=>{
     return()=>{window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',onVis);};
   },[]);
 
+  useEffect(()=>{
+    const check=()=>{const state=_latestState.current;if(state&&(!bhLastAt()||Date.now()-new Date(bhLastAt()).getTime()>5*60*1000))bhCapture(state,'auto');};
+    const id=setInterval(check,60000);return()=>clearInterval(id);
+  },[]);
   const selectedProjectRef=useRef(selectedProject);
   selectedProjectRef.current=selectedProject;
 
@@ -12546,24 +12568,32 @@ const App=()=>{
     return obj;
   };
 
-  const handleImport=async data=>{
+  const handleImport=async (data,{incomingWins=false,mediaUpdate=false}={})=>{
     // Shape validation. v22 checked truthiness only — an object where an array
     // was expected passed the check and crashed every .filter() downstream.
     // Mirrors the isArr guards the remote listener already applied.
     if(!data||typeof data!=='object'||Array.isArray(data))return false;
+    if(!['projects','clients','mentors','notes','tasks','socialPosts','galleryPosts','galleryFolders','noteGroups'].some(k=>Array.isArray(data[k]))&&!data.pomoData)return false;
     const ingested=await ingestImages(data);
     const A=Array.isArray;
     let applied=0;
-    if(A(ingested.projects)){setProjects(bhRecordArray(ingested.projects));applied++;}
-    if(A(ingested.clients)){setClients(bhRecordArray(ingested.clients));applied++;}
-    if(A(ingested.mentors)){setMentors(bhRecordArray(ingested.mentors));applied++;}
-    if(A(ingested.notes)){setNotes(bhRecordArray(ingested.notes));applied++;}
-    if(A(ingested.tasks)){setTasks(bhRecordArray(ingested.tasks));applied++;}
-    if(A(ingested.socialPosts)){setSocialPosts(bhRecordArray(ingested.socialPosts));applied++;}
-    if(A(ingested.galleryPosts)){setGalleryPosts(bhRecordArray(ingested.galleryPosts).map(normalizeFocusPostCopy));applied++;}
-    if(A(ingested.galleryFolders)){setGalleryFolders(bhRecordArray(ingested.galleryFolders));applied++;}
-    if(A(ingested.noteGroups)){setNoteGroups(bhRecordArray(ingested.noteGroups));applied++;}
-    if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(pomoRankMaintain(ingested.pomoData));applied++;}
+    // An imported JSON did not previously archive the live state at all. Wait
+    // for that snapshot before applying a single setter, so recovery is real.
+    if(!mediaUpdate){
+      const live=_latestState.current||appState;
+      if(bhStateHasData(live)&&!await bhCapture(live,'pre-restore'))throw new Error('Cópia de segurança não gravada. Importação cancelada.');
+      if(bhStateHasData(ingested)&&!await bhCapture(ingested,'import-source'))throw new Error('Origem não arquivada. Nada foi alterado.');
+    }
+    if(A(ingested.projects)){setProjects(current=>bhMergeRecords(current,bhRecordArray(ingested.projects),{incomingWins}));applied++;}
+    if(A(ingested.clients)){setClients(current=>bhMergeRecords(current,bhRecordArray(ingested.clients),{incomingWins}));applied++;}
+    if(A(ingested.mentors)){setMentors(current=>bhMergeRecords(current,bhRecordArray(ingested.mentors),{incomingWins}));applied++;}
+    if(A(ingested.notes)){setNotes(current=>bhMergeRecords(current,bhRecordArray(ingested.notes),{incomingWins}));applied++;}
+    if(A(ingested.tasks)){setTasks(current=>bhMergeRecords(current,bhRecordArray(ingested.tasks),{incomingWins}));applied++;}
+    if(A(ingested.socialPosts)){setSocialPosts(current=>bhMergeRecords(current,bhRecordArray(ingested.socialPosts),{incomingWins}));applied++;}
+    if(A(ingested.galleryPosts)){setGalleryPosts(current=>repairProjectFocusPostScopes(bhMergeRecords(current,bhRecordArray(ingested.galleryPosts).map(normalizeFocusPostCopy),{incomingWins}),pomoData?.rank?.sessions));applied++;}
+    if(A(ingested.galleryFolders)){setGalleryFolders(current=>bhMergeRecords(current,bhRecordArray(ingested.galleryFolders),{incomingWins}));applied++;}
+    if(A(ingested.noteGroups)){setNoteGroups(current=>bhMergeRecords(current,bhRecordArray(ingested.noteGroups),{incomingWins}));applied++;}
+    if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(current=>pomoMergeProgress(current,ingested.pomoData));applied++;}
     if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);applied++;}
     return applied>0;
   };
@@ -12589,6 +12619,7 @@ const App=()=>{
           A genuinely new account arrives at 'synced' with no identity, and only
           then sees the setup. */}
       {!identity&&fbUser&&syncStatus!=='syncing'&&<SetupModal onDone={handleSetupDone}/>}
+      {backupError&&<div role="alert" style={{position:'fixed',bottom:16,left:'25%',right:16,zIndex:120000,padding:14,background:'var(--surface)',border:'1px solid var(--danger-fg)',borderRadius:10}}>{backupError} <button className="btn btn-outline" onClick={()=>{setBackupError('');navigate('sync');}}>Ver backups</button></div>}
       {showCmdPalette&&<CommandPalette projects={projects} notes={notes} mentors={mentors} clients={clients} galleryPosts={gallerySearchPosts} onNavigate={navigate} onSelectProject={handleSelectProject} onClose={()=>setShowCmdPalette(false)}/>} 
       {showQuickCapture&&<QuickCapture type={quickCaptureType} onClose={()=>setShowQuickCapture(false)} onAddTask={t=>setTasks(prev=>[...prev,t])} onAddNote={n=>setNotes(prev=>[n,...prev])}/>} 
       {showShortcuts&&<ShortcutsModal onClose={()=>setShowShortcuts(false)}/>} 
