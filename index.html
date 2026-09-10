@@ -63,6 +63,27 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.67 — review pass: dates, session identity and history grouping (sep/2026)
+  Project deadlines are parsed at local noon so negative time zones cannot mark
+  a task late one day early. Completed sessions retain the id created at start,
+  preventing close/reopen races from producing duplicates. Session history now
+  groups by its stored local date instead of locale-dependent date formatting.
+  Rank-decay and offline notices now use the actual dark-theme attribute too;
+  gallery links compare folder ids consistently and ignore archived categories.
+  ──────
+
+  BoardHub v23.66 — compact dashboard without nested scrolling (sep/2026)
+  The 1280×720 overview now fits through UI scaling alone. Dashboard columns,
+  project rows and activity rows no longer create internal scroll areas; edge
+  surfaces compress first while Pomodoro and activities retain visual priority.
+  ──────
+
+  BoardHub v23.65 — central dashboard panes get layout priority (sep/2026)
+  At compact desktop sizes the Pomodoro and activity surfaces now receive the
+  larger share of the middle grid. Projects, recent notes and mentors yield
+  space first and remain reachable through their own contained scrolling.
+  ──────
+
   BoardHub v23.64 — compact 1280×720 overview and lightbox framing (sep/2026)
   The overview now uses the available desktop viewport height at 1280×720;
   project and activity panes keep their content contained instead of pushing
@@ -2730,7 +2751,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .rank-panel-title{display:flex;align-items:center;gap:11px;margin:2px 0 10px;font-family:'Cormorant Garamond',serif;line-height:1}
 .rank-panel-title span{font-size:clamp(1.7rem,3vw,2.25rem);font-weight:600;letter-spacing:-.02em;line-height:1}
 .rank-panel-title strong{display:inline-flex;align-items:center;justify-content:center;min-width:26px;font:700 1.2rem/1 'Alegreya Sans',sans-serif;color:var(--muted);letter-spacing:.1em}
-.rank-decay-hint{display:flex;align-items:center;gap:6px;margin-top:8px;padding:6px 8px;border:1px solid rgba(173,104,34,.18);border-radius:7px;background:rgba(190,119,45,.07);color:#965c24;font-size:.66rem;line-height:1.25}.rank-decay-hint strong{font-weight:700}.notturno .rank-decay-hint{color:#e1ad72;background:rgba(190,119,45,.1);border-color:rgba(225,173,114,.18)}
+.rank-decay-hint{display:flex;align-items:center;gap:6px;margin-top:8px;padding:6px 8px;border:1px solid rgba(173,104,34,.18);border-radius:7px;background:rgba(190,119,45,.07);color:#965c24;font-size:.66rem;line-height:1.25}.rank-decay-hint strong{font-weight:700}:root[data-theme="notturno"] .rank-decay-hint{color:#e1ad72;background:rgba(190,119,45,.1);border-color:rgba(225,173,114,.18)}
 .rank-panel-footer{grid-area:footer;display:grid;grid-template-columns:minmax(145px,1fr) minmax(130px,.8fr) auto;align-items:center;gap:18px;padding:11px 20px;border-top:1px solid var(--border);background:rgba(var(--ink),.018)}
 .rank-panel-metric{display:flex;flex-direction:column;gap:1px;min-width:0}.rank-panel-metric>span{font-size:.58rem;font-weight:700;letter-spacing:.075em;text-transform:uppercase;color:var(--muted)}.rank-panel-metric>strong{font:600 1rem 'Cormorant Garamond',serif;color:var(--text)}
 .rank-panel-metric>i{display:block;width:100%;height:3px;margin-top:3px;border-radius:9px;background:rgba(var(--ink),.1);overflow:hidden}.rank-panel-metric>i b{display:block;height:100%;border-radius:inherit;background:#3694a7}
@@ -2741,7 +2762,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .session-capture-overlay{position:fixed;z-index:110000;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(10,12,15,.78);backdrop-filter:blur(9px);animation:rankOverlayIn .25s ease both}
 .session-capture-modal{width:min(640px,100%);max-height:92vh;overflow:auto;padding:24px;border:1px solid rgba(255,255,255,.13);border-radius:18px;background:var(--surface);box-shadow:0 30px 90px rgba(0,0,0,.42);outline:none;box-sizing:border-box}
 .session-capture-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px}.session-capture-heading span{font-size:.62rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#318ca0}.session-capture-heading h2{margin:2px 0 0;font:500 1.8rem 'Cormorant Garamond',serif}.session-capture-heading p{margin:3px 0 0;font-size:.76rem;color:var(--muted)}
-.session-result-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:-4px 0 12px}.session-result-card{padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}.session-result-card span{display:block;font-size:.58rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.session-result-card strong{display:block;margin-top:2px;font:600 1rem 'Cormorant Garamond',serif}.session-result-card i{display:block;height:3px;margin-top:5px;border-radius:8px;background:var(--border);overflow:hidden}.session-result-card i b{display:block;height:100%;border-radius:inherit;background:#318ca0}.session-title-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.session-title-field span{font-size:.59rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.session-title-field input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:500 .84rem 'Alegreya Sans',sans-serif;outline:none}.session-title-field input:focus{border-color:var(--text)}.session-offline-note{display:flex;align-items:flex-start;gap:7px;margin-bottom:10px;padding:8px 10px;border-radius:8px;background:#eaf4f6;color:#28667a;font-size:.69rem;line-height:1.35}.notturno .session-offline-note{background:rgba(49,140,160,.14);color:#9bd5de}
+.session-result-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:-4px 0 12px}.session-result-card{padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}.session-result-card span{display:block;font-size:.58rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.session-result-card strong{display:block;margin-top:2px;font:600 1rem 'Cormorant Garamond',serif}.session-result-card i{display:block;height:3px;margin-top:5px;border-radius:8px;background:var(--border);overflow:hidden}.session-result-card i b{display:block;height:100%;border-radius:inherit;background:#318ca0}.session-title-field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}.session-title-field span{font-size:.59rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.session-title-field input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:500 .84rem 'Alegreya Sans',sans-serif;outline:none}.session-title-field input:focus{border-color:var(--text)}.session-offline-note{display:flex;align-items:flex-start;gap:7px;margin-bottom:10px;padding:8px 10px;border-radius:8px;background:#eaf4f6;color:#28667a;font-size:.69rem;line-height:1.35}:root[data-theme="notturno"] .session-offline-note{background:rgba(49,140,160,.14);color:#9bd5de}
 .session-dropzone{width:100%;min-height:105px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px dashed var(--border-2);border-radius:12px;background:var(--bg);color:var(--muted);cursor:pointer;font-family:'Alegreya Sans',sans-serif}.session-dropzone:hover{border-color:#318ca0;color:var(--text)}.session-dropzone strong{font-size:.82rem}.session-dropzone span{font-size:.7rem}.session-dropzone.has-files{min-height:70px}
 .session-capture-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.session-capture-grid>div{position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:#111}.session-capture-grid img{width:100%;height:100%;object-fit:cover;display:block}.session-capture-grid button{position:absolute;top:5px;right:5px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:white;cursor:pointer}
 .session-capture-modal textarea{width:100%;min-height:66px;margin-top:12px;padding:10px 12px;box-sizing:border-box;resize:vertical;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:400 .82rem 'Alegreya Sans',sans-serif;outline:none}.session-capture-modal textarea:focus{border-color:var(--text)}
@@ -2766,11 +2787,10 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes rankBadgeBreak{0%{opacity:0;transform:scale(.48);filter:brightness(2.2) blur(5px)}52%{opacity:1;transform:scale(1.13);filter:brightness(1.55) blur(0)}72%{transform:scale(.96) rotate(-1deg)}100%{transform:none}}
 @keyframes rankCopyIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 40px 1fr}.rank-session-thumb{width:40px;height:32px}.rank-session-status{grid-column:3;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
-/* 1280×720 desktop mode: one deliberate vertical flow replaces the nested
-   scroll areas that used to squeeze projects and Pomodoro into thin strips. */
+/* 1280×720 desktop mode: everything fits by scaling the interface itself.
+   There is no page or panel scrolling on the overview. */
 @media(max-width:1366px) and (max-height:800px) and (min-width:769px){
-  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;overflow-x:hidden!important;padding-right:5px;scrollbar-gutter:stable;overscroll-behavior:contain}
-  .dashboard-shell::-webkit-scrollbar{width:5px}.dashboard-shell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
+  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;padding-right:0}
   .dashboard-header{margin-bottom:6px!important}
   .dashboard-stats{gap:8px!important;margin-bottom:7px!important}
   .dashboard-stats .card{min-height:54px;padding:7px 12px!important;box-sizing:border-box}
@@ -2788,9 +2808,15 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .rank-panel-metric>span{font-size:.54rem}.rank-panel-metric>strong{font-size:.92rem}
   .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:4px 7px;font-size:.62rem}
   .dashboard-main-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
-  .dashboard-column{height:auto!important;min-height:0!important;overflow:auto!important;padding-right:0!important}
-  .dashboard-mentors{margin-top:8px!important;padding-bottom:4px}
+  /* Keep the middle work surfaces dominant; edge content yields first. */
+  .dashboard-main-grid{grid-template-columns:minmax(0,.84fr) minmax(0,1.16fr)!important;gap:12px!important}
+  .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
+  .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
+  .dashboard-project-pane{flex-basis:190px!important;height:190px!important;min-height:190px!important}
+  .dashboard-activity-pane{flex-basis:215px!important;height:215px!important;min-height:215px!important}
+  .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}
   .dashboard-mentors .card{min-width:0}
+  .dashboard-mentor-cover{height:38px!important}
 }
 @media(prefers-reduced-motion:reduce){.rank-promotion,.rank-promotion-aura,.rank-promotion-mark,.rank-promotion-copy{animation:none}.rank-progress-track span{transition:none}}
 </style>
@@ -2952,7 +2978,7 @@ const bhLogClear=()=>{
 // paper from 08:00 (inclusive) through 17:59, notturno from 18:00 through 07:59.
 const THEME_KEY='boardhub_theme';
 const themeModeLoad=()=>{try{const t=localStorage.getItem(THEME_KEY);if(t==='notturno'||t==='automatico')return t;return 'mattinata';}catch{return 'mattinata';}};
-const themeResolve=mode=>mode==='automatico'?((new Date().getHours()<8||new Date().getHours()>=18)?'notturno':'mattinata'):mode;
+const themeResolve=mode=>{if(mode!=='automatico')return mode;const hour=new Date().getHours();return hour<8||hour>=18?'notturno':'mattinata';};
 const themeLoad=()=>themeResolve(themeModeLoad());
 const themeApply=(mode,save=true)=>{
   const t=themeResolve(mode);
@@ -5925,8 +5951,10 @@ const RankSessionHistory=({rank,onClose,onOpenPost,galleryPosts=[]})=>{
   const dayGroups=useMemo(()=>{
     const groups=[];
     rows.forEach(row=>{
-      const date=new Date(row.endedAt);
-      const key=Number.isNaN(date.getTime())?'sem-data':date.toLocaleDateString('en-CA');
+      const storedKey=typeof row.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.date)?row.date:null;
+      const parsedDate=new Date(row.endedAt||'');
+      const key=storedKey||(!Number.isNaN(parsedDate.getTime())?localDateISO(parsedDate):'sem-data');
+      const date=key==='sem-data'?parsedDate:rankDateFromKey(key);
       let group=groups[groups.length-1];
       if(!group||group.key!==key){group={key,date,rows:[]};groups.push(group);}
       group.rows.push(row);
@@ -6428,7 +6456,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], galleryFolders=[], 
           const tk=targetKeyRef.current||'none';
           sessionMetaRef.current=null;
           onSessionComplete?.({
-            id:'focus-session-'+endedAt.getTime()+'-'+Math.random().toString(36).slice(2,6),
+            id:meta?.id||('focus-session-'+endedAt.getTime()+'-'+Math.random().toString(36).slice(2,6)),
             seasonId:rankSeasonForDate(endedAt).id,
             startedAt:meta?.startedAt||new Date(endedAt.getTime()-durationSeconds*1000).toISOString(),
             endedAt:endedAt.toISOString(),date:localDateISO(endedAt),durationSeconds,
@@ -7145,7 +7173,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         {/* LEFT: projects + recent notes */}
         <div className="dashboard-column dashboard-column-left" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
           {/* Projetos ativos */}
-          <div style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <div className="dashboard-project-pane" style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7}}>
               <span className="label label-section"><StaveGlyph name="half"/>Em andamento</span>
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={10}/></button>
@@ -7162,7 +7190,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                 <Icon name="plus" size={12}/> Criar Projeto
               </button>
             </div>}
-            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6,flex:1,minHeight:0,overflow:'auto',paddingRight:2}}>
+            <div className="dashboard-project-list" style={{display:'flex',flexDirection:'column',gap:isSmall?4:6,flex:1,minHeight:0,overflow:'auto',paddingRight:2}}>
               {active.map(p=>{
                 const pt=p.projectTasks||[];const total=pt.length;const done=pt.filter(t=>t.status==='Concluído').length;
                 const pct=total>0?Math.round((done/total)*100):0;const r=10;const c=2*Math.PI*r;const offset=c-(pct/100)*c;
@@ -7237,7 +7265,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
         <div className="dashboard-column dashboard-column-right" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
           <div style={{flexShrink:0}}><PomodoroTimer pomoData={pomoData} setPomoData={setPomoData} projects={projects} galleryFolders={galleryFolders} onSessionComplete={onSessionComplete}/></div>
           {/* Atividades gerais */}
-          <div style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column'}}>
+          <div className="dashboard-activity-pane" style={isMobile?{display:'flex',flexDirection:'column'}:{flex:`0 0 ${isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)'}`,height:isSmall?'clamp(185px,29vh,230px)':'clamp(230px,34vh,320px)',minHeight:isSmall?185:230,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7,flexShrink:0}}>
               <span className="label label-section"><StaveGlyph name="beamed"/>Lista de Atividades</span>
               <div style={{display:'flex',gap:2}}>
@@ -7259,7 +7287,7 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                 <Icon name="check-circle" size={18} style={{opacity:.25}}/>
                 <p style={{fontSize:'.78rem',margin:0}}>Tudo limpo! Adicione uma atividade acima.</p>
               </div>}
-              <div style={{overflow:'auto',flex:1}}>
+              <div className="dashboard-activity-list" style={{overflow:'auto',flex:1}}>
                 {tasks.map(t=>(
                   <div key={t.id} className="task-row" style={{paddingTop:isSmall?4:6,paddingBottom:isSmall?4:6}}>
                     <div className={`task-check ${t.done?'done':''}`} onClick={()=>toggleTask(t.id)}/>
@@ -7290,8 +7318,8 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               return(
               <div key={m.id} className="card" style={{padding:0,overflow:'hidden'}}>
                 {firstImg
-                  ?<Img src={firstImg} style={{width:'100%',height:isSmall?56:72,objectFit:'cover',display:'block'}}/>
-                  :<div style={{width:'100%',height:isSmall?56:72,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  ?<Img className="dashboard-mentor-cover" src={firstImg} style={{width:'100%',height:isSmall?56:72,objectFit:'cover',display:'block'}}/>
+                  :<div className="dashboard-mentor-cover" style={{width:'100%',height:isSmall?56:72,background:'linear-gradient(135deg,var(--bg) 0%,var(--border) 100%)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <span style={{fontFamily:'Cormorant Garamond,serif',fontSize:'1.6rem',fontWeight:300,color:'var(--border-2)'}}>{(m.name||'?').charAt(0)}</span>
                   </div>
                 }
@@ -7971,7 +7999,7 @@ const applyAutoLate=tasks=>{
   return (tasks||[]).map(t=>{
     if(t.status==='Concluído')return t;
     if(!t.dueDate)return t;
-    const due=new Date(t.dueDate);due.setHours(0,0,0,0);
+    const due=new Date(String(t.dueDate)+'T12:00:00');due.setHours(0,0,0,0);
     if(due<today&&t.status!=='Atrasado')return{...t,status:'Atrasado'};
     return t;
   });
@@ -8046,8 +8074,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
     setGalleryPopup(null);
     setGalleryPopupEditing(false);
   };
-  const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>f&&!f.deleted),[galleryFolders]);
-  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>p&&!isProjectScopedPost(p)&&!p.deleted&&p.folder===local.galleryFolder).map(p=>({...p,images:Array.isArray(p.images)?p.images:[]})).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
+  const assignableFolders=useMemo(()=>(galleryFolders||[]).filter(f=>f&&!f.deleted&&!f.archived),[galleryFolders]);
+  const folderPosts=useMemo(()=>local.galleryFolder?(galleryPosts||[]).filter(p=>p&&!isProjectScopedPost(p)&&!p.deleted&&String(p.folder)===String(local.galleryFolder)).map(p=>({...p,images:Array.isArray(p.images)?p.images:[]})).sort((a,b)=>((b.date||'').slice(0,10)).localeCompare((a.date||'').slice(0,10))):[],[galleryPosts,local.galleryFolder]);
   const autoLateTasks=useMemo(()=>applyAutoLate(local.projectTasks||[]),[local.projectTasks]);
   useEffect(()=>{if(!galleryPopup)return;const h=e=>{if(e.key==='Escape'){setGalleryPopup(null);setGalleryPopupEditing(false);}};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h);},[galleryPopup]);
   const [showTimelineModal,setShowTimelineModal]=useState(false);
@@ -9125,7 +9153,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           </button>
           <button onClick={e=>{e.stopPropagation();goLightboxNext();}} aria-label="Próxima imagem" title="Próxima imagem"
             disabled={!canLightboxNext}
-            style={{position:'fixed',right:isMobile?10:(lightboxTight?24:24),top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxNext?1:.35}}>
+            style={{position:'fixed',right:isMobile?10:24,top:'50%',transform:'translateY(-50%)',background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'50%',width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',cursor:canLightboxNext?'pointer':'default',color:'white',backdropFilter:'blur(4px)',zIndex:201,opacity:canLightboxNext?1:.35}}>
             <Icon name="arrow-right" size={20}/>
           </button>
           <div style={{position:'fixed',left:'50%',bottom:18,transform:'translateX(-50%)',padding:'6px 12px',borderRadius:999,background:'rgba(0,0,0,.4)',color:'white',fontSize:'.78rem',fontWeight:600,letterSpacing:'.02em',backdropFilter:'blur(4px)',zIndex:201,pointerEvents:'none'}}>
@@ -9162,7 +9190,7 @@ const Gallery=React.memo(({posts,setPosts,folders,setFolders,navTick,isMobile})=
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
             {FOLDERS.map(f=>(
               <button key={f.id} onClick={()=>upd('folder',f.id)}
-                style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${selected.folder===f.id?'var(--text)':'var(--border)'}`,background:selected.folder===f.id?'var(--text)':'transparent',color:selected.folder===f.id?'white':'var(--muted)',fontSize:'.75rem',fontWeight:600,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',transition:'all .15s'}}>
+                style={{padding:'3px 12px',borderRadius:20,border:`1px solid ${String(selected.folder)===String(f.id)?'var(--text)':'var(--border)'}`,background:String(selected.folder)===String(f.id)?'var(--text)':'transparent',color:String(selected.folder)===String(f.id)?'white':'var(--muted)',fontSize:'.75rem',fontWeight:600,cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',transition:'all .15s'}}>
                 {f.label}
               </button>
             ))}
