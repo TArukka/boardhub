@@ -63,6 +63,12 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.69 — fitted 1280×720 overview with compact rank and header (sep/2026)
+  With the summary counters gone, the overview again fits in one viewport at
+  1280×720. The greeting and ranked profile lose vertical weight while the
+  central work panes stay dominant and the mentor cards remain fully visible.
+  ──────
+
   BoardHub v23.68 — original dashboard scroll, without summary counters (sep/2026)
   The overview returns to its natural page scroll at compact desktop sizes. The
   three summary counters for active projects, open tasks and pending activities
@@ -2793,28 +2799,34 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes rankBadgeBreak{0%{opacity:0;transform:scale(.48);filter:brightness(2.2) blur(5px)}52%{opacity:1;transform:scale(1.13);filter:brightness(1.55) blur(0)}72%{transform:scale(.96) rotate(-1deg)}100%{transform:none}}
 @keyframes rankCopyIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 40px 1fr}.rank-session-thumb{width:40px;height:32px}.rank-session-status{grid-column:3;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
-/* Compact desktop keeps the original natural dashboard scroll. */
+/* At 1280×720 the overview fits in one viewport. The removed summary row makes
+   room for a shorter greeting and rank panel without squeezing the work area. */
 @media(max-width:1366px) and (max-height:800px) and (min-width:769px){
-  .dashboard-shell{max-width:none!important;height:calc(100vh - 26px)!important;overflow-y:auto!important;overflow-x:hidden!important;padding-right:5px;scrollbar-gutter:stable;overscroll-behavior:contain}
-  .dashboard-shell::-webkit-scrollbar{width:5px}.dashboard-shell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
-  .dashboard-header{margin-bottom:6px!important}
-  .rank-profile-panel{grid-template-columns:176px 1fr;min-height:160px;margin-bottom:8px}
-  .rank-panel-emblem{padding:8px}
-  .rank-panel-emblem .rank-badge{width:144px!important;height:144px!important}
-  .rank-panel-main{padding:11px 16px 8px}
-  .rank-profile-kicker{font-size:.55rem}
-  .rank-panel-title{gap:9px;margin:1px 0 7px}
-  .rank-panel-title span{font-size:1.75rem}
-  .rank-panel-title strong{font-size:1.05rem}
-  .rank-profile-meta{margin-top:3px}
-  .rank-decay-hint{margin-top:5px;padding:4px 7px;font-size:.6rem}
-  .rank-panel-footer{grid-template-columns:minmax(130px,1fr) minmax(115px,.72fr) auto;gap:12px;padding:8px 16px}
-  .rank-panel-metric>span{font-size:.54rem}.rank-panel-metric>strong{font-size:.92rem}
-  .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:4px 7px;font-size:.62rem}
-  .dashboard-main-grid{flex:0 0 auto!important;min-height:260px!important;overflow:visible!important;align-items:start}
-  .dashboard-column{height:auto!important;min-height:260px;overflow:visible!important;padding-right:0!important}
-  .dashboard-mentors{margin-top:10px!important;padding-bottom:10px}
+  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;padding-right:0}
+  .dashboard-header{margin-bottom:4px!important}
+  .dashboard-header h1{font-size:1.7rem!important;line-height:1!important;margin-bottom:0!important}
+  .dashboard-header p{font-size:.68rem!important;line-height:1.15}
+  .rank-profile-panel{grid-template-columns:148px 1fr;min-height:136px!important;height:136px;margin-bottom:6px}
+  .rank-panel-emblem{padding:6px}
+  .rank-panel-emblem .rank-badge{width:120px!important;height:120px!important}
+  .rank-panel-main{padding:7px 14px 5px}
+  .rank-profile-kicker{font-size:.52rem}
+  .rank-panel-title{gap:8px;margin:0 0 5px}
+  .rank-panel-title span{font-size:1.55rem}
+  .rank-panel-title strong{font-size:.96rem}
+  .rank-profile-meta{margin-top:2px;font-size:.56rem}
+  .rank-decay-hint{margin-top:3px;padding:3px 6px;font-size:.56rem}
+  .rank-panel-footer{grid-template-columns:minmax(125px,1fr) minmax(108px,.7fr) auto;gap:10px;padding:6px 14px}
+  .rank-panel-metric>span{font-size:.5rem}.rank-panel-metric>strong{font-size:.84rem}
+  .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:3px 6px;font-size:.59rem;min-height:0}
+  .dashboard-main-grid{grid-template-columns:minmax(0,.84fr) minmax(0,1.16fr)!important;gap:12px!important;flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
+  .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
+  .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
+  .dashboard-project-pane{flex-basis:190px!important;height:190px!important;min-height:190px!important}
+  .dashboard-activity-pane{flex-basis:215px!important;height:215px!important;min-height:215px!important}
+  .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}
   .dashboard-mentors .card{min-width:0}
+  .dashboard-mentor-cover{height:38px!important}
 }
 @media(prefers-reduced-motion:reduce){.rank-promotion,.rank-promotion-aura,.rank-promotion-mark,.rank-promotion-copy{animation:none}.rank-progress-track span{transition:none}}
 </style>
