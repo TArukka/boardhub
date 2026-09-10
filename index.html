@@ -63,6 +63,20 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.62 — silent autosave feedback (sep/2026)
+  Autosave continues to run and sync, but the repeated “Salvo!” flash is no
+  longer shown after every write. Errors and meaningful sync states remain
+  visible when they require attention.
+  ──────
+
+  BoardHub v23.61 — visible project tasks and dashboard cleanup (sep/2026)
+  Project tasks created through the timeline are now surfaced in the Tasks tab,
+  deleted tasks move to a recoverable project trash, milestones are no longer
+  shown in the dashboard/project overview, and dashboard notes sit beside the
+  full-height activity list. Project cards use a quiet plus/minus control and
+  the first active project opens by default.
+  ──────
+
   BoardHub v23.60 — project post dates and selectable covers (sep/2026)
   Focus-session cards now show the post date. Their editor marks the current
   cover and lets the user choose any still-supported image as the cover, with
@@ -2713,6 +2727,7 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 .session-post-destination{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.session-post-field{display:flex;flex-direction:column;gap:5px;min-width:0}.session-post-field>span{font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}.session-post-field select{width:100%;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:500 .82rem 'Alegreya Sans',sans-serif;outline:none}.session-post-field select:focus{border-color:var(--text)}
 .session-post-mode{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;margin-top:12px;border:1px solid var(--border);border-radius:11px;background:var(--bg)}.session-post-mode button{min-height:36px;padding:7px 10px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:600 .78rem 'Alegreya Sans',sans-serif;cursor:pointer}.session-post-mode button.active{background:var(--surface);color:var(--text);box-shadow:0 1px 5px rgba(0,0,0,.09)}
 .project-focus-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}.project-focus-post{overflow:hidden;cursor:pointer}.project-focus-post-media{aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg)}.project-focus-post-media img,.project-focus-post-media video{width:100%;height:100%;object-fit:cover;display:block}.project-focus-post-copy{padding:11px 12px}.project-focus-post-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.84rem}.project-focus-post-copy span{display:flex;align-items:center;gap:5px;margin-top:4px;color:var(--muted);font-size:.69rem}.project-focus-post-date{display:flex;align-items:center;gap:5px;margin-top:5px;color:var(--muted);font-size:.68rem}
+.task-trash-list{display:flex;flex-direction:column;gap:7px;overflow:auto;min-height:0}.task-trash-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}.task-trash-row>div{display:flex;flex-direction:column;min-width:0;flex:1}.task-trash-row strong{font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.task-trash-row span{font-size:.66rem;color:var(--muted)}
 .session-capture-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px}.session-capture-actions>span{max-width:270px;font-size:.66rem;line-height:1.35;color:var(--muted)}.session-capture-error{margin-top:9px;color:var(--danger-fg);font-size:.74rem}.session-upload-progress{display:grid;grid-template-columns:1fr auto;gap:4px;margin-top:10px;color:var(--muted);font-size:.7rem}.session-upload-progress i{grid-column:1/-1;height:4px;border-radius:9px;background:var(--border);overflow:hidden}.session-upload-progress em{display:block;height:100%;background:#318ca0}
 .rank-promotion{position:fixed;z-index:100000;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,12,15,.72);backdrop-filter:blur(8px);animation:rankOverlayIn .28s ease both;cursor:pointer;overflow:hidden}
 .rank-promotion-aura{position:absolute;width:min(72vw,560px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(74,191,211,.26),rgba(30,94,119,.1) 34%,transparent 68%);animation:rankAura 1.8s ease-out both}
@@ -3665,11 +3680,11 @@ const Icon=({name,size=16,style={},strokeWidth}) =>{
 };
 // Pre-resolve high-frequency icons so first render avoids DOM fallback
 ['layout-dashboard','folder-open','image','lightbulb','graduation-cap','share-2','users','refresh-cw',
- 'plus','x','check','trash-2','arrow-left','arrow-right','search','calendar','star','hard-drive',
+ 'plus','minus','x','check','trash-2','arrow-left','arrow-right','search','calendar','star','hard-drive',
  'check-circle','play','pause','brain','coffee','timer','clock','rotate-ccw','grip-vertical',
  'chevron-right','chevron-up','chevron-down','file-text','folder','menu','smartphone','monitor','camera','book-open',
  'list-checks','check-square','user-plus','image-plus','calendar-days','maximize-2','loader',
- 'undo-2','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle','image-off'
+ 'undo-2','archive','mail','heart','settings','download','upload','eye','edit','save','info','alert-triangle','image-off'
 ].forEach(_resolveIcon);
 
 // v23.7 P3: this used to be <div><span class=label>. A <label> wrapping the
@@ -5033,7 +5048,7 @@ const SetupModal=({onDone})=>{
 const splitHubName=name=>{const m=(name||'BoardHub').match(/^([A-Z][a-z]*)([A-Z].*)$/);return m?[m[1],m[2]]:[(name||'BoardHub'),''];};
 
 // Desktop: fixed left sidebar
-const SidebarDesktop=React.memo(({activeView,setView,resetView,saveFlash,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
+const SidebarDesktop=React.memo(({activeView,setView,resetView,isMobile,setForceMobile,hubName,osName,projects,tasks,onOpenCmd,onSelectProject,theme,onToggleTheme})=>{
   const activeProjects=useMemo(()=>(projects||[]).filter(p=>!p.deleted&&p.status==='Em Andamento'),[projects]);
   const badges={'projects':activeProjects.length||0};
   return(
@@ -5083,11 +5098,8 @@ const SidebarDesktop=React.memo(({activeView,setView,resetView,saveFlash,isMobil
         style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid var(--border)',background:'transparent',cursor:'pointer',fontFamily:'Alegreya Sans,sans-serif',fontSize:'.76rem',fontWeight:500,color:'var(--muted)',transition:'all .15s',width:'100%'}}>
         <Icon name={theme==='notturno'?'sun':'moon'} size={12}/> {theme==='notturno'?'Mattinata':'Notturno'}
       </button>
-      {/* F5: polite, not assertive — this flips on every autosave (~2.5s while
-          editing), and an assertive region would interrupt the screen reader
-          mid-word every time. Polite queues it for the next pause. */}
-      <div role="status" aria-live="polite" style={{display:'flex',alignItems:'center',gap:7,fontSize:'.7rem',transition:'color .4s',color:saveFlash?'var(--ok-fg)':'var(--muted)',padding:'0 4px'}}>
-        <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+      <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.7rem',color:'var(--muted)',padding:'0 4px'}}>
+        <Icon name="hard-drive" size={11}/>Auto-save ativo
       </div>
     </div>
   </aside>
@@ -5107,7 +5119,7 @@ const MORE_ITEMS=[
   {id:'sync',     icon:'refresh-cw',      label:'Sincronizar'},
 ];
 
-const SidebarMobile=React.memo(({activeView,setView,resetView,saveFlash,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
+const SidebarMobile=React.memo(({activeView,setView,resetView,setForceMobile,hubName,onOpenCmd,theme,onToggleTheme})=>{
   const [moreOpen,setMoreOpen]=useState(false);
   const lastTabTapRef=useRef({id:null,at:0});
   const go=id=>{
@@ -5128,8 +5140,8 @@ const SidebarMobile=React.memo(({activeView,setView,resetView,saveFlash,setForce
         </span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <span style={{fontSize:'.72rem',color:'var(--muted)',fontWeight:500}}>{currentLabel}</span>
-          <div style={{fontSize:'.65rem',transition:'color .4s',color:saveFlash?'var(--ok-fg)':'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
-            <Icon name={saveFlash?'check-circle':'hard-drive'} size={11}/>
+          <div style={{fontSize:'.65rem',color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+            <Icon name="hard-drive" size={11}/>
           </div>
         </div>
       </div>
@@ -5172,8 +5184,8 @@ const SidebarMobile=React.memo(({activeView,setView,resetView,saveFlash,setForce
                 style={{color:'var(--muted)',fontSize:'.88rem'}}>
                 <Icon name={theme==='notturno'?'sun':'moon'} size={18}/> {theme==='notturno'?'Tema mattinata':'Tema notturno'}
               </button>
-              <div role="status" aria-live="polite" style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
-                <Icon name={saveFlash?'check-circle':'hard-drive'} size={12}/>{saveFlash?'Salvo!':'Auto-save ativo'}
+              <div style={{display:'flex',alignItems:'center',gap:7,fontSize:'.78rem',color:'var(--muted)',padding:'4px 12px 8px'}}>
+                <Icon name="hard-drive" size={12}/>Auto-save ativo
               </div>
             </div>
           </div>
@@ -7057,7 +7069,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
   const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
   const [showAllTasks,setShowAllTasks]=useState(false);
-  const [expandedProjectId,setExpandedProjectId]=useState(null);
+  const [expandedProjectId,setExpandedProjectId]=useState(()=>active[0]?.id||null);
+  useEffect(()=>{
+    setExpandedProjectId(current=>active.some(p=>p.id===current)?current:(active[0]?.id||null));
+  },[active]);
   const streakDays=useMemo(()=>{
     // pomoData.days values are plain seconds (numbers), not {total} objects —
     // the old .total read made the streak permanently 0.
@@ -7103,10 +7118,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
       <RankProfilePanel pomoData={pomoData} isMobile={isMobile} isSmall={isSmall} onOpenPost={onOpenSessionPost} galleryPosts={galleryPosts}/>
       {/* Main grid - fills remaining height */}
       <div className="dashboard-main-grid" style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:isSmall?10:14,flex:1,minHeight:0,overflow:isMobile?'visible':'hidden'}}>
-        {/* LEFT: projects + project tasks */}
+        {/* LEFT: projects + recent notes */}
         <div className="dashboard-column dashboard-column-left" style={{display:'flex',flexDirection:'column',gap:isSmall?7:10,minWidth:0,overflow:isMobile?'visible':'auto',paddingRight:isMobile?0:2}}>
           {/* Projetos ativos */}
-          <div style={{flexShrink:0}}>
+          <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7}}>
               <span className="label label-section"><StaveGlyph name="half"/>Em andamento</span>
               <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('projects')}>Ver todos <Icon name="arrow-right" size={10}/></button>
@@ -7123,11 +7138,11 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                 <Icon name="plus" size={12}/> Criar Projeto
               </button>
             </div>}
-            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6}}>
+            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:6,flex:1,minHeight:0,overflow:'auto'}}>
               {active.map(p=>{
                 const pt=p.projectTasks||[];const total=pt.length;const done=pt.filter(t=>t.status==='Concluído').length;
                 const pct=total>0?Math.round((done/total)*100):0;const r=10;const c=2*Math.PI*r;const offset=c-(pct/100)*c;
-                const evs=p.timelineEvents||[];const expanded=expandedProjectId===p.id;
+                const expanded=expandedProjectId===p.id;
                 return(
                 <div key={p.id} className="card card-project">
                   <div className="card-click" onClick={()=>setExpandedProjectId(id=>id===p.id?null:p.id)}
@@ -7150,10 +7165,10 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                           strokeDasharray={c} strokeDashoffset={offset}/>
                       </svg>
                     )}
-                    <Icon name="chevron-down" size={15} style={{color:'var(--muted)',flexShrink:0,transition:'transform .2s',transform:expanded?'rotate(180deg)':'none'}}/>
+                    <span aria-hidden="true" style={{width:20,height:20,border:'1px solid var(--border)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',flexShrink:0}}><Icon name={expanded?'minus':'plus'} size={11}/></span>
                   </div>
                   {expanded&&(
-                    <div style={{padding:isSmall?'2px 10px 10px':'2px 12px 12px',display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid var(--border)',maxHeight:240,overflowY:'auto'}}>
+                    <div style={{padding:isSmall?'2px 10px 10px':'2px 12px 12px',display:'flex',flexDirection:'column',gap:10,borderTop:'1px solid var(--border)'}}>
                       <div style={{paddingTop:8}}>
                         <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',display:'block',marginBottom:5}}>Tarefas{total>0?' · '+done+'/'+total:''}</span>
                         {pt.length===0
@@ -7168,19 +7183,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                             );})}
                           </div>}
                       </div>
-                      {evs.length>0&&(
-                        <div>
-                          <span style={{fontSize:'.62rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'var(--muted)',display:'block',marginBottom:5}}>Marcos</span>
-                          <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                            {evs.map(ev=>(
-                              <div key={ev.id} style={{display:'flex',alignItems:'baseline',gap:8}}>
-                                <span style={{fontSize:'.66rem',fontWeight:600,color:'var(--muted)',flexShrink:0,minWidth:46,fontVariantNumeric:'tabular-nums'}}>{ev.date}</span>
-                                <span style={{fontSize:'.74rem',color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{ev.title}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                       <button className="btn btn-outline" style={{alignSelf:'flex-start',padding:'4px 10px',fontSize:'.7rem',marginTop:2}} onClick={e=>{e.stopPropagation();setSelectedProject(p);setView('project-detail');}}>Abrir projeto <Icon name="arrow-right" size={10}/></button>
                     </div>
                   )}
@@ -7189,32 +7191,22 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
               })}
             </div>
           </div>
-          {/* Tarefas de projetos - agrupadas por projeto */}
-          {active.some(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído'))&&(
-            <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column'}}>
-              <div style={{marginBottom:isSmall?5:7,flexShrink:0}}><span className="label label-section"><StaveGlyph name="beamed"/>Tarefas Abertas dos Projetos</span></div>
-              <div style={{display:'flex',flexDirection:'column',gap:isSmall?5:7,overflow:'auto',flex:1}}>
-                {active.filter(p=>(p.projectTasks||[]).some(t=>t.status!=='Concluído')).map(p=>{
-                  const openTasks=(p.projectTasks||[]).filter(t=>t.status!=='Concluído');
-                  return(
-                    <div key={p.id} className="card" style={{padding:isSmall?'6px 10px':'8px 12px',flexShrink:0}}>
-                      <div onClick={()=>{setSelectedProject(p);setView('project-detail');}} style={{display:'flex',alignItems:'center',gap:7,marginBottom:isSmall?4:5,paddingBottom:isSmall?3:4,borderBottom:'1px solid var(--border)',cursor:'pointer'}}>
-                        <BgImg src={p.cover} style={{width:16,height:16,borderRadius:3,flexShrink:0,backgroundSize:'cover',backgroundPosition:'center',backgroundColor:'var(--bg)'}}/>
-                        <span style={{fontWeight:600,fontSize:'.72rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{p.title}</span>
-                        <span style={{fontSize:'.62rem',color:'var(--muted)',flexShrink:0}}>{openTasks.length} tarefa{openTasks.length!==1?'s':''}</span>
-                      </div>
-                      {openTasks.map(t=>(
-                        <div key={t.id} style={{display:'flex',alignItems:'center',gap:6,padding:'2px 0'}}>
-                          <span className={`ptask-pill ptask-${t.status}`} style={{cursor:'default',flexShrink:0,fontSize:'.62rem'}}>{t.status}</span>
-                          <span style={{flex:1,fontSize:'.73rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text)'}}>{t.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Notas recentes ficam no espaço de apoio à esquerda, ao lado da lista de atividades. */}
+          <div style={{flexShrink:0}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7}}>
+              <span className="label label-section"><StaveGlyph name="eighth"/>Notas Recentes</span>
+              <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('ideas')}>Ver todas <Icon name="arrow-right" size={10}/></button>
             </div>
-          )}
+            {recentNotes.length===0&&<div className="card" style={{padding:'20px 12px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+              <Icon name="lightbulb" size={20} style={{opacity:.25}}/><span>Suas notas e ideias vão aparecer aqui.</span>
+            </div>}
+            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:5}}>
+              {recentNotes.map(n=><div key={`${n._recentKind}-${n._recentFolderId||'root'}-${n.id}`} className="card card-click" onClick={()=>openRecentNote(n)} {...keyActivate(()=>openRecentNote(n),'Abrir nota: '+(n.title||''))} style={{padding:isSmall?'6px 10px':'7px 12px'}}>
+                <div style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
+                <div style={{fontSize:'.66rem',color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n._recentPreview}</div>
+              </div>)}
+            </div>
+          </div>
         </div>
 
         {/* RIGHT: pomodoro + activities + recent notes */}
@@ -7256,26 +7248,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-          {/* Notas recentes */}
-          <div style={{flexShrink:0}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:isSmall?5:7}}>
-              <span className="label label-section"><StaveGlyph name="eighth"/>Notas Recentes</span>
-              <button className="btn btn-outline" style={{padding:'3px 7px',fontSize:'.7rem'}} onClick={()=>setView('ideas')}>Ver todas <Icon name="arrow-right" size={10}/></button>
-            </div>
-            {recentNotes.length===0&&<div className="card" style={{padding:'20px 12px',textAlign:'center',color:'var(--muted)',fontSize:'.82rem',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-              <Icon name="lightbulb" size={20} style={{opacity:.25}}/>
-              <span>Suas notas e ideias vão aparecer aqui.</span>
-            </div>}
-            <div style={{display:'flex',flexDirection:'column',gap:isSmall?4:5}}>
-              {recentNotes.map(n=>(
-                <div key={`${n._recentKind}-${n._recentFolderId||'root'}-${n.id}`} className="card card-click" onClick={()=>openRecentNote(n)}
-                  {...keyActivate(()=>openRecentNote(n),'Abrir nota: '+(n.title||''))} style={{padding:isSmall?'6px 10px':'7px 12px'}}>
-                  <div style={{fontWeight:600,fontSize:'.78rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.title}</div>
-                  <div style={{fontSize:'.66rem',color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n._recentPreview}</div>
-                </div>
-              ))}
             </div>
           </div>
         </div>
@@ -7388,7 +7360,7 @@ const ProjectsList=React.memo(({projects,setProjects,onSelect,onAdd,isMobile})=>
   const duplicateProject=p0=>{
     const base=Date.now();
     const np={...p0,id:base,title:p0.title+' (cópia)',status:'Em Andamento',deleted:false,
-      startDate:'',deadline:'',timelineEvents:[],paid:false,shotsDone:0,
+      startDate:'',deadline:'',timelineEvents:[],taskTrash:[],paid:false,shotsDone:0,
       projectTasks:(p0.projectTasks||[]).map((t,i)=>({...t,id:base+i+1,status:'Pendente',startDate:'',dueDate:''}))};
     setProjects(prev=>[np,...prev]);
   };
@@ -7755,7 +7727,7 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
   // - Edit -
   const selectTask=t=>{setSelectedId(t.id);setEditDraft({...t,startDate:t.startDate||(projectStart||today),dueDate:t.dueDate||(projectEnd||addDays(today,7)),notes:t.notes||''});};
   const saveEdit=()=>{if(!editDraft)return;onUpdateTasks(tasks.map(t=>t.id===editDraft.id?{...editDraft}:t));setSelectedId(null);setEditDraft(null);};
-  const deleteTask=()=>{if(!editDraft)return;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));if(onSyncDelete)onSyncDelete(editDraft.id);setSelectedId(null);setEditDraft(null);};
+  const deleteTask=()=>{if(!editDraft)return;const removed=tasks.find(t=>t.id===editDraft.id)||editDraft;onUpdateTasks(tasks.filter(t=>t.id!==editDraft.id));if(onSyncDelete)onSyncDelete(removed);setSelectedId(null);setEditDraft(null);};
   const cycleStatus=id=>{const upd=tasks.map(t=>t.id===id?{...t,status:PTASK_NEXT[t.status]||'Pendente'}:t);onUpdateTasks(upd);if(editDraft&&editDraft.id===id)setEditDraft(d=>({...d,status:PTASK_NEXT[d.status]||'Pendente'}));};
   const addTask=()=>{
     if(!newTaskName.trim())return;
@@ -7918,14 +7890,14 @@ const GanttTimeline=({tasks,onUpdateTasks,projectStart,projectEnd,onTaskClick,on
         </div>
       </div>
 
-      {/* Expand/Collapse arrow */}
+      {/* Expand/Collapse control */}
       {visibleTasks.length>0&&(
         <div onClick={()=>setExpanded(x=>!x)}
           style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'4px 0',cursor:'pointer',
             borderTop:'1px solid var(--border)',background:'var(--surface)',transition:'background .15s',userSelect:'none'}}
           onMouseEnter={e=>e.currentTarget.style.background='rgba(28,25,23,.04)'}
           onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}>
-          <Icon name={expanded?'chevron-up':'chevron-down'} size={16} style={{color:'var(--muted)',transition:'transform .2s'}}/>
+          <Icon name={expanded?'minus':'maximize-2'} size={13} style={{color:'var(--muted)'}}/>
         </div>
       )}
 
@@ -7980,11 +7952,16 @@ const applyAutoLate=tasks=>{
     return t;
   });
 };
+const projectTaskMiniStatus=s=>({'Fazendo':'Em Andamento','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
+const projectTaskToMini=t=>({id:t.id,title:t.text||'Nova Tarefa',status:projectTaskMiniStatus(t.status),notes:t.notes||'',frames:[],innerNotes:[],createdAt:t.createdAt||new Date().toLocaleDateString('pt-BR')});
 
 const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMentors,onAddGlobalMentor,galleryPosts,setGalleryPosts,galleryFolders,pomoData,isMobile})=>{
   const [local,setLocal]=useState(()=>{
     const tasks=applyAutoLate(project.projectTasks);
-    return{...project,projectTasks:tasks};
+    const minis=[...(project.miniProjects||[])];
+    const miniIds=new Set(minis.map(m=>String(m.id)));
+    tasks.forEach(t=>{if(!miniIds.has(String(t.id))){minis.push(projectTaskToMini(t));miniIds.add(String(t.id));}});
+    return{...project,projectTasks:tasks,miniProjects:minis,taskTrash:Array.isArray(project.taskTrash)?project.taskTrash:[]};
   });
   const [tab,setTab]=useState(()=>{
     const open=bhUiLoad('openFocusPost');
@@ -8066,13 +8043,20 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   useEffect(()=>{
     const original=project.projectTasks||[];
     const updated=applyAutoLate(original);
-    const changed=updated.some((t,i)=>t.status!==original[i]?.status);
-    if(changed)onUpdate({...project,projectTasks:updated});
+    const minis=[...(project.miniProjects||[])];
+    const miniIds=new Set(minis.map(m=>String(m.id)));
+    updated.forEach(t=>{if(!miniIds.has(String(t.id))){minis.push(projectTaskToMini(t));miniIds.add(String(t.id));}});
+    const changed=updated.some((t,i)=>t.status!==original[i]?.status)||minis.length!==(project.miniProjects||[]).length||!Array.isArray(project.taskTrash);
+    if(changed)onUpdate({...project,projectTasks:updated,miniProjects:minis,taskTrash:Array.isArray(project.taskTrash)?project.taskTrash:[]});
   },[]);// runs once on mount
   useEffect(()=>{
     // Only update local if the project changed externally (not from our own upd())
     if(projectRef.current!==project){
-      const updated={...project,projectTasks:applyAutoLate(project.projectTasks)};
+      const tasks=applyAutoLate(project.projectTasks);
+      const minis=[...(project.miniProjects||[])];
+      const miniIds=new Set(minis.map(m=>String(m.id)));
+      tasks.forEach(t=>{if(!miniIds.has(String(t.id))){minis.push(projectTaskToMini(t));miniIds.add(String(t.id));}});
+      const updated={...project,projectTasks:tasks,miniProjects:minis,taskTrash:Array.isArray(project.taskTrash)?project.taskTrash:[]};
       setLocal(updated);
       projectRef.current=project;
     }
@@ -8137,7 +8121,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
   const [expandedMiniIds,setExpandedMiniIds]=useState(()=>new Set([(project.miniProjects||[])[0]?.id].filter(Boolean)));
   const activeMini=(local.miniProjects||[]).find(m=>m.id===activeMiniId)||null;
   const miniStatusToPTask=s=>({'Em Andamento':'Fazendo','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
-  const ptaskStatusToMini=s=>({'Fazendo':'Em Andamento','Concluído':'Concluído','Atrasado':'Atrasado'}[s]||'Pendente');
+  const ptaskStatusToMini=projectTaskMiniStatus;
   const addMini=()=>{
     const id=Date.now();
     const n={id,title:'Nova Tarefa',status:'Pendente',notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};
@@ -8159,11 +8143,45 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
       upd('miniProjects',newMinis);
     }
   };
+  const [showTaskTrash,setShowTaskTrash]=useState(false);
+  const archiveTask=taskOrId=>{
+    const taskId=typeof taskOrId==='object'?taskOrId?.id:taskOrId;
+    if(taskId==null)return;
+    const task=(typeof taskOrId==='object'?taskOrId:(local.projectTasks||[]).find(t=>String(t.id)===String(taskId)))||null;
+    const mini=(local.miniProjects||[]).find(m=>String(m.id)===String(taskId))||null;
+    if(!task&&!mini)return;
+    setLocal(prev=>{
+      if((prev.taskTrash||[]).some(entry=>String(entry.task?.id||entry.id)===String(taskId)))return prev;
+      const snapshot=task||{id:mini.id,text:mini.title,status:miniStatusToPTask(mini.status),notes:mini.notes||''};
+      const entry={id:'task-trash-'+taskId+'-'+Date.now(),task:{...snapshot},mini:mini?{...mini}:null,deletedAt:new Date().toISOString()};
+      const updated={...prev,projectTasks:(prev.projectTasks||[]).filter(t=>String(t.id)!==String(taskId)),miniProjects:(prev.miniProjects||[]).filter(m=>String(m.id)!==String(taskId)),taskTrash:[entry,...(prev.taskTrash||[])]};
+      projectRef.current=updated;_pendingUpdate.current=updated;return updated;
+    });
+    setActiveMiniId(current=>String(current)===String(taskId)?null:current);
+    setActiveInnerNoteId(null);
+  };
   const deleteMini=id=>{
-    const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);
-    const newPTasks=(local.projectTasks||[]).filter(t=>t.id!==id);
-    setLocal(prev=>{const updated={...prev,miniProjects:newMinis,projectTasks:newPTasks};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
-    setActiveMiniId((local.miniProjects||[]).find(m=>m.id!==id)?.id||null);
+    archiveTask(id);
+    setActiveMiniId((local.miniProjects||[]).find(m=>String(m.id)!==String(id))?.id||null);
+  };
+  const restoreTask=entry=>{
+    const task=entry?.task||entry;
+    if(!task?.id)return;
+    const mini=entry.mini||projectTaskToMini(task);
+    setLocal(prev=>{
+      const updated={...prev,
+        projectTasks:(prev.projectTasks||[]).some(t=>String(t.id)===String(task.id))?(prev.projectTasks||[]):[...(prev.projectTasks||[]),task],
+        miniProjects:(prev.miniProjects||[]).some(m=>String(m.id)===String(task.id))?(prev.miniProjects||[]):[...(prev.miniProjects||[]),mini],
+        taskTrash:(prev.taskTrash||[]).filter(t=>t!==entry&&t.id!==entry.id)
+      };
+      projectRef.current=updated;_pendingUpdate.current=updated;return updated;
+    });
+    setShowTaskTrash(false);setActiveMiniId(task.id);setActiveInnerNoteId(null);
+  };
+  const purgeTask=async entry=>{
+    if(!entry)return;
+    if(!await bhConfirm({message:'Excluir esta tarefa permanentemente? Esta ação não pode ser desfeita.',danger:true,confirmLabel:'Excluir'}))return;
+    setLocal(prev=>{const updated={...prev,taskTrash:(prev.taskTrash||[]).filter(t=>t!==entry&&t.id!==entry.id)};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});
   };
   const [activeInnerNoteId,setActiveInnerNoteId]=useState(null);
   const addInnerNote=()=>{
@@ -8274,7 +8292,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 }}
                 onTaskClick={(id)=>{setShowTimelineModal(false);setTab('Tarefas');setActiveMiniId(id);setActiveInnerNoteId(null);}}
                 onSyncAdd={(pt)=>{const n={id:pt.id,title:pt.text,status:ptaskStatusToMini(pt.status),notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};setLocal(prev=>{const updated={...prev,miniProjects:[...(prev.miniProjects||[]),n]};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
-                onSyncDelete={(id)=>{const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);setLocal(prev=>{const updated={...prev,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
+                onSyncDelete={archiveTask}
                 projectStart={local.startDate}
                 projectEnd={local.deadline}
               />
@@ -8283,23 +8301,6 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           document.body
         )}
         <div style={{marginBottom:16}}>
-          {(local.timelineEvents||[]).length>0&&(
-            <div className="card" style={{padding:16}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                <span className="label label-section"><StaveGlyph name="clef"/>Timeline</span>
-                <button onClick={()=>setShowTimelineModal(true)} className="btn btn-outline" style={{padding:'3px 8px',fontSize:'.7rem'}}>
-                  <Icon name="maximize-2" size={10}/> Expandir
-                </button>
-              </div>
-              {(local.timelineEvents||[]).map((ev,i)=>(
-                <div key={ev.id||i} className="vtimeline-item">
-                  <div className={`vtimeline-dot ${i<(local.timelineEvents||[]).length-1?'done':''}`}/>
-                  <span className="vtimeline-text">{ev.title}</span>
-                  <span className="vtimeline-date">{ev.date}</span>
-                </div>
-              ))}
-            </div>
-          )}
           {(local.projectTasks||[]).length>0&&(
             <div className="card" style={{padding:16,marginTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -8316,9 +8317,9 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
               ))}
             </div>
           )}
-          {(local.timelineEvents||[]).length===0&&(local.projectTasks||[]).length===0&&(
+          {(local.projectTasks||[]).length===0&&(
             <button onClick={()=>setShowTimelineModal(true)} className="btn btn-outline" style={{width:'100%',justifyContent:'center',padding:'10px'}}>
-              <Icon name="calendar-days" size={14}/> Abrir Timeline
+              <Icon name="calendar-days" size={14}/> Abrir tarefas
             </button>
           )}
         </div>
@@ -8334,7 +8335,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           projectEnd={local.deadline}
           onTaskClick={(id)=>{setTab('Tarefas');setActiveMiniId(id);setActiveInnerNoteId(null);window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}}
           onSyncAdd={(pt)=>{const n={id:pt.id,title:pt.text,status:ptaskStatusToMini(pt.status),notes:'',frames:[],innerNotes:[],createdAt:new Date().toLocaleDateString('pt-BR')};setLocal(prev=>{const updated={...prev,miniProjects:[...(prev.miniProjects||[]),n]};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
-          onSyncDelete={(id)=>{const newMinis=(local.miniProjects||[]).filter(m=>m.id!==id);setLocal(prev=>{const updated={...prev,miniProjects:newMinis};projectRef.current=updated;_pendingUpdate.current=updated;return updated;});}}
+          onSyncDelete={archiveTask}
         />
         </>
       )}
@@ -8565,6 +8566,22 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
           {(!isMobile||(isMobile&&!activeMiniId))&&(
           <div style={{width:isMobile?'100%':210,flexShrink:0,display:'flex',flexDirection:'column',gap:4}}>
             <button className="btn btn-dark" style={{width:'100%',justifyContent:'center',marginBottom:6}} onClick={addMini}><Icon name="plus" size={13}/> Nova Tarefa</button>
+            <button className={`btn ${showTaskTrash?'btn-danger':'btn-outline'}`} style={{width:'100%',justifyContent:'center',marginBottom:6,padding:'6px 10px',fontSize:'.76rem'}} onClick={()=>{setShowTaskTrash(v=>!v);setActiveMiniId(null);setActiveInnerNoteId(null);}}><Icon name="trash-2" size={12}/> {showTaskTrash?'Voltar às tarefas':'Lixeira'}{(local.taskTrash||[]).length>0&&` (${(local.taskTrash||[]).length})`}</button>
+            {showTaskTrash
+              ?<div className="task-trash-list">
+                {(local.taskTrash||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'12px 4px',textAlign:'center'}}>A lixeira está vazia.</div>}
+                {(local.taskTrash||[]).map(entry=>{
+                  const task=entry.task||entry;
+                  const when=entry.deletedAt?new Date(entry.deletedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.',''):'';
+                  return <div className="task-trash-row" key={entry.id||task.id}>
+                    <Icon name="archive" size={13} style={{color:'var(--muted)',flexShrink:0}}/>
+                    <div><strong>{task.text||task.title||'Tarefa sem título'}</strong><span>{when?'Excluída em '+when:'Excluída'}</span></div>
+                    <button className="btn btn-ghost" style={{padding:4}} title="Restaurar tarefa" aria-label="Restaurar tarefa" onClick={()=>restoreTask(entry)}><Icon name="undo-2" size={13}/></button>
+                    <button className="btn btn-ghost text-link-danger" style={{padding:4}} title="Excluir permanentemente" aria-label="Excluir permanentemente" onClick={()=>purgeTask(entry)}><Icon name="trash-2" size={13}/></button>
+                  </div>;
+                })}
+              </div>
+              :<>
             {(local.miniProjects||[]).length===0&&<div style={{fontSize:'.8rem',color:'var(--muted)',padding:'8px 4px',textAlign:'center'}}>Nenhuma tarefa.</div>}
             {(local.miniProjects||[]).map((m,mIdx)=>{
               const expanded=expandedMiniIds.has(m.id);
@@ -8586,8 +8603,8 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                     onMouseEnter={e=>{if(!isMiniActive)e.currentTarget.style.background='var(--surface)';}}
                     onMouseLeave={e=>{if(!isMiniActive)e.currentTarget.style.background='transparent';}}>
                     <span style={{cursor:'grab',color:isMiniActive?'rgba(255,255,255,.4)':'var(--border)',display:'flex',flexShrink:0}} onMouseDown={e=>e.stopPropagation()}><Icon name="grip-vertical" size={11}/></span>
-                    <button onClick={toggleExpand} title="Expandir ou recolher grupo" aria-label="Expandir ou recolher grupo" style={{background:'none',border:'none',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',color:isMiniActive?'white':'var(--muted)',transition:'transform .15s',transform:expanded?'rotate(90deg)':'rotate(0deg)'}}>
-                      <Icon name="chevron-right" size={13}/>
+                    <button onClick={toggleExpand} title="Expandir ou recolher notas" aria-label="Expandir ou recolher notas" style={{width:19,height:19,border:'1px solid '+(isMiniActive?'rgba(255,255,255,.35)':'var(--border)'),borderRadius:'50%',background:'transparent',cursor:'pointer',padding:0,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',color:isMiniActive?'white':'var(--muted)'}}>
+                      <Icon name={expanded?'minus':'plus'} size={10}/>
                     </button>
                     <Icon name="folder" size={13} style={{flexShrink:0,color:isMiniActive?'white':'var(--muted)'}}/>
                     <div style={{flex:1,minWidth:0}}>
@@ -8631,6 +8648,7 @@ const ProjectDetail=React.memo(({project,onBack,onUpdate,onSoftDelete,globalMent
                 </div>
               );
             })}
+              </>}
           </div>
           )}
 
@@ -11663,7 +11681,6 @@ const App=()=>{
     if(view==='project-detail'&&selectedProject)rememberProjectsMode('detail',selectedProject);
   },[]);// initial route only
   const [showNewProject,setShowNewProject]=useState(false);
-  const [saveFlash,setSaveFlash]=useState(false);
   const [showCmdPalette,setShowCmdPalette]=useState(false);
   const [showQuickCapture,setShowQuickCapture]=useState(false);
   const [showShortcuts,setShowShortcuts]=useState(false);
@@ -12048,7 +12065,6 @@ const App=()=>{
   },[fbUser]);
 
   // Auto-save localStorage + debounced push to Firestore
-  const saveFlashTimer=useRef(null);
   const fbPushTimer=useRef(null);
   const _retryTimer=useRef(null);
   const _pushAttempt=useRef(0);
@@ -12085,9 +12101,6 @@ const App=()=>{
         const last=bhLastAt(); // the light key, not the whole history (P1-3)
         if(!last||Date.now()-new Date(last).getTime()>30*60*1000)bhCapture(state,'auto');
       }catch(e){bhLog('backup.session',e,'the ~30min session snapshot did not happen; the history stops advancing while editing continues');}
-      setSaveFlash(true);
-      clearTimeout(saveFlashTimer.current);
-      saveFlashTimer.current=setTimeout(()=>setSaveFlash(false),1800);
       // Only push if the user actually made changes (not a remote echo)
       if(!fbUser||!_hasPendingLocalEdit.current)return;
       clearTimeout(fbPushTimer.current);
@@ -12152,7 +12165,7 @@ const App=()=>{
         attemptPush();
       },2000);
     },2500);
-    return ()=>{clearTimeout(timer);clearTimeout(saveFlashTimer.current);clearTimeout(fbPushTimer.current);clearTimeout(_retryTimer.current);};
+    return ()=>{clearTimeout(timer);clearTimeout(fbPushTimer.current);clearTimeout(_retryTimer.current);};
   },[projects,clients,mentors,notes,tasks,socialPosts,galleryPosts,galleryFolders,pomoData,noteGroups,identity,syncTick]);
 
   // Flush the current state to localStorage the moment the tab is hidden or closed.
@@ -12257,7 +12270,7 @@ const App=()=>{
   },[rememberProjectsMode]);
   const softDeleteProject=useCallback(id=>setProjects(prev=>prev.map(p=>p.id===id?{...p,deleted:true,deletedAt:new Date().toISOString()}:p)),[]);
   // Stable handler (reads current project via ref) so ProjectDetail's React.memo isn't
-  // defeated by a fresh inline arrow on every App render (e.g. saveFlash/syncStatus toggles).
+  // defeated by a fresh inline arrow on every App render (e.g. syncStatus toggles).
   const handleSoftDeleteSelected=useCallback(()=>{const sp=selectedProjectRef.current;if(sp)softDeleteProject(sp.id);},[softDeleteProject]);
   const handleSelectProject=useCallback(p=>{rememberCurrentScroll();setSelectedProject(p);rememberProjectsMode('detail',p);setView('project-detail');window.history.pushState(null,'',`#project-detail/${p.id}`);},[rememberCurrentScroll,rememberProjectsMode]);
   const handleAddProject=useCallback(()=>setShowNewProject(true),[]);
@@ -12405,8 +12418,8 @@ const App=()=>{
       {pendingRankNotice&&!pendingSession&&<RankStatusOverlay notice={pendingRankNotice} onDone={dismissRankNotice}/>} 
       {rankPromotion&&!pendingSession&&!pendingRankNotice&&<RankPromotionOverlay promotion={rankPromotion} onDone={dismissRankPromotion}/>} 
       {isMobile
-        ?<SidebarMobile activeView={view} setView={navigate} resetView={resetView} saveFlash={saveFlash} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
-        :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} saveFlash={saveFlash} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
+        ?<SidebarMobile activeView={view} setView={navigate} resetView={resetView} setForceMobile={setForceMobile} hubName={identity?.hubName} onOpenCmd={()=>setShowCmdPalette(true)} theme={theme} onToggleTheme={toggleTheme}/>
+        :<SidebarDesktop activeView={view} setView={navigate} resetView={resetView} isMobile={isMobile} setForceMobile={setForceMobile} hubName={identity?.hubName} osName={identity?.osName} projects={projects} tasks={tasks} onOpenCmd={()=>setShowCmdPalette(true)} onSelectProject={handleSelectProject} theme={theme} onToggleTheme={toggleTheme}/>
       }
       <main ref={mainRef} className={(isMobile?'main-mobile':'')+' view-enter'} style={isMobile?{flex:1,padding:'16px 16px 80px',overflowY:'auto',minHeight:'calc(100vh - 56px)',paddingTop:0}:{marginLeft:220,flex:1,padding:'clamp(16px, 2.5vh, 40px) clamp(20px, 3vw, 48px)',overflowY:view==='dashboard'?'hidden':'auto',height:'100vh',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
         {view==='dashboard'      &&<Dashboard projects={projects} notes={notes} mentors={mentors} tasks={tasks} setTasks={setTasks} setView={navigate} setNotes={setNotes} pomoData={pomoData} setPomoData={setPomoData} galleryFolders={galleryFolders} galleryPosts={galleryPosts} isMobile={isMobile} setSelectedProject={setSelectedProject} onSessionComplete={handleSessionComplete} onOpenSessionPost={handleOpenSessionPost}/>} 
