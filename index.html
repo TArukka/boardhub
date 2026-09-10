@@ -63,6 +63,14 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.57 — proportional session receipts repaired (sep/2026)
+  Session snapshots now retain the daily cycle date and fractional point units.
+  Without those fields, the history could show +0 after the daily victory even
+  while focus continued. Existing session rows are recalculated chronologically
+  per day; any proportional points omitted by the previous rule are also added
+  once to the current season total.
+  ──────
+
   BoardHub v23.56 — one daily victory, continuous points afterward (sep/2026)
   The first 2h milestone of each local day grants the daily victory: 200 points
   for regular focus, rising proportionally to 250 when those first 2h belong to
@@ -5183,7 +5191,7 @@ const rankSeasonNext=id=>{
 };
 const rankDefault=(now=new Date(),history=[],sessions=[],notices=[])=>({
   seasonId:rankSeasonForDate(now).id,points:0,cycleDate:rankDateKey(now),cycleSeconds:0,cycleProjectSeconds:0,
-  postVictoryPointUnits:0,
+  postVictoryPointUnits:0,sessionAwardsVersion:2,
   decayApplied:{},startedOn:rankDateKey(now),history:Array.isArray(history)?history.slice(-24):[],
   sessions:Array.isArray(sessions)?sessions.slice(-1000):[],
   notices:Array.isArray(notices)?notices.filter(Boolean).slice(-8):[]
@@ -5203,6 +5211,7 @@ const rankNormalize=(value,now=new Date())=>{
     cycleSeconds,
     cycleProjectSeconds:sameCycleDay?Math.min(cycleSeconds,Math.max(0,Number(src.cycleProjectSeconds)||0)):0,
     postVictoryPointUnits:sameCycleDay?Math.max(0,Math.min(7199,Math.floor(Number(src.postVictoryPointUnits)||0))):0,
+    sessionAwardsVersion:Number(src.sessionAwardsVersion)||fallback.sessionAwardsVersion,
     decayApplied:src.decayApplied&&typeof src.decayApplied==='object'&&!Array.isArray(src.decayApplied)?src.decayApplied:{},
     startedOn:typeof src.startedOn==='string'?src.startedOn:fallback.startedOn,
     history:Array.isArray(src.history)?src.history.slice(-24):[],
@@ -5309,6 +5318,27 @@ const pomoRankAddSession=(value,session)=>{
   return {...rank,sessions};
 };
 
+// Rebuild only the per-session receipts. Rank points are adjusted separately by
+// the delta, preserving decay already applied to the season total.
+const pomoRepairSessionAwards=sessions=>{
+  const source=Array.isArray(sessions)?sessions:[];
+  const repaired=new Map(),dailyRanks=new Map();
+  source.map((session,index)=>({session,index})).sort((a,b)=>{
+    const time=String(a.session?.endedAt||'').localeCompare(String(b.session?.endedAt||''));
+    return time||a.index-b.index;
+  }).forEach(({session,index})=>{
+    if(!session)return;
+    const ended=new Date(session.endedAt||Date.now());
+    const dayKey=typeof session.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(session.date)?session.date:rankDateKey(ended);
+    const when=rankDateFromKey(dayKey);
+    const before=dailyRanks.get(dayKey)||rankDefault(when);
+    const after=pomoRankCredit(before,Math.max(0,Number(session.durationSeconds)||0),session.targetKey||'none',when);
+    dailyRanks.set(dayKey,after);
+    repaired.set(index,{...session,pointsAwarded:Math.max(0,after.points-before.points),victoryProgressSeconds:after.cycleSeconds});
+  });
+  return source.map((session,index)=>repaired.get(index)||session);
+};
+
 const pomoEmpty = () => ({days:{},categories:[],allocations:{},dailyAllocations:{},rank:rankDefault()});
 const pomoNormalize = d => {
   const src=(d&&typeof d==='object'&&!Array.isArray(d))?d:{};
@@ -5324,6 +5354,13 @@ const pomoNormalize = d => {
     const remainderSecs=reachedVictory?todaySecs%7200:0;
     const remainderUnits=Math.round(remainderSecs*(200+50*projectRatio))%7200;
     rank={...rank,cycleDate:today,cycleSeconds:Math.min(7200,todaySecs),cycleProjectSeconds:reachedVictory?Math.round(7200*projectRatio):Math.min(todaySecs,todayProjectSecs),postVictoryPointUnits:remainderUnits};
+  }
+  if(!(src.rank&&Number(src.rank.sessionAwardsVersion)>=2)){
+    const oldSessions=Array.isArray(src.rank?.sessions)?src.rank.sessions.filter(Boolean).slice(-1000):[];
+    const sessions=pomoRepairSessionAwards(oldSessions);
+    const inSeason=list=>list.filter(s=>s&&s.seasonId===rank.seasonId).reduce((sum,s)=>sum+Math.max(0,Number(s.pointsAwarded)||0),0);
+    const missing=Math.max(0,inSeason(sessions)-inSeason(oldSessions));
+    rank={...rank,points:Math.min(RANK_MAX,rank.points+missing),sessions,sessionAwardsVersion:2};
   }
   return {
     ...src,
@@ -6358,7 +6395,7 @@ const PomodoroTimer = ({ pomoData, setPomoData, projects=[], onSessionComplete }
       if (next) {
         if(modeRef.current==='focus'&&!sessionMetaRef.current){
           const start=rankNormalize(pomoData?.rank);
-          sessionMetaRef.current={id:'focus-session-'+Date.now()+'-'+Math.random().toString(36).slice(2,6),startedAt:new Date().toISOString(),plannedSeconds:focusMinsRef.current*60,startRank:{seasonId:start.seasonId,points:start.points,cycleSeconds:start.cycleSeconds,cycleProjectSeconds:start.cycleProjectSeconds},chunks:[]};
+          sessionMetaRef.current={id:'focus-session-'+Date.now()+'-'+Math.random().toString(36).slice(2,6),startedAt:new Date().toISOString(),plannedSeconds:focusMinsRef.current*60,startRank:{seasonId:start.seasonId,points:start.points,cycleDate:start.cycleDate,cycleSeconds:start.cycleSeconds,cycleProjectSeconds:start.cycleProjectSeconds,postVictoryPointUnits:start.postVictoryPointUnits},chunks:[]};
         }
         playPomoSound('start'); endTimestampRef.current = Date.now() + timeLeftRef.current*1000; persist(true, timeLeftRef.current, modeRef.current);
       }
