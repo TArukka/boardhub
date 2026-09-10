@@ -63,6 +63,12 @@
      DENIED.
   ═══════════════════════════════════════════════════════════════════════════
 
+  BoardHub v23.68 — original dashboard scroll, without summary counters (sep/2026)
+  The overview returns to its natural page scroll at compact desktop sizes. The
+  three summary counters for active projects, open tasks and pending activities
+  were removed, leaving the ranked profile as the first dashboard surface.
+  ──────
+
   BoardHub v23.67 — review pass: dates, session identity and history grouping (sep/2026)
   Project deadlines are parsed at local noon so negative time zones cannot mark
   a task late one day early. Completed sessions retain the id created at start,
@@ -2787,13 +2793,11 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
 @keyframes rankBadgeBreak{0%{opacity:0;transform:scale(.48);filter:brightness(2.2) blur(5px)}52%{opacity:1;transform:scale(1.13);filter:brightness(1.55) blur(0)}72%{transform:scale(.96) rotate(-1deg)}100%{transform:none}}
 @keyframes rankCopyIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(max-width:700px){.rank-profile-card{width:100%;min-width:0;padding:7px 11px 7px 7px}.rank-profile-title span{font-size:1.18rem}.rank-profile-panel{grid-template-columns:120px 1fr;grid-template-rows:auto auto;grid-template-areas:'emblem main' 'footer footer';min-height:0}.rank-panel-emblem{padding:7px;border-right:1px solid var(--border)}.rank-panel-main{padding:12px 11px 10px}.rank-panel-title{margin-bottom:7px;gap:8px}.rank-panel-title span{font-size:1.52rem}.rank-panel-title strong{font-size:1.08rem}.rank-panel-footer{grid-template-columns:1fr 1fr;padding:10px 11px;gap:10px}.rank-panel-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}.rank-panel-actions .btn{justify-content:center;padding:5px 4px}.rank-profile-meta span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-decay-hint{font-size:.62rem;padding:5px 7px}.rank-guide-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.rank-guide-rules{grid-template-columns:1fr}.rank-decay-table{grid-template-columns:repeat(4,1fr)}.session-capture-overlay{padding:0;align-items:flex-end}.session-capture-modal{max-height:95vh;border-radius:18px 18px 0 0;padding:18px 15px}.session-result-strip{grid-template-columns:1fr 1fr}.session-capture-grid{grid-template-columns:repeat(3,1fr)}.session-post-destination{grid-template-columns:1fr}.session-capture-actions{align-items:stretch;flex-direction:column}.session-capture-actions>span{max-width:none}.session-capture-actions .btn{justify-content:center}.rank-session-row{grid-template-columns:50px 40px 1fr}.rank-session-thumb{width:40px;height:32px}.rank-session-status{grid-column:3;justify-self:start}.project-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
-/* 1280×720 desktop mode: everything fits by scaling the interface itself.
-   There is no page or panel scrolling on the overview. */
+/* Compact desktop keeps the original natural dashboard scroll. */
 @media(max-width:1366px) and (max-height:800px) and (min-width:769px){
-  .dashboard-shell{max-width:none!important;height:100%!important;overflow:hidden!important;padding-right:0}
+  .dashboard-shell{max-width:none!important;height:calc(100vh - 26px)!important;overflow-y:auto!important;overflow-x:hidden!important;padding-right:5px;scrollbar-gutter:stable;overscroll-behavior:contain}
+  .dashboard-shell::-webkit-scrollbar{width:5px}.dashboard-shell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
   .dashboard-header{margin-bottom:6px!important}
-  .dashboard-stats{gap:8px!important;margin-bottom:7px!important}
-  .dashboard-stats .card{min-height:54px;padding:7px 12px!important;box-sizing:border-box}
   .rank-profile-panel{grid-template-columns:176px 1fr;min-height:160px;margin-bottom:8px}
   .rank-panel-emblem{padding:8px}
   .rank-panel-emblem .rank-badge{width:144px!important;height:144px!important}
@@ -2807,16 +2811,10 @@ input[type="date"]{font-family:'Alegreya Sans',sans-serif;}
   .rank-panel-footer{grid-template-columns:minmax(130px,1fr) minmax(115px,.72fr) auto;gap:12px;padding:8px 16px}
   .rank-panel-metric>span{font-size:.54rem}.rank-panel-metric>strong{font-size:.92rem}
   .rank-panel-actions{gap:4px}.rank-panel-actions .btn{padding:4px 7px;font-size:.62rem}
-  .dashboard-main-grid{flex:1 1 auto!important;min-height:0!important;overflow:hidden!important;align-items:stretch}
-  /* Keep the middle work surfaces dominant; edge content yields first. */
-  .dashboard-main-grid{grid-template-columns:minmax(0,.84fr) minmax(0,1.16fr)!important;gap:12px!important}
-  .dashboard-column{height:auto!important;min-height:0!important;overflow:hidden!important;padding-right:0!important}
-  .dashboard-project-list,.dashboard-activity-list{overflow:hidden!important}
-  .dashboard-project-pane{flex-basis:190px!important;height:190px!important;min-height:190px!important}
-  .dashboard-activity-pane{flex-basis:215px!important;height:215px!important;min-height:215px!important}
-  .dashboard-mentors{margin-top:6px!important;padding-bottom:2px}
+  .dashboard-main-grid{flex:0 0 auto!important;min-height:260px!important;overflow:visible!important;align-items:start}
+  .dashboard-column{height:auto!important;min-height:260px;overflow:visible!important;padding-right:0!important}
+  .dashboard-mentors{margin-top:10px!important;padding-bottom:10px}
   .dashboard-mentors .card{min-width:0}
-  .dashboard-mentor-cover{height:38px!important}
 }
 @media(prefers-reduced-motion:reduce){.rank-promotion,.rank-promotion-aura,.rank-promotion-mark,.rank-promotion-copy{animation:none}.rank-progress-track span{transition:none}}
 </style>
@@ -7116,7 +7114,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
     bhUiReplace('ideas',{...ui,selected,showTrash:false,expanded:n._recentExpanded||[],mobileDetail:!!isMobile,treeScroll:0});
     setView('ideas');
   };
-  const allPTasks=useMemo(()=>active.flatMap(p=>(p.projectTasks||[]).filter(t=>t.status!=='Concluído').map(t=>({...t,projectTitle:p.title}))),[active]);
   const h=new Date().getHours();
   const greeting=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const [newTask,setNewTask]=useState('');
@@ -7132,11 +7129,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
     for(let i=0;i<30;i++){const key=localDateISO(d);if((days[key]||0)>0)streak++;else if(i>0)break;d.setDate(d.getDate()-1);}
     return streak;
   },[pomoData]);
-  const stats=[
-    {label:'Projetos Ativos',value:active.length,icon:'folder-open',view:'projects',color:'var(--ok-strong)'},
-    {label:'Tarefas Abertas',value:active.reduce((s,p)=>(s+(p.projectTasks||[]).filter(t=>t.status!=='Concluído').length),0),icon:'check-square',view:'projects',color:'#ECC94B'},
-    {label:'Atividades Pendentes',value:tasks.filter(t=>!t.done).length,icon:'list-checks',view:'dashboard',color:'#F56565'}
-  ];
   const addTask=()=>{if(!newTask.trim())return;setTasks(p=>[...p,{id:Date.now(),text:newTask.trim(),done:false,noteId:null}]);setNewTask('');};
   const toggleTask=id=>setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
   const removeTask=id=>setTasks(p=>p.filter(t=>t.id!==id));
@@ -7151,21 +7143,6 @@ const Dashboard=React.memo(({projects,notes,mentors,tasks,setTasks,setView,setNo
           <h1 className="serif stave-title" style={{fontSize:isMobile?'1.9rem':isSmall?'2rem':'2.5rem',fontWeight:300,letterSpacing:'-0.02em',marginBottom:2,lineHeight:1.1}}><StaveTitleNotes fig="big" w={66}/>{greeting}{streakDays>2?<>, <em style={{color:'var(--muted)'}}>{'dia '+streakDays+' de foco.'}</em></>:<>, <em>Artista.</em></>}</h1>
           <p style={{color:'var(--muted)',fontSize:isSmall?'.76rem':'.82rem'}}>{new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
         </div>
-      </div>
-      {/* Stats row */}
-      <div className="dashboard-stats" style={isMobile?{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10,flexShrink:0}:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:isSmall?8:10,marginBottom:isSmall?8:12,flexShrink:0}}>
-        {stats.map((s,si)=>(
-          <div key={s.label} className={'card card-click stat-value stagger-'+(si+1)} onClick={()=>setView(s.view)}
-            {...keyActivate(()=>setView(s.view),s.label)} style={isMobile?{padding:'10px 12px',display:'flex',flexDirection:'column',gap:4,minWidth:0,overflow:'hidden'}:{padding:isSmall?'10px 14px':'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-            {!isMobile&&<div style={{width:30,height:30,borderRadius:8,background:(s.color||'#999')+'15',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:s.color}}><Icon name={s.icon} size={14}/></div>}
-            {isMobile&&<Icon name={s.icon} size={13} style={{color:s.color||'var(--muted)'}}/>}
-            <div style={{flex:1,minWidth:0}}>
-              <span style={{fontSize:isMobile?'1.6rem':isSmall?'1.5rem':'1.8rem',fontWeight:400,fontFamily:'Cormorant Garamond,serif',lineHeight:1,display:'block',letterSpacing:'-0.02em'}}>{s.value}</span>
-              <span style={{fontSize:isMobile?'.62rem':'.72rem',color:'var(--muted)',fontWeight:500,lineHeight:1.3,display:'block',marginTop:2}}>{s.label}</span>
-            </div>
-          </div>
-        ))}
-
       </div>
       <RankProfilePanel pomoData={pomoData} isMobile={isMobile} isSmall={isSmall} onOpenPost={onOpenSessionPost} galleryPosts={galleryPosts}/>
       {/* Main grid - fills remaining height */}
