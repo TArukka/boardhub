@@ -1293,7 +1293,7 @@ const bhRetention=list=>{
   //  • ROTATING tier (everything else): BH_KEEP_RECENT most recent kept
   //    unconditionally, older thinned to one per calendar day, cap BH_MAX_TOTAL.
   const dailies=[];const others=[];const migrations=[];
-  list.forEach(e=>(e.reason==='schema-3.4'?migrations:e.reason==='daily'?dailies:others).push(e));
+  list.forEach(e=>((e.reason==='schema-3.4'||e.reason==='schema-4')?migrations:e.reason==='daily'?dailies:others).push(e));
   const byWeekday=new Map(); // 0=Sun..6=Sat → newest entry
   dailies.forEach(e=>{
     const wd=new Date(e.at).getDay();
@@ -1437,7 +1437,7 @@ const bhCapture=(state,reason)=>{
         // An equivalent newest snapshot is already a valid safety copy. Return
         // success so callers that must protect data before overwriting it can
         // proceed without manufacturing duplicates.
-        if(list[0]&&list[0].sig===sig&&(reason!=='schema-3.4'||list[0].reason==='schema-3.4')){
+        if(list[0]&&list[0].sig===sig&&(!['schema-3.4','schema-4'].includes(reason)||list[0].reason===reason)){
           const existing=await bhHistoryGet(list[0].at);
           if(existing?.state&&bhStableStringify(bhCanonicalState(existing.state))===bhStableStringify(bhCanonicalState(state)))return true;
         }
@@ -2550,6 +2550,195 @@ const hasInlineMedia=obj=>{
   if(obj&&typeof obj==='object')return Object.values(obj).some(hasInlineMedia);
   return typeof obj==='string'&&/data:(?:image|video)\//i.test(obj);
 };
+// Entity transport v4. Legacy documents are immutable rollback inputs after activation.
+const bhEntityModes=new Map();
+const bhEntityCollection=uid=>_fbDb.collection('users').doc(uid).collection('boardhub');
+const bhEntityId=path=>{
+  const id='v4_'+btoa(unescape(encodeURIComponent(JSON.stringify(path)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  if(id.length>1300)throw new Error('Identificador excessivamente longo; dados preservados.');
+  return id;
+};
+const bhEntityPack=state=>{
+  const docs=new Map();
+  const emit=(path,value)=>{const id=bhEntityId(path);docs.set(id,{value});return {ref:id};};
+  const pack=(value,path)=>{
+    if(typeof value==='string'&&new Blob([value]).size>160000){
+      const parts=[];for(let i=0;i<value.length;i+=40000)parts.push(emit([...path,'text',i/40000],{text:value.slice(i,i+40000)}));
+      return {textParts:parts};
+    }
+    if(Array.isArray(value)){
+      const keyed=value.every(v=>v&&typeof v==='object'&&!Array.isArray(v)&&v.id!==undefined)&&new Set(value.map(v=>String(v.id))).size===value.length;
+      const occurrences=new Map();
+      const rows=keyed?value.map(v=>{const node=emit([...path,'id',String(v.id)],pack(v,[...path,'id',String(v.id)]));return {...node,id:node.ref};}):value.map((v,i)=>{
+        const key=bhStableStringify(v),occurrence=occurrences.get(key)||0;occurrences.set(key,occurrence+1);
+        return {...pack(v,[...path,'at',i]),id:key+'#'+occurrence};
+      });
+      // Image URLs and order metadata are paged; originals never enter these pages.
+      const pages=[];for(let i=0;i<rows.length;i+=128)pages.push(emit([...path,'page',i/128],{rows:rows.slice(i,i+128)}));
+      return emit([...path,'list'],{list:pages});
+    }
+    if(value&&typeof value==='object')return {object:Object.fromEntries(Object.entries(value).filter(([,v])=>v!==undefined).map(([k,v])=>[k,pack(v,[...path,k])]))};
+    return {scalar:value};
+  };
+  const fields={};for(const [key,value] of Object.entries(bhSyncState(state)))fields[key]=emit([key],pack(value,[key]));
+  docs.set('v4_root',{value:{object:fields}});
+  for(const value of docs.values())if(new Blob([JSON.stringify(value)]).size>850000)throw new Error('Entidade excede tamanho seguro; dados locais preservados.');
+  return docs;
+};
+const bhEntityUnpack=docs=>{
+  const visiting=new Set();
+  const unpack=node=>{
+    if(!node||typeof node!=='object')throw new Error('Estrutura de sincronização inválida.');
+    if(node.ref){
+      if(visiting.has(node.ref))throw new Error('Referência circular na sincronização.');
+      const doc=docs.get(node.ref);if(!doc||doc.deleted)throw new Error('Sincronização incompleta; aguardando entidade.');
+      visiting.add(node.ref);const value=unpack(doc.value);visiting.delete(node.ref);return value;
+    }
+    if(node.object)return Object.fromEntries(Object.entries(node.object).map(([k,v])=>[k,unpack(v)]));
+    if(node.list){
+      const seen=new Set(),out=[];
+      for(const ref of node.list){
+        const page=docs.get(ref.ref);if(!page||page.deleted||!Array.isArray(page.value?.rows))throw new Error('Lista incompleta; aguardando página.');
+        for(const row of page.value.rows){if(row.id!==undefined&&seen.has(row.id))continue;if(row.id!==undefined)seen.add(row.id);out.push(unpack(row));}
+      }
+      return out;
+    }
+    if(node.rows)return node.rows.map(unpack);
+    if(node.textParts)return node.textParts.map(unpack).join('');
+    if(Object.prototype.hasOwnProperty.call(node,'text'))return node.text;
+    if(Object.prototype.hasOwnProperty.call(node,'scalar'))return node.scalar;
+    throw new Error('Formato de entidade desconhecido.');
+  };
+  return unpack({ref:'v4_root'});
+};
+const bhEntityChanges=(before,after)=>[...new Set([...before.keys(),...after.keys()])].filter(id=>!bhEqual(before.get(id),after.get(id))).map(id=>({id,before:before.get(id),after:after.get(id)}));
+const bhEntityAssert=uid=>{if(!_fbDb||_fbAuth?.currentUser?.uid!==uid)throw new Error('Conta alterada; operação cancelada.');};
+const bhEntityStage=async(state,uid,expected)=>{
+  bhEntityAssert(uid);
+  if(!await bhCapture(state,'schema-4'))throw new Error('Não foi possível criar backup antes da migração.');
+  const cloud=await bhCloudMedia(state,uid);bhEntityAssert(uid);
+  const docs=bhEntityPack(cloud),generation=Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
+  const col=bhEntityCollection(uid),rows=[...docs];
+  for(let i=0;i<rows.length;){
+    bhEntityAssert(uid);const batch=_fbDb.batch();let count=0,bytes=0;
+    while(i<rows.length&&count<200){const [id,value]=rows[i],data={...value,_bhGeneration:generation,_entityId:id},size=new Blob([JSON.stringify(data)]).size;if(count&&bytes+size>4000000)break;batch.set(col.doc(generation+'_'+id),data);bhDiag.record('writeStarted',size,'entity-migration');bytes+=size;count++;i++;}
+    await batch.commit();
+  }
+  // Read back every staged document before publishing the generation pointer.
+  // Partial or failed staging is invisible and leaves legacy documents intact.
+  const verified=new Map();
+  for(let i=0;i<rows.length;i+=8)await Promise.all(rows.slice(i,i+8).map(async([id,value])=>{bhEntityAssert(uid);bhDiag.record('readStarted',0,'entity-validation');const snap=await col.doc(generation+'_'+id).get({source:'server'});if(!snap.exists||!bhEqual(snap.data().value,value.value))throw new Error('Validação da migração falhou; formato anterior preservado.');verified.set(id,{value:snap.data().value});}));
+  if(!bhEqual(bhEntityUnpack(verified),bhSyncState(cloud)))throw new Error('Conteúdo da migração não confere.');
+  await _fbDb.runTransaction(async tx=>{
+    bhEntityAssert(uid);const control=await tx.get(col.doc('sync-v4'));
+    if(expected.generation){if(control.data()?.generation!==expected.generation||control.data()?.commit!==expected.commit)throw new Error('Outro dispositivo alterou dados; tente novamente.');}
+    else{
+      if(control.exists)throw new Error('Outro dispositivo já migrou; aguarde a sincronização.');
+      for(const id of ['state','notes','gallery']){const snap=await tx.get(col.doc(id));if(!bhEqual(snap.exists?snap.data():null,expected.legacy[id]))throw new Error('Dados antigos mudaram durante a migração; tente novamente.');}
+    }
+    expected.assertCurrent?.();
+    tx.set(col.doc('sync-v4'),{schema:4,generation,commit:generation,previousGeneration:expected.generation||null,entities:docs.size,validated:true,activatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
+  bhEntityModes.set(uid,{generation,commit:generation});
+  bhDiag.record('migrationCompleted',docs.size,'entity-v4');
+  return generation;
+};
+const bhEntityPush=async(state,uid)=>{
+  const mode=bhEntityModes.get(uid);if(!mode)throw new Error('Aguarde carregar o formato de sincronização.');
+  const base=_bhSyncBases.get(uid)||{},before=bhEntityPack(base),local=bhEntityPack(state);
+  const changes=bhEntityChanges(before,local);
+  if(!changes.length){bhDiag.record('writeSkipped',0,'entity-unchanged');return null;}
+  // Convert only changed entities, so typing never uploads unrelated media.
+  for(const change of changes)if(change.after)change.after=await bhCloudMedia(change.after,uid);
+  bhEntityAssert(uid);
+  if(changes.length>350||changes.reduce((sum,c)=>sum+new Blob([JSON.stringify(c.after||{})]).size,0)>4000000){
+    const col=bhEntityCollection(uid),control=await col.doc('sync-v4').get({source:'server'}),expected=control.data();
+    const snapshot=await col.where('_bhGeneration','==',expected.generation).get({source:'server'});
+    const remote=new Map();snapshot.forEach(doc=>{const data=doc.data();remote.set(data._entityId,data);});
+    const merged=bhMergeSync(base,state,bhEntityUnpack(remote));
+    const commit=await bhEntityStage(merged,uid,expected);bhSyncAck(uid,state);return commit;
+  }
+  const col=bhEntityCollection(uid),commit=Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);let written=false;
+  await _fbDb.runTransaction(async tx=>{
+    written=false;bhEntityAssert(uid);bhDiag.record('readStarted',0,'entity-control');const control=await tx.get(col.doc('sync-v4'));
+    if(control.data()?.generation!==mode.generation)throw new Error('A estrutura mudou em outro dispositivo; aguarde recarregar.');
+    const pending=[];
+    for(const change of changes){
+      bhDiag.record('readStarted',0,'entity-transaction');const ref=col.doc(mode.generation+'_'+change.id),snap=await tx.get(ref);
+      const remote=snap.exists&&!snap.data().deleted?{value:snap.data().value}:undefined;
+      const merged=remote===undefined&&change.before===undefined?change.after:bhMergeSync(change.before,change.after,remote);
+      if(bhEqual(merged,remote))continue;
+      const payload=merged?{...merged,_bhGeneration:mode.generation,_entityId:change.id,_clientCommit:commit}:{deleted:true,_bhGeneration:mode.generation,_entityId:change.id,_clientCommit:commit};
+      if(new Blob([JSON.stringify(payload)]).size>900000)throw new Error('Entidade excede o tamanho seguro.');
+      pending.push([ref,payload]);
+    }
+    if(!pending.length)return;
+    for(const [ref,payload] of pending){tx.set(ref,payload);bhDiag.record('writeStarted',new Blob([JSON.stringify(payload)]).size,'changed-entity');}
+    const recent=[...(control.data().recent||[]),{commit,previous:control.data().commit,ids:pending.map(([,payload])=>payload._entityId)}];
+    while(recent.length>16||recent.length>1&&new Blob([JSON.stringify(recent)]).size>60000)recent.shift();
+    tx.update(col.doc('sync-v4'),{commit,recent});written=true;
+  });
+  bhSyncAck(uid,state);return written?commit:null;
+};
+// Adapter keeps the existing UI/reconciliation contract while network updates
+// contain only changed entities. One legacy query, then one entity query.
+const bhSyncCollection=uid=>({onSnapshot(options,next,error){
+  const col=bhEntityCollection(uid);let alive=true,unsubLegacy=null,chain=Promise.resolve(),latest=null,retry=null;
+  const legacyToken=Symbol('entity-legacy');
+  let cached=null;
+  const ready=(typeof bhMediaCacheGet==='function'?bhMediaCacheGet('entity-cache:'+uid):Promise.resolve(null)).then(value=>{if(value?.generation&&value?.commit&&Array.isArray(value?.rows)){try{bhEntityUnpack(new Map(value.rows));cached=value;}catch(e){bhDiag.record('cacheMiss',0,'entity-cache-invalid');}}});
+  const publish=(state,commit,metadata)=>{
+    const sections=bhSplitState(state),docs=['state','notes','gallery'].map(id=>({id,metadata,data:()=>({...sections[id],_v:'3.4',_clientCommit:commit})}));
+    next({empty:false,_entityVirtual:true,metadata,docChanges:()=>docs.map(doc=>({type:'modified',doc}))});
+  };
+  const process=async control=>{
+    await ready;if(!alive||control!==latest||control.metadata.hasPendingWrites)return;
+    if(!control.exists){
+      if(!unsubLegacy&&!control.metadata.fromCache){bhDiag.listen(legacyToken);unsubLegacy=col.where(firebase.firestore.FieldPath.documentId(),'in',['state','notes','gallery']).onSnapshot(options,next,error);}
+      return;
+    }
+    const mode=control.data();if(mode.schema!==4||!mode.validated)throw new Error('Formato remoto não reconhecido.');
+    if(unsubLegacy){unsubLegacy();unsubLegacy=null;bhDiag.unlisten(legacyToken);}
+    bhEntityModes.set(uid,mode);
+    if(control.metadata.fromCache&&cached?.generation===mode.generation){publish(bhEntityUnpack(new Map(cached.rows)),cached.commit,control.metadata);return;}
+    if(cached?.generation===mode.generation&&cached.commit===mode.commit){
+      publish(bhEntityUnpack(new Map(cached.rows)),mode.commit,control.metadata);return;
+    }
+    const docs=cached?.generation===mode.generation?new Map(cached.rows):new Map();
+    const recent=Array.isArray(mode.recent)?mode.recent:[];
+    let cursor=cached?.generation===mode.generation?cached.commit:null,ids=new Set();
+    for(const entry of recent)if(entry.previous===cursor){entry.ids.forEach(id=>ids.add(id));cursor=entry.commit;}
+    if(cursor===mode.commit&&docs.size){
+      const list=[...ids];for(let i=0;i<list.length;i+=8)await Promise.all(list.slice(i,i+8).map(async id=>{
+        bhDiag.record('readStarted',0,'entity-delta');const snap=await col.doc(mode.generation+'_'+id).get({source:'server'});
+        if(!snap.exists)throw new Error('Entidade ausente; dados locais preservados.');const data=snap.data();docs.set(id,data);bhDiag.record('snapshotDocument',new Blob([JSON.stringify(data)]).size,'entity-delta');
+      }));
+    }else{
+      // Cold device or cursor older than the bounded journal: one active generation.
+      bhDiag.record('queryStarted',0,'entity-bootstrap');
+      const snapshot=await col.where('_bhGeneration','==',mode.generation).get({source:'server'});
+      docs.clear();snapshot.forEach(doc=>{const data=doc.data();docs.set(data._entityId,data);bhDiag.record('snapshotDocument',new Blob([JSON.stringify(data)]).size,'entity-bootstrap');});
+    }
+    // Point reads may span a concurrent commit. Never publish a mixed version.
+    bhDiag.record('readStarted',0,'entity-verify-control');const check=await col.doc('sync-v4').get({source:'server'});
+    if(!alive)return;
+    if(check.data()?.generation!==mode.generation||check.data()?.commit!==mode.commit){enqueue(check);return;}
+    const state=bhEntityUnpack(docs);
+    cached={generation:mode.generation,commit:mode.commit,rows:[...docs]};
+    if(typeof bhMediaCachePut==='function')await bhMediaCachePut('entity-cache:'+uid,cached);
+    if(alive)publish(state,mode.commit,{fromCache:false,hasPendingWrites:false});
+  };
+  const enqueue=control=>{
+    latest=control;clearTimeout(retry);
+    chain=chain.then(()=>process(control)).catch(e=>{if(!alive)return;error(e);retry=setTimeout(()=>{if(alive&&latest)enqueue(latest);},15000);});
+  };
+  const unsubControl=col.doc('sync-v4').onSnapshot(options,control=>{
+    if(!alive||control.metadata.hasPendingWrites)return;
+    bhDiag.record(control.metadata.fromCache?'snapshotCache':'snapshotDocument',control.exists?new Blob([JSON.stringify(control.data())]).size:0,'entity-control');enqueue(control);
+  },error);
+  return()=>{alive=false;clearTimeout(retry);unsubLegacy?.();unsubControl();bhDiag.unlisten(legacyToken);bhEntityModes.delete(uid);};
+}});
+
 const pushState=(state,uid,{migrateMedia=false}={})=>{
   // Freeze the payload at invocation. React state keeps changing while a focus
   // timer runs; a queued write must represent one coherent point in time.
@@ -2560,6 +2749,7 @@ const pushState=(state,uid,{migrateMedia=false}={})=>{
   const run=async()=>{
     const assertAccount=()=>{if(!_fbDb||_fbAuth?.currentUser?.uid!==uid)throw new Error('Conta alterada; envio cancelado.');};
     assertAccount();
+    if(bhEntityModes.has(uid))return bhEntityPush(frozen,uid);
     const base=_bhSyncBases.get(uid)||{};
     const plan=bhSyncPlan(base,frozen);
     if(migrateMedia){
@@ -9312,7 +9502,7 @@ const Clients=React.memo(({clients,setClients,isMobile})=>{
 });
 
 // - SYNC HUB -
-const SyncHub=React.memo(({appState,onImport,onApplyMediaMap,onClearSave,fbUser,syncStatus,syncDetail,syncNotice,onDismissNotice,onManualPush,onDiscardLocal,isMobile,onResetIdentity})=>{
+const SyncHub=React.memo(({appState,onImport,onApplyMediaMap,onClearSave,fbUser,syncStatus,syncDetail,syncNotice,onDismissNotice,onManualPush,onMigrateEntities,onDiscardLocal,isMobile,onResetIdentity})=>{
   // Where the running JS came from: 'cache' (a compiled bundle reused) or 'babel'
   // (transpiled just now). Free diagnostics for P1-1.
   const bundleSource=(typeof window!=='undefined'&&window.__bhBundleCache&&window.__bhBundleCache.source)||'?';
@@ -9385,6 +9575,15 @@ const SyncHub=React.memo(({appState,onImport,onApplyMediaMap,onClearSave,fbUser,
       await onManualPush();
       showStatus('ok','✓ Dados enviados!');
     }catch(e){showStatus('err','Falha: '+e.message);}
+    finally{setLoading(false);}
+  };
+  const handleEntityMigration=async()=>{
+    let estimate;
+    try{estimate=bhEntityPack(appState).size;}catch(e){showStatus('err',e.message);return;}
+    if(!await bhConfirm({title:'Ativar sincronização por item',confirmLabel:'Validar e ativar',message:`Atualize todos os dispositivos para esta versão, feche abas antigas e pause o timer antes de continuar. A primeira migração grava e confere aproximadamente ${estimate} registros, usando tráfego do Firebase. Os documentos antigos serão preservados, mas versões antigas não receberão novas edições.`}))return;
+    setLoading(true);
+    try{await onMigrateEntities();showStatus('ok','Nova sincronização validada e ativada.');}
+    catch(e){showStatus('err',e.message);}
     finally{setLoading(false);}
   };
   const handleDiscardLocal=async()=>{
@@ -9532,6 +9731,7 @@ const SyncHub=React.memo(({appState,onImport,onApplyMediaMap,onClearSave,fbUser,
                 <Icon name="log-out" size={13}/> Sair
               </button>
             </div>
+            <button className="btn btn-outline" disabled={loading||bhEntityModes.has(fbUser.uid)} onClick={handleEntityMigration}>{bhEntityModes.has(fbUser.uid)?'Sincronização por item ativa':'Ativar sincronização por item'}</button>
             {syncStatus==='error'&&(
               <button className="btn btn-danger" style={{width:'100%',justifyContent:'center'}} onClick={handleDiscardLocal} disabled={loading}>
                 <Icon name="cloud-download" size={14}/> Descartar locais e puxar da nuvem
@@ -10421,8 +10621,7 @@ const App=()=>{
         _bhSyncBases.set(fbUser.uid,saved.state);baselineKnown=true;
       }
     });
-    const col=_fbDb.collection('users').doc(fbUser.uid).collection('boardhub')
-      .where(firebase.firestore.FieldPath.documentId(),'in',['state','notes','gallery']);
+    const col=bhSyncCollection(fbUser.uid);
     setSyncStatus('syncing');
     let listenerAlive=true,mergeRun=0;
     // Exactly three aggregate documents; unrelated documents cannot enter this query.
@@ -10688,7 +10887,7 @@ const App=()=>{
         if(change.type==='removed')delete _remoteCache[snap.id];
         else{
           const value=snap.data();
-          bhDiag.record(colSnap.metadata.fromCache?'snapshotCache':'snapshotDocument',new Blob([JSON.stringify(value)]).size,'listener');
+          if(!colSnap._entityVirtual)bhDiag.record(colSnap.metadata.fromCache?'snapshotCache':'snapshotDocument',new Blob([JSON.stringify(value)]).size,'listener');
           if(bhEqual(_remoteCache[snap.id],value))return;
           _remoteCache[snap.id]=value;
         }
@@ -10969,6 +11168,26 @@ const App=()=>{
     }
   },[fbUser]);
 
+  const migrateEntities=useCallback(async()=>{
+    const uid=fbUser?.uid;
+    if(!uid||!_didInitialReconcile.current)throw new Error('Aguarde o carregamento da conta.');
+    if(bhEntityModes.has(uid))throw new Error('A sincronização por item já está ativa.');
+    await bhWithRestore(async()=>{
+      const editGeneration=_editGen.current;
+      const snapshot=JSON.parse(JSON.stringify(_latestState.current));
+      const col=bhEntityCollection(uid),legacy={};
+      for(const id of ['state','notes','gallery']){bhDiag.record('readStarted',0,'migration-source');const doc=await col.doc(id).get({source:'server'});legacy[id]=doc.exists?doc.data():null;}
+      const remote={...(legacy.state||{}),notes:legacy.notes?.notes||legacy.state?.notes||[],galleryPosts:legacy.gallery?.galleryPosts||legacy.state?.galleryPosts||[]};
+      if(bhStateHasData(remote)&&!await bhCapture(remote,'schema-4'))throw new Error('Não foi possível proteger os dados remotos.');
+      const baseline=_bhSyncBases.get(uid);
+      if(!baseline)throw new Error('Base de comparação indisponível; aguarde a sincronização.');
+      const merged=bhMergeSync(baseline,bhSyncState(snapshot),bhSyncState(remote));
+      await bhEntityStage(merged,uid,{legacy,assertCurrent:()=>{if(_editGen.current!==editGeneration||!bhEqual(snapshot,_latestState.current))throw new Error('O conteúdo mudou durante a migração. A cópia anterior foi preservada; tente novamente com o timer pausado.');}});
+      _hasPendingLocalEdit.current=false;
+      setSyncTick(t=>t+1);
+    });
+  },[fbUser?.uid]);
+
   // Escape hatch when pushes keep failing: archive the local edits to the
   // backup history, drop the pending flag and re-apply the cached cloud state.
   const discardLocalAndPull=useCallback(async()=>{
@@ -11156,7 +11375,7 @@ const App=()=>{
         {view==='mentors'        &&<MentorsHub mentors={mentors} setMentors={setMentors} isMobile={isMobile}/>}
         {view==='social'         &&<Social posts={socialPosts} setPosts={setSocialPosts} templates={socialTemplatesState} setTemplates={setSocialTemplatesState} isMobile={isMobile}/>} 
         {view==='clients'        &&<Clients clients={clients} setClients={setClients} isMobile={isMobile}/>}
-        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onApplyMediaMap={applyMediaMap} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} syncDetail={syncDetail} syncNotice={syncNotice} onDismissNotice={()=>setSyncNotice('')} onManualPush={manualPush} onDiscardLocal={discardLocalAndPull} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
+        {view==='sync'           &&<SyncHub appState={appState} onImport={handleImport} onApplyMediaMap={applyMediaMap} onClearSave={clearSave} fbUser={fbUser} syncStatus={syncStatus} syncDetail={syncDetail} syncNotice={syncNotice} onDismissNotice={()=>setSyncNotice('')} onManualPush={manualPush} onMigrateEntities={migrateEntities} onDiscardLocal={discardLocalAndPull} isMobile={isMobile} onResetIdentity={handleResetIdentity}/>}
       </main>
     </div>
   );
