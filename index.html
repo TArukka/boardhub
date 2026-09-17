@@ -3542,6 +3542,22 @@ const SidebarMobile=React.memo(({activeView,setView,resetView,setForceMobile,hub
 // - POMODORO -
 const POMO_LS = 'boardhub_pomo_v3';
 
+// UI receipts must survive replacement of the synchronized focus snapshot.
+// Keep them outside POMO_LS: a stale server/other tab may replace that key.
+const bhRankReceipts=new Map();
+const bhRankReceiptKey=uid=>'boardhub_rank_receipts_v1:'+String(uid||'local');
+const bhRankReceiptRead=uid=>{
+  const key=bhRankReceiptKey(uid),ids=new Set(bhRankReceipts.get(key)||[]);
+  try{const saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))saved.forEach(id=>{if(typeof id==='string')ids.add(id);});}catch(e){/* In-memory receipts remain usable if persistence is unavailable. */}
+  bhRankReceipts.set(key,ids);
+  return ids;
+};
+const bhRankReceiptRemember=(uid,id)=>{
+  if(!id)return;
+  const ids=bhRankReceiptRead(uid);ids.add(String(id));
+  try{localStorage.setItem(bhRankReceiptKey(uid),JSON.stringify([...ids]));}catch(e){bhLog('rank.receipt',e,'a confirmação do aviso permanece apenas nesta sessão');}
+};
+
 // RANKED FOCUS — one season is four months, with three seasons per calendar year.
 // A rank contains five 1,000-point divisions followed by a 2,000-point Division VI.
 const RANK_NAMES=['Principiante','Allievo','Apprendista','Esecutore','Interprete','Musicista','Solista','Concertista','Maestro','Virtuoso'];
@@ -10184,19 +10200,29 @@ const App=()=>{
     const rank=rankNormalize(pomoData?.rank);
     return (rank.sessions||[]).find(s=>s&&s.status==='pending')||null;
   },[pomoData?.rank?.sessions]);
+  const rankReceiptScope=fbUser?.uid||(()=>{try{return localStorage.getItem(LOCAL_OWNER_UID_KEY)||'local';}catch(e){return 'local';}})();
+  const [rankReceiptRevision,setRankReceiptRevision]=useState(0);
+  useEffect(()=>{
+    const changed=e=>{if(e.key===bhRankReceiptKey(rankReceiptScope))setRankReceiptRevision(n=>n+1);};
+    window.addEventListener('storage',changed);
+    return()=>window.removeEventListener('storage',changed);
+  },[rankReceiptScope]);
   const pendingRankNotice=useMemo(()=>{
     const rank=rankNormalize(pomoData?.rank);
-    return (rank.notices||[]).find(n=>!n.dismissed)||null;
-  },[pomoData?.rank?.notices]);
-  const dismissRankNotice=useCallback(()=>setPomoData(prev=>{
+    const receipts=bhRankReceiptRead(rankReceiptScope);
+    return (rank.notices||[]).find(n=>!n.dismissed&&!receipts.has(String(n.id)))||null;
+  },[pomoData?.rank?.notices,rankReceiptScope,rankReceiptRevision]);
+  const dismissRankNotice=useCallback(()=>{
+    const id=pendingRankNotice?.id;
+    if(!id)return;
+    // Record the exact displayed notice synchronously, outside React's updater.
+    bhRankReceiptRemember(rankReceiptScope,id);
+    setRankReceiptRevision(n=>n+1);
+    setPomoData(prev=>{
     const base=pomoNormalize(prev),rank=rankNormalize(base.rank);
-    const notice=(rank.notices||[]).find(n=>!n.dismissed);
-    if(!notice)return prev;
-    const next={...base,rank:{...rank,notices:rank.notices.map(n=>n.id===notice.id?{...n,dismissed:true}:n)}};
-    // Persist the acknowledgement before the debounced main save can run.
-    pomoSave(next);
-    return next;
-  }),[]);
+    return {...base,rank:{...rank,notices:rank.notices.map(n=>n.id===id?{...n,dismissed:true}:n)}};
+    });
+  },[pendingRankNotice?.id,rankReceiptScope]);
   const handleSessionComplete=useCallback(session=>{
     setPomoData(prev=>{const base=pomoRankMaintain(prev);return{...base,rank:pomoRankAddSession(base.rank,session)};});
   },[]);
@@ -11295,4 +11321,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/
 </script>
 </body>
 </html>
-
