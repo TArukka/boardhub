@@ -2,14 +2,19 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
-<title>BoardHub v24 — Storyboard OS</title>
+<title>BoardHub v25 — Storyboard OS</title>
 <!-- Preconnect FIRST — browser starts DNS/TLS before any scripts -->
 <link rel="preconnect" href="https://unpkg.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
 <!--
-  BoardHub v24 — manutenção de segurança, integridade e desempenho (set/2026)
+  BoardHub v25 — correções conservadoras de persistência e sync (set/2026)
+  Formato remoto 3.4: seções independentes, transações com merge por ID e campo.
+  Não é uma migração para documentos por entidade: notes/gallery ainda são arrays.
+  Diagnóstico opt-in: boardhubDiagnostics.enable(); boardhubDiagnostics.snapshot().
+  Originais preservados; derivados separados e uploads identificados por SHA-256.
+  Nenhuma regra remota é alterada por este arquivo.
 
   REGRAS EXTERNAS OBRIGATÓRIAS
   A chave pública do Firebase identifica o projeto; o acesso deve ser protegido
@@ -774,6 +779,37 @@ const themeApply=(mode,save=true)=>{
 };
 
 // - LOCAL STORAGE -
+// Opt-in, bounded diagnostics. Never retain IDs, URLs, titles or payloads.
+const bhDiag=(()=>{
+  let enabled=false;const counts={},events=[],listeners=new Set();
+  const record=(kind,bytes=0,reason='')=>{
+    if(!enabled)return;
+    counts[kind]=(counts[kind]||0)+1;
+    if(bytes)counts[kind+'Bytes']=(counts[kind+'Bytes']||0)+bytes;
+    events.push({at:Date.now(),kind,bytes,reason});if(events.length>100)events.shift();
+  };
+  const api={enable:()=>{enabled=true;},disable:()=>{enabled=false;},
+    reset:()=>{Object.keys(counts).forEach(k=>delete counts[k]);events.length=0;},
+    snapshot:()=>({enabled,counts:{...counts},activeListeners:listeners.size,events:events.slice()}),
+    record,listen:token=>listeners.add(token),unlisten:token=>listeners.delete(token)};
+  if(typeof window!=='undefined')window.boardhubDiagnostics={enable:api.enable,disable:api.disable,reset:api.reset,snapshot:api.snapshot};
+  return api;
+})();
+let _bhRestoreDepth=0;
+let _bhNoAutoBefore=0;
+function bhPersistenceBusy(){return _bhRestoreDepth>0;}
+const bhWithRestore=async work=>{
+  if(bhPersistenceBusy())throw new Error('Já há uma restauração em andamento.');
+  _bhRestoreDepth++;bhDiag.record('restoreStart');
+  try{
+    // The lock is acquired BEFORE waiting: no new pump can enter the queue.
+    await _fbPushChain;
+    return await work();
+  }finally{
+    _bhRestoreDepth--;bhDiag.record('restoreEnd');
+    if(typeof window!=='undefined')window.dispatchEvent(new Event('bh-restore-end'));
+  }
+};
 const LS_KEY = 'boardhub_v2';
 const DIRTY_KEY = 'boardhub_dirty'; // '1' = localStorage holds edits not yet confirmed pushed to cloud
 const LAST_EDIT_KEY = 'boardhub_last_edit_at'; // ISO timestamp of the last USER edit — feeds last-write-wins
@@ -782,7 +818,7 @@ const lsLoadResult = () => {
   try {
     const raw=localStorage.getItem(LS_KEY);
     if(!raw)return {status:'empty',state:null,raw:''};
-    try{return {status:'valid',state:JSON.parse(raw),raw};}
+    try{const state=JSON.parse(raw);if(!state||typeof state!=='object'||Array.isArray(state))throw new Error('Estado local não é um objeto.');return {status:'valid',state,raw};}
     catch(error){return {status:'corrupt',state:null,raw,error};}
   } catch(error) { return {status:'unavailable',state:null,raw:'',error}; }
 };
@@ -791,22 +827,16 @@ let _lsWriteBlocked=_lsBoot.status==='corrupt'||_lsBoot.status==='unavailable';
 const lsLoad = () => {const result=lsLoadResult();return result.status==='valid'?result.state:null;};
 const lsSave = s => {
   if(_lsWriteBlocked)return {ok:false,blocked:true,error:_lsBoot.error||new Error('local storage recovery required')};
-  try { localStorage.setItem(LS_KEY, JSON.stringify(s));return {ok:true,stripped:false}; }
+  if(bhPersistenceBusy())return {ok:false,blocked:true};
+  try {
+    const serialized=JSON.stringify(s);
+    if(localStorage.getItem(LS_KEY)===serialized)return {ok:true,stripped:false,unchanged:true};
+    localStorage.setItem(LS_KEY,serialized);return {ok:true,stripped:false};
+  }
   catch(e) {
-    // Quota exceeded — strip any accidental base64 that slipped through (single pass)
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(s, (k,v)=>typeof v==='string'&&v.startsWith('data:image')?'':v));
-      bhLog('lsSave.quota', e, 'saved without the embedded data:image');
-      return {ok:true,stripped:true,error:e};
-    } catch(e2) {
-      // F3: this was the most expensive `catch{}` in the file. If it fires, the
-      // user's state did NOT reach the disk — and the app carried on exactly the
-      // same, with "Auto-save ativo" lit up in the sidebar. Continuing without
-      // throwing is right (bringing down the UI saves nothing), staying silent
-      // is not.
-      bhLog('lsSave.FALHOU', e2, 'the state was NOT persisted');
-      return {ok:false,stripped:false,error:e2};
-    }
+    // Never replace a complete save with an image-stripped "success".
+    bhLog('lsSave.FALHOU',e,'previous complete save preserved; export a backup');
+    return {ok:false,stripped:false,error:e};
   }
 };
 // - GLOBAL TRASH AUTO-PURGE -
@@ -991,7 +1021,7 @@ if(!persisted){try{localStorage.setItem(SEEDED_KEY,'1');}catch(e){bhLog('seed.ma
 // F1: the history lives in IndexedDB, in ITS OWN DATABASE. The key below is only
 // the migration SOURCE — once migrated and verified, it ceases to exist.
 const bhCanonicalState=s=>{
-  const {_v,_revision,_updated,_exported,...rest}=s||{};
+  const {_v,_revision,_updated,_exported,_clientCommit,...rest}=s||{};
   return rest;
 };
 // Deterministic serialization keeps equivalent local/cloud objects equal even
@@ -1156,9 +1186,9 @@ const bhIdbWrite=(puts,dels)=>bhIdbOpen().then(db=>new Promise((res,rej)=>{
   try{tx=db.transaction([BH_STORE,BH_META],'readwrite');}catch(e){_bhResetDb();rej(e);return;}
   const s=tx.objectStore(BH_STORE),m=tx.objectStore(BH_META);
   try{
-    puts.forEach(e=>{s.put(e);m.put({at:e.at,reason:e.reason,sig:e.sig,counts:e.counts});});
+    puts.forEach(e=>{s.put(e);m.put({at:e.at,reason:e.reason,sig:e.sig,counts:e.counts,mediaKeys:[...collectIdbKeys(e.state)]});});
     (dels||[]).forEach(at=>{s.delete(at);m.delete(at);});
-  }catch(e){rej(e);return;}
+  }catch(e){try{tx.abort();}catch{}rej(e);return;}
   tx.oncomplete=()=>res();
   tx.onerror=e=>rej((e.target&&e.target.error)||new Error('transaction failed'));
   tx.onabort=e=>rej((e.target&&e.target.error)||new Error('transaction aborted'));
@@ -1262,8 +1292,8 @@ const bhRetention=list=>{
   //    fast auto/pre-sync snapshots churn.
   //  • ROTATING tier (everything else): BH_KEEP_RECENT most recent kept
   //    unconditionally, older thinned to one per calendar day, cap BH_MAX_TOTAL.
-  const dailies=[];const others=[];
-  list.forEach(e=>(e.reason==='daily'?dailies:others).push(e));
+  const dailies=[];const others=[];const migrations=[];
+  list.forEach(e=>(e.reason==='schema-3.4'?migrations:e.reason==='daily'?dailies:others).push(e));
   const byWeekday=new Map(); // 0=Sun..6=Sat → newest entry
   dailies.forEach(e=>{
     const wd=new Date(e.at).getDay();
@@ -1277,7 +1307,7 @@ const bhRetention=list=>{
     const day=localDateISO(new Date(e.at));
     if(!seenDays.has(day)){keptOthers.push(e);seenDays.add(day);}
   });
-  return [...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
+  return [...migrations,...keptDailies,...keptOthers.slice(0,BH_MAX_TOTAL)].sort((a,b)=>a.at<b.at?1:-1);
 };
 // ── F1.1: the localStorage safety net ───────────────────────────────────────
 // F1 moved the history into IndexedDB and shipped without the two items the
@@ -1297,11 +1327,9 @@ const bhRetention=list=>{
 const BH_EMERGENCY_KEY='boardhub_backup_emergency';
 const BH_FALLBACK_KEY='boardhub_backup_fallback';
 const BH_FALLBACK_MAX=3;  // small on purpose: this key shares the state's quota
-// The state goes in stripped of data:image but KEEPING idb:// — the same rule
-// as bhCapture's quota fallback. The payload is what does not fit; the
-// reference is 40 bytes and is the only thing standing between a blob and the
-// GC.
-const _bhLean=s=>(typeof stripInlineImages==='function'?stripInlineImages(s):s);
+// Preserve both inline bytes and local references. If quota is insufficient,
+// report failure instead of authorizing a destructive transition with a partial copy.
+const _bhLean=s=>s; // Emergency copies must be lossless or report failure.
 // NEVER throws: called from inside bhCapture, which is fire-and-forget from 7
 // call sites. A throw here would turn "the emergency copy did not get written"
 // into "the capture path died". A circular state blows stripInlineImages'
@@ -1373,6 +1401,8 @@ const bhHistoryGetRecoverable=async at=>{
 // first had just evicted.
 let _bhChain=Promise.resolve();
 const bhCapture=(state,reason)=>{
+  if(bhPersistenceBusy()&&(reason==='auto'||reason==='daily'||reason==='pre-sync'))return Promise.resolve(false);
+  if(Date.now()<_bhNoAutoBefore&&(reason==='auto'||reason==='daily'))return Promise.resolve(false);
   try{state=JSON.parse(JSON.stringify(state));}catch(e){bhBackupFailure(e);return Promise.resolve(false);}
   const run=async()=>{
     try{
@@ -1407,7 +1437,10 @@ const bhCapture=(state,reason)=>{
         // An equivalent newest snapshot is already a valid safety copy. Return
         // success so callers that must protect data before overwriting it can
         // proceed without manufacturing duplicates.
-        if(reason!=='pre-restore'&&reason!=='import-source'&&list[0]&&list[0].sig===sig)return true;
+        if(list[0]&&list[0].sig===sig&&(reason!=='schema-3.4'||list[0].reason==='schema-3.4')){
+          const existing=await bhHistoryGet(list[0].at);
+          if(existing?.state&&bhStableStringify(bhCanonicalState(existing.state))===bhStableStringify(bhCanonicalState(state)))return true;
+        }
       }
       // `at` is the store's primary key. Two captures in the same millisecond
       // would silently overwrite one another; push 1ms until it is unique.
@@ -1415,7 +1448,7 @@ const bhCapture=(state,reason)=>{
       while(list.some(e=>e.at===at))at=new Date(new Date(at).getTime()+1).toISOString();
       const counts=bhCounts(state);
       const entry={at,reason,sig,counts,state};
-      const kept=bhRetention([{at,reason,sig,counts},...list]);
+      const kept=bhRetention([{at,reason,sig,counts,mediaKeys:[...collectIdbKeys(state)]},...list]);
       const keptAts=new Set(kept.map(e=>e.at));
       if(!keptAts.has(at))return false; // retention discarded the newborn itself
       const dels=list.filter(e=>!keptAts.has(e.at)).map(e=>e.at);
@@ -1798,6 +1831,7 @@ const idbPut=(key,blob)=>openIdb().then(db=>new Promise((res,rej)=>{
     tx.objectStore(IDB_STORE).put(blob,key);
     tx.oncomplete=()=>res();
     tx.onerror=e=>{ _resetIdb(); rej(e.target.error); };
+    tx.onabort=()=>{_resetIdb();rej(tx.error||new Error('Gravação local cancelada.'));};
   }catch(e){ _resetIdb(); rej(e); }
 }));
 
@@ -2007,6 +2041,7 @@ const warmThumbCache=()=>{
 // Full-resolution is still used wherever <Img full/> or <BgImg full/> is requested.
 // Smaller variant of a cloud URL for grid display, with the original kept as onError fallback.
 const _httpThumb=url=>{
+  if(_bhThumbUrls.has(url))return _bhThumbUrls.get(url);
   // Imgur direct link: i.imgur.com/<id>.<ext> -> <id>l.<ext> (640px thumbnail)
   const im=/^(https?:\/\/i\.imgur\.com\/)([A-Za-z0-9]{5,})(\.[A-Za-z0-9]+)(\?.*)?$/.exec(url);
   if(im)return `${im[1]}${im[2]}l${im[3]}${im[4]||''}`;
@@ -2113,7 +2148,8 @@ const getThumbUrl=(key,knownMissing)=>{
 // second paint. This is the whole trick behind "instant".
 const _syncUrl=(src,thumb)=>{
   if(!src||typeof src!=='string')return '';
-  if(/^https?:\/\//.test(src))return _httpThumb(src);
+  if(bhIsFirebaseImage(src))return ''; // Probe the persistent cache before setting src.
+  if(/^https?:\/\//.test(src))return thumb?_httpThumb(src):src;
   if(!src.startsWith('idb://'))return src;
   const key=src.slice(6);
   return thumb?(_thumbCache[key]||''):(_objUrlCache[key]||_thumbCache[key]||'');
@@ -2141,7 +2177,14 @@ const useDisplayUrlState=(src,thumb)=>{
     let cancelled=false;
     // ── cloud / data ──
     if(!src.startsWith('idb://')){
-      if(/^https?:\/\//.test(src)){
+      if(bhIsFirebaseImage(src)){
+        let release=null;
+        bhRemoteDisplay(src,thumb).then(result=>{
+          if(cancelled){result.release();return;}
+          release=result.release;setState(result.url);
+        }).catch(()=>{if(!cancelled)setState(src);});
+        return()=>{cancelled=true;if(release)release();};
+      }else if(/^https?:\/\//.test(src)){
         const light=_httpThumb(src);
         setState(light);
         // Full mode: upgrade to the original once decoded, when a lighter
@@ -2408,7 +2451,62 @@ const getGalleryRef=uid=>{
 //   notes  → notes array (can be 500KB+ with rich text)
 //   gallery → galleryPosts array (300KB+ with metadata)
 let _fbPushChain=Promise.resolve();
-const BH_INLINE_MEDIA_RE=/data:(?:image\/(?:png|jpe?g|gif|webp)|video\/(?:mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+/gi;
+const _bhPushActive=new Set();
+const BH_SYNC_FIELDS=['projects','clients','mentors','tasks','socialPosts','socialTemplates','pomoData','identity','noteGroups','galleryFolders','notes','galleryPosts'];
+const _bhSyncBases=new Map();
+const bhSyncState=state=>Object.fromEntries(BH_SYNC_FIELDS.filter(k=>state?.[k]!==undefined).map(k=>[k,state[k]]));
+const bhEqual=(a,b)=>bhStableStringify(a)===bhStableStringify(b);
+const bhSyncAck=(uid,state)=>{
+  const value=JSON.parse(JSON.stringify(bhSyncState(state)));
+  _bhSyncBases.set(uid,value);
+  // A durable three-way baseline distinguishes offline edits from unchanged
+  // stale fields after a reload. It is local-only and namespaced by account.
+  if(typeof bhMediaCachePut==='function')void bhMediaCachePut('syncbase:'+uid,{version:1,state:value});
+};
+const bhSplitState=state=>{
+  const{notes=[],galleryPosts=[],...main}=bhSyncState(state);
+  return {state:main,notes:{notes},gallery:{galleryPosts}};
+};
+// Three-way merge: unchanged local fields adopt remote data. Independently
+// edited records survive concurrent writes. A concurrent deletion wins over
+// edits; explicit restore from an already-deleted base remains possible.
+const bhMergeSync=(base,local,remote)=>{
+  if(bhEqual(local,base))return remote;
+  if(bhEqual(remote,base)||bhEqual(local,remote))return local;
+  if(local===undefined||remote===undefined&&base!==undefined)return undefined;
+  const record=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const keyed=v=>Array.isArray(v)&&v.every(x=>record(x)&&x.id!==undefined)&&new Set(v.map(x=>String(x.id))).size===v.length;
+  if(keyed(base)&&keyed(local)&&keyed(remote)){
+    const b=new Map(base.map(x=>[String(x.id),x])),l=new Map(local.map(x=>[String(x.id),x])),r=new Map(remote.map(x=>[String(x.id),x]));
+    const localOrder=local.map(x=>String(x.id)),remoteOrder=remote.map(x=>String(x.id));
+    const order=bhEqual(localOrder,base.map(x=>String(x.id)))?remoteOrder.slice():localOrder.slice();
+    for(const id of [...localOrder,...remoteOrder])if(!order.includes(id))order.push(id);
+    return order.map(id=>bhMergeSync(b.get(id),l.get(id),r.get(id))).filter(x=>x!==undefined);
+  }
+  if([base,local,remote].every(v=>Array.isArray(v)&&v.every(x=>x===null||typeof x!=='object'))){
+    const tag=list=>{const seen=new Map();return list.map(value=>{const s=bhStableStringify(value),n=seen.get(s)||0;seen.set(s,n+1);return{id:s+'#'+n,value};});};
+    return bhMergeSync(tag(base),tag(local),tag(remote)).map(x=>x.value);
+  }
+  if(record(base)&&record(local)&&record(remote)){
+    const out={};
+    for(const key of new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)])){
+      const v=bhMergeSync(base[key],local[key],remote[key]);if(v!==undefined)out[key]=v;
+    }
+    if(base.deleted!==true&&(local.deleted===true||remote.deleted===true))out.deleted=true;
+    return out;
+  }
+  return local; // Same scalar/ordered-image-list: last transaction wins.
+};
+const bhSyncPlan=(base,local)=>{
+  const before=bhSplitState(base||{}),after=bhSplitState(local),plan=[];
+  for(const id of ['state','notes','gallery']){
+    const fields={};
+    for(const key of Object.keys(after[id]))if(!bhEqual(before[id][key],after[id][key]))fields[key]=after[id][key];
+    if(Object.keys(fields).length)plan.push({id,fields,base:before[id]});
+  }
+  return plan;
+};
+const BH_INLINE_MEDIA_RE=/data:(?:image|video)\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi;
 const _inlineCloudCache=new Map();
 const inlineMediaKey=value=>{
   let h=5381;
@@ -2425,7 +2523,7 @@ const inlineMediaFile=value=>{
   return new File([bytes],'inline.'+ext,{type:mime});
 };
 const migrateInlineMediaForCloud=async(obj,uid)=>{
-  if(Array.isArray(obj))return Promise.all(obj.map(value=>migrateInlineMediaForCloud(value,uid)));
+  if(Array.isArray(obj)){const out=[];for(const value of obj)out.push(await migrateInlineMediaForCloud(value,uid));return out;}
   if(obj&&typeof obj==='object'){
     const out={};
     for(const key of Object.keys(obj))if(obj[key]!==undefined)out[key]=await migrateInlineMediaForCloud(obj[key],uid);
@@ -2436,7 +2534,7 @@ const migrateInlineMediaForCloud=async(obj,uid)=>{
   if(!matches.length)return obj;
   let result=obj;
   for(const source of matches){
-    const key=uid+':'+inlineMediaKey(source);
+    const key=uid+':'+await bhDigest(new TextEncoder().encode(source));
     let url=_inlineCloudCache.get(key);
     if(!url){
       url=await uploadToFirebaseStorage(inlineMediaFile(source),uid);
@@ -2452,52 +2550,214 @@ const hasInlineMedia=obj=>{
   if(obj&&typeof obj==='object')return Object.values(obj).some(hasInlineMedia);
   return typeof obj==='string'&&/data:(?:image|video)\//i.test(obj);
 };
-const pushState=(state,uid)=>{
+const pushState=(state,uid,{migrateMedia=false}={})=>{
   // Freeze the payload at invocation. React state keeps changing while a focus
   // timer runs; a queued write must represent one coherent point in time.
   let frozen;
   try{frozen=JSON.parse(JSON.stringify(state));}catch(e){return Promise.reject(e);}
 
+  if(bhPersistenceBusy())return Promise.reject(new Error('Restauração em andamento; envio adiado.'));
   const run=async()=>{
-    const migrated=await migrateInlineMediaForCloud(frozen,uid);
-    if(hasInlineMedia(migrated))throw new Error('Há mídia inline não suportada. O envio foi cancelado para preservar a cópia local.');
-    const clean=stripInlineImages(migrated);
-    const {notes,galleryPosts,...main}=clean;
-    const sz=o=>new Blob([JSON.stringify(o)]).size;
-    const docs={'estado':sz(main),'notas':sz(notes||[]),'galeria':sz(galleryPosts||[])};
-    const over=Object.entries(docs).find(([,bytes])=>bytes>950000);
-    if(over)throw new Error('Documento "'+over[0]+'" com '+Math.round(over[1]/1024)+'KB excede o limite de 1MB do Firestore. Divida notas/posts muito grandes.');
-    const stateRef=getStateRef(uid);
-    const notesRef=getNotesRef(uid);
-    const galleryRef=getGalleryRef(uid);
-    if(!stateRef||!notesRef||!galleryRef)throw new Error('Firebase não inicializado.');
-    const ts=firebase.firestore.FieldValue.serverTimestamp();
+    const assertAccount=()=>{if(!_fbDb||_fbAuth?.currentUser?.uid!==uid)throw new Error('Conta alterada; envio cancelado.');};
+    assertAccount();
+    const base=_bhSyncBases.get(uid)||{};
+    const plan=bhSyncPlan(base,frozen);
+    if(migrateMedia){
+      const before=bhSplitState(base),after=bhSplitState(frozen);
+      for(const [id,section] of Object.entries(after))for(const [key,value] of Object.entries(section)){
+        if(!hasInlineMedia(value)&&!collectIdbKeys(value).size)continue;
+        let item=plan.find(p=>p.id===id);if(!item){item={id,fields:{},base:before[id]};plan.push(item);}
+        item.fields[key]=value;
+      }
+    }
+    if(!plan.length){bhDiag.record('writeSkipped',0,'unchanged');return null;}
+    // Only dirty sections are inspected/uploaded. Local IDB files must reach
+    // Storage before a reference to them can be published to another device.
+    for(const item of plan){
+      item.fields=await bhCloudMedia(item.fields,uid);
+      assertAccount();
+    }
+    const refs={state:getStateRef(uid),notes:getNotesRef(uid),gallery:getGalleryRef(uid)};
     const revision=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);
-    // One commit: another device must never observe a new main state beside old
-    // notes/gallery. The shared revision is also checked by the listener before
-    // applying the cached documents.
-    const batch=_fbDb.batch();
-    batch.set(stateRef,{...main,_v:'3.3',_revision:revision,_updated:ts});
-    batch.set(notesRef,{notes:notes||[],_revision:revision,_updated:ts});
-    batch.set(galleryRef,{galleryPosts:galleryPosts||[],_revision:revision,_updated:ts});
-    await batch.commit();
-    return revision;
+    let didWrite=false;
+    await _fbDb.runTransaction(async tx=>{
+      didWrite=false;
+      assertAccount();
+      const ids=[...new Set(['state',...plan.map(p=>p.id)])],snapshots={};
+      // Read before ANY write. Firestore retries on concurrent modification.
+      for(const id of ids){bhDiag.record('readStarted',0,'transaction');snapshots[id]=await tx.get(refs[id]);}
+      const main=snapshots.state.exists?snapshots.state.data():{};
+      if(snapshots.state.exists&&main._v!=='3.4'){
+        // A migration must have a verified lossless rollback point BEFORE its
+        // first commit. This local operation is idempotent on transaction retry.
+        for(const id of ['notes','gallery'])if(!snapshots[id]){bhDiag.record('readStarted',0,'migration');snapshots[id]=await tx.get(refs[id]);}
+        const legacy={...main,notes:snapshots.notes.exists?snapshots.notes.data().notes||[]:main.notes||[],galleryPosts:snapshots.gallery.exists?snapshots.gallery.data().galleryPosts||[]:main.galleryPosts||[]};
+        if(bhStateHasData(legacy)&&!await bhCapture(legacy,'schema-3.4'))throw new Error('Migração pausada: não foi possível proteger o formato anterior.');
+      }
+      const writes=[];
+      for(const item of plan){
+        const existing=snapshots[item.id].exists?snapshots[item.id].data():{};
+        const fields={};
+        for(const [key,value] of Object.entries(item.fields)){
+          const merged=snapshots[item.id].exists?bhMergeSync(item.base[key],value,existing[key]):value;
+          if(!bhEqual(merged,existing[key])&&merged!==undefined)fields[key]=merged;
+        }
+        if(Object.keys(fields).length){
+          const bytes=new Blob([JSON.stringify({...existing,...fields})]).size;
+          if(bytes>950000)throw new Error('A seção '+item.id+' excede o tamanho seguro de documento. Dados locais preservados; exporte um backup.');
+          writes.push({id:item.id,fields});
+        }
+      }
+      if(!writes.length){bhDiag.record('writeSkipped',0,'transaction-unchanged');return;}
+      // Upgrade on a genuine edit only. No boot write, no remote deletion.
+      // v3.4 drops the global revision barrier: each section can evolve alone.
+      if(main._v!=='3.4'){
+        let w=writes.find(w=>w.id==='state');if(!w){w={id:'state',fields:{}};writes.push(w);}
+        w.fields._v='3.4';
+        if(main._revision!==undefined)w.fields._revision=firebase.firestore.FieldValue.delete();
+      }
+      assertAccount();
+      for(const {id,fields} of writes){
+        const data={...fields,_clientCommit:revision,_updated:firebase.firestore.FieldValue.serverTimestamp()};
+        if(id!=='state')data._revision=revision;
+        bhDiag.record('writeStarted',new Blob([JSON.stringify(fields)]).size,'changed-section');
+        // Explicit mergeFields replaces changed map fields (including removals
+        // inside pomoData); ordinary merge:true would retain removed map keys.
+        tx.set(refs[id],data,{mergeFields:Object.keys(data)});
+        didWrite=true;
+      }
+    });
+    assertAccount();bhSyncAck(uid,frozen);
+    return didWrite?revision:null;
   };
   // Manual sync and the automatic pump share this queue, so an older request
   // cannot commit after a newer request merely because the network reordered it.
-  const pending=_fbPushChain.then(run,run);
+  const guarded=async()=>{_bhPushActive.add(uid);try{return await run();}finally{_bhPushActive.delete(uid);}};
+  const pending=_fbPushChain.then(guarded,guarded);
   _fbPushChain=pending.catch(()=>{});
   return pending;
 };
 
-// Upload a file to Firebase Storage, return permanent CDN URL
+// Separate, disposable cache: never mixed with the original-image GC or backups.
+let _bhMediaDbPromise=null;
+const bhMediaDb=()=>{
+  if(!_bhMediaDbPromise)_bhMediaDbPromise=new Promise((resolve,reject)=>{
+    const req=indexedDB.open('boardhub_media_cache_v1',1);
+    req.onupgradeneeded=()=>req.result.createObjectStore('cache');
+    req.onerror=()=>{_bhMediaDbPromise=null;reject(req.error);};
+    req.onsuccess=()=>{const db=req.result;db.onversionchange=()=>{db.close();_bhMediaDbPromise=null;};db.onclose=()=>{_bhMediaDbPromise=null;};resolve(db);};
+  });
+  return _bhMediaDbPromise;
+};
+const bhMediaCacheGet=async key=>{
+  try{return await new Promise(async(resolve,reject)=>{
+    try{const db=await bhMediaDb(),r=db.transaction('cache').objectStore('cache').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);}catch(e){reject(e);}
+  });}catch{return undefined;}
+};
+const bhMediaCachePut=async(key,value)=>{
+  try{const db=await bhMediaDb();await new Promise((resolve,reject)=>{const tx=db.transaction('cache','readwrite');tx.objectStore('cache').put(value,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}catch{/* disposable cache; never reject a completed original upload */}
+};
+const bhDigest=async bytes=>{
+  if(!globalThis.crypto?.subtle)throw new Error('Este navegador precisa de HTTPS para preservar e identificar os arquivos com segurança.');
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');
+};
+const _bhUploadInflight=new Map();
+const _bhThumbUrls=new Map();
+const bhIsFirebaseImage=url=>{
+  if(typeof url!=='string'||!/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\//.test(url))return false;
+  try{
+    const path=decodeURIComponent(new URL(url).pathname);
+    // Never turn a streaming video into an eager full-blob download.
+    return /(?:sha256_[a-f0-9]{64}_image_[a-z0-9_]+|\.(?:png|jpe?g|gif|webp|avif|bmp|heic|tiff?))$/i.test(path);
+  }catch{return false;}
+};
+const _bhRemoteInflight=new Map(),_bhRemoteUrls=new Map();
+const bhRemoteDisplay=async(src,thumb)=>{
+  let target=src;
+  if(thumb){
+    let preview=_bhThumbUrls.get(src)||await bhMediaCacheGet('thumb:'+src);
+    if(!preview&&/sha256_[a-f0-9]{64}_image_/.test(decodeURIComponent(src))&&_fbStorage)try{
+      const ref=_fbStorage.refFromURL(src);
+      preview=await _fbStorage.ref(ref.fullPath+'_thumb480').getDownloadURL();
+      await bhMediaCachePut('thumb:'+src,preview);
+    }catch{await bhMediaCachePut('thumb:'+src,src);/* Missing derivative: remember the original fallback. */}
+    if(preview){target=preview;_bhThumbUrls.set(src,preview);}
+  }
+  let entry=_bhRemoteUrls.get(target);
+  if(!entry){
+    if(!_bhRemoteInflight.has(target))_bhRemoteInflight.set(target,(async()=>{
+      let blob=await bhMediaCacheGet('blob:'+target);
+      if(blob instanceof Blob)bhDiag.record('cacheHit',0,'image');
+      else{
+        bhDiag.record('cacheMiss',0,'image');bhDiag.record('imageDownloadStarted');
+        const res=await fetch(target,{cache:'force-cache'});
+        if(!res.ok)throw new Error('Imagem indisponível.');
+        blob=await res.blob();bhDiag.record('imageDownloaded',blob.size);
+        await bhMediaCachePut('blob:'+target,blob);
+      }
+      const value={url:URL.createObjectURL(blob),refs:0,timer:null};_bhRemoteUrls.set(target,value);return value;
+    })());
+    try{entry=await _bhRemoteInflight.get(target);}finally{_bhRemoteInflight.delete(target);}
+  }else bhDiag.record('cacheHit',0,'image-memory');
+  clearTimeout(entry.timer);entry.refs++;
+  let released=false;
+  return {url:entry.url,release:()=>{
+    if(released)return;released=true;entry.refs--;
+    if(!entry.refs)entry.timer=setTimeout(()=>{
+      if(!entry.refs){URL.revokeObjectURL(entry.url);_bhRemoteUrls.delete(target);}
+    },30000);
+  }};
+};
+// Content-addressed, immutable paths make retries/reloads idempotent. Originals
+// are NEVER re-encoded. Thumbnails are separate optional derivatives.
 const uploadToFirebaseStorage=async(file,uid)=>{
   if(!_fbStorage||!uid)throw new Error('Firebase Storage not available');
-  const ext=(file.name||'img').split('.').pop()||'jpg';
-  const key='img_'+Date.now()+'_'+Math.random().toString(36).slice(2)+'.'+ext;
-  const ref=_fbStorage.ref(`users/${uid}/images/${key}`);
-  await ref.put(file,{contentType:file.type||'image/jpeg'});
-  return await ref.getDownloadURL();
+  const digest=await bhDigest(await file.arrayBuffer()),mime=file.type||'application/octet-stream';
+  const mimeKey=mime.replace(/[^a-z0-9]/gi,'_');
+  const key=uid+':'+mimeKey+':'+digest;
+  if(_bhUploadInflight.has(key)){bhDiag.record('cacheHit',0,'upload-inflight');return _bhUploadInflight.get(key);}
+  const run=(async()=>{
+    const cached=await bhMediaCacheGet('upload:'+key);
+    if(cached?.url){if(cached.thumb)_bhThumbUrls.set(cached.url,cached.thumb);bhDiag.record('cacheHit',0,'upload');return cached.url;}
+    const assertUser=()=>{if(_fbAuth?.currentUser?.uid!==uid)throw new Error('Conta alterada durante upload.');};
+    assertUser();
+    const ref=_fbStorage.ref(`users/${uid}/images/sha256_${digest}_${mimeKey}`);
+    let url;
+    try{bhDiag.record('storageLookup');url=await ref.getDownloadURL();}
+    catch(e){
+      if(e.code!=='storage/object-not-found')throw e;
+      assertUser();bhDiag.record('uploadStarted',file.size,'original');
+      await ref.put(file,{contentType:mime,cacheControl:'private,max-age=31536000,immutable'});
+      url=await ref.getDownloadURL();
+    }
+    assertUser();let thumb='';
+    if(/^image\//.test(mime)&&mime!=='image/gif')try{
+      const blob=await _makeThumbBlob(file);
+      if(blob.size<file.size){
+        const thumbRef=_fbStorage.ref(`users/${uid}/images/sha256_${digest}_${mimeKey}_thumb480`);
+        try{thumb=await thumbRef.getDownloadURL();}
+        catch(e){if(e.code!=='storage/object-not-found')throw e;assertUser();bhDiag.record('uploadStarted',blob.size,'thumbnail');await thumbRef.put(blob,{contentType:blob.type,cacheControl:'private,max-age=31536000,immutable'});thumb=await thumbRef.getDownloadURL();}
+        _bhThumbUrls.set(url,thumb);await bhMediaCachePut('thumb:'+url,thumb);
+      }
+    }catch{/* A derivative cannot turn a successful original upload into data loss. */}
+    if(!thumb){thumb=url;await bhMediaCachePut('thumb:'+url,url);}
+    await bhMediaCachePut('upload:'+key,{url,thumb});
+    return url;
+  })();
+  _bhUploadInflight.set(key,run);
+  try{return await run;}finally{_bhUploadInflight.delete(key);}
+};
+const bhCloudMedia=async(state,uid)=>{
+  let out=await migrateInlineMediaForCloud(state,uid);
+  const replacements={};
+  for(const key of collectIdbKeys(out)){
+    const blob=await idbGet(key);
+    if(!blob)throw new Error('Uma mídia local está indisponível. Envio adiado; referência preservada.');
+    replacements['idb://'+key]=await uploadToFirebaseStorage(blob,uid);
+  }
+  out=rehydrateIdbRefs(out,replacements);
+  if(hasInlineMedia(out)||/blob:|idb:\/\//i.test(JSON.stringify(out)))throw new Error('Mídia não portátil detectada. Envio adiado sem remover dados.');
+  return out;
 };
 
 // Imgur fallback — anonymous client-ID upload
@@ -2537,36 +2797,10 @@ const _storeIdb=async(file)=>{
 
 // Core upload: Firebase Storage \u2192 Imgur (images only) \u2192 IDB
 
-// Compress image to max 1400px longest side, 0.82 quality WebP/JPEG before any store/upload.
-// Skips videos, GIFs, and files already under 60KB.
+// Compatibility name for existing call sites. Original bytes are preserved;
+// only _makeThumbBlob produces a separate lower-resolution preview.
 const _compressImage=async(file)=>{
-  if(_isVideoFile(file)||file.type==='image/gif')return file;
-  if(file.size<60*1024)return file;
-  return new Promise(res=>{
-    const img=new Image();
-    const objUrl=URL.createObjectURL(file);
-    img.onload=()=>{
-      URL.revokeObjectURL(objUrl);
-      const MAX=1400;
-      let{width:w,height:h}=img;
-      if(w>MAX||h>MAX){const r=MAX/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);}
-      const canvas=document.createElement('canvas');
-      canvas.width=w;canvas.height=h;
-      canvas.getContext('2d').drawImage(img,0,0,w,h);
-      // v23.3 P1-4: a PNG was being re-encoded as PNG, with quality ignored. The
-      // canvas discards the original's indexed palette, so a 500KB PNG
-      // screenshot could COME OUT BIGGER than it went in. WebP supports alpha, so
-      // there is no reason to preserve PNG here. And the result is only accepted
-      // if it actually shrank — which also covers an already well-compressed
-      // JPEG, which used to be swapped for WebP even when the WebP came out
-      // bigger.
-      // (an engine with no WebP support in toBlob falls back to PNG; in that case
-      //  the size comparison returns the original and nothing gets worse)
-      canvas.toBlob(blob=>res(blob&&blob.size<file.size?blob:file),'image/webp',0.82);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(objUrl);res(file);};
-    img.src=objUrl;
-  });
+  return file;
 };
 
 // Imgur uploads are PUBLIC (anyone with the URL can view). For client work
@@ -2748,7 +2982,11 @@ const gcIdb=async()=>{
     // the GC goes back to deleting live blobs, which was the v23.3 P0-1.
     if(!_bhReady)await bhHistoryInit();
     if(!_bhReady)return; // history unavailable → no way to know what is an orphan
-    (await bhHistoryFull()).forEach(e=>{if(e&&e.state)collectIdbKeys(e.state,referenced);});
+    const historyMeta=bhHistoryMeta();
+    // Older snapshots have no reference index: retain their blobs rather than
+    // reading the entire historical state at startup or guessing it is empty.
+    if(historyMeta.some(e=>!Array.isArray(e.mediaKeys)))return;
+    historyMeta.forEach(e=>e.mediaKeys.forEach(key=>referenced.add(key)));
     // F1.1: the localStorage safety net holds idb:// references too — the
     // emergency slot, plus anything captured while this database was
     // unreadable. Skipping them here would collect blobs that a real backup
@@ -7854,40 +8092,8 @@ const RichEditor=React.memo(({noteId,initialHTML,onSave,saveTarget})=>{
     }
   },[emit,uploadNoteImage,resolveLocalNoteImage]);
 
-  // One-time migration: if this note was already carrying heavy inline base64
-  // images (from before this fix), lift them out to Storage and shrink the
-  // document, so a note that already tripped the 1MB ceiling once won't do it
-  // again the next time it's opened.
-  useEffect(()=>{
-    if(!initialHTML||!initialHTML.includes('data:image'))return;
-    let cancelled=false;
-    (async()=>{
-      await new Promise(r=>setTimeout(r,50)); // let the DOM populate with initialHTML
-      if(cancelled||!ref.current)return;
-      const heavy=[...ref.current.querySelectorAll('img[src^="data:image"]')].filter(img=>img.src.length>20000);
-      if(!heavy.length)return;
-      let changed=false;
-      for(const img of heavy){
-        if(cancelled)return;
-        try{
-          const blob=await(await fetch(img.src)).blob();
-          const file=new File([blob],'note-img.png',{type:blob.type||'image/png'});
-          const compressed=await _compressImage(file);
-          let stored='';
-          if(_fbReady&&_fbAuth?.currentUser){try{stored=await uploadToFirebaseStorage(compressed,_fbAuth.currentUser.uid);}catch{/* local fallback below */}}
-          if(!stored)stored=await _storeIdb(compressed);
-          img.src=stored;
-          changed=true;
-        }catch(e){console.warn('[BoardHub] Legacy note-image migration failed for one image:',e.message);}
-      }
-      if(changed&&!cancelled&&ref.current){
-        onSave(serializedHTML(),saveTarget);
-        console.info('[BoardHub] Moved inline note images out of the note body, freeing up document space.');
-      }
-    })();
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  // Legacy inline media remains renderable. Migration happens on an actual
+  // content save or explicit sync, never merely because a note was opened.
 
   const clearDragTarget=useCallback(()=>{
     const mark=dragTargetRef.current;
@@ -9913,10 +10119,12 @@ const App=()=>{
   const [quickCaptureType,setQuickCaptureType]=useState('task');
   const [fbUser,setFbUser]=useState(null);
   const [backupError,setBackupError]=useState('');
+  const [restoreBusy,setRestoreBusy]=useState(false);
   useEffect(()=>{const report=e=>setBackupError(e.detail);window.addEventListener('bh-backup-error',report);return()=>window.removeEventListener('bh-backup-error',report);},[]);
   const [storageRecovery,setStorageRecovery]=useState(()=>_lsBoot.status==='corrupt'||_lsBoot.status==='unavailable'?_lsBoot.status:null);
   const [localSaveStatus,setLocalSaveStatus]=useState(()=>_lsWriteBlocked?'blocked':'saved');
   const saveLocal=useCallback(state=>{
+    if(bhPersistenceBusy())return {ok:false,blocked:true};
     const result=lsSave(state);
     setLocalSaveStatus(result.ok?'saved':result.blocked?'blocked':'error');
     return result;
@@ -9942,14 +10150,14 @@ const App=()=>{
   const [tasks,setTasks]=useState(()=>bhRecordArray(persisted?.tasks,SEED.tasks));
   const [socialPosts,setSocialPosts]=useState(()=>bhRecordArray(persisted?.socialPosts,SEED.socialPosts));
   const [socialTemplatesState,setSocialTemplatesState]=useState(()=>bhRecordArray(persisted?.socialTemplates,(()=>{try{const s=localStorage.getItem('boardhub_social_templates');return s?JSON.parse(s):socialTemplates;}catch{return socialTemplates;}})()));
-  const [galleryPosts,setGalleryPosts]=useState(()=>bhRecordArray(persisted?.galleryPosts,SEED.galleryPosts).map(normalizeFocusPostCopy));
   const [galleryFolders,setGalleryFolders]=useState(()=>bhRecordArray(persisted?.galleryFolders,DEFAULT_GALLERY_FOLDERS));
   const DEFAULT_NOTE_GROUPS=[{id:'notes',label:'Notas',icon:'file-text'},{id:'projects',label:'Mini Projetos',icon:'folder-open'}];
   const [noteGroups,setNoteGroups]=useState(()=>bhRecordArray(persisted?.noteGroups,DEFAULT_NOTE_GROUPS));
   const [pomoData,setPomoData]=useState(()=>{
     const fast=pomoLoad();
-    return pomoRankMaintain(persisted?.pomoData?pomoMergeProgress(fast,persisted.pomoData):fast);
+    return pomoSyncGalleryCategories(pomoRankMaintain(persisted?.pomoData?pomoMergeProgress(fast,persisted.pomoData):fast),galleryFolders);
   });
+  const [galleryPosts,setGalleryPosts]=useState(()=>repairProjectFocusPostScopes(bhRecordArray(persisted?.galleryPosts,SEED.galleryPosts).map(normalizeFocusPostCopy),pomoData?.rank?.sessions));
   // No automatic restoration at startup.
   useEffect(()=>{setPomoData(prev=>pomoSyncGalleryCategories(prev,galleryFolders));},[galleryFolders]);
   // Repair posts produced while project/gallery destination metadata was in
@@ -10061,12 +10269,12 @@ const App=()=>{
 
   // Firebase auth state listener — tracks sign-in across all devices
   useEffect(()=>{
-    let unsub=null;
+    let unsub=null,alive=true;
     initFirebase().then(ok=>{
-      if(!ok)return;
+      if(!ok||!alive)return;
       unsub=_fbAuth.onAuthStateChanged(user=>setFbUser(user||null));
     });
-    return ()=>{if(unsub)unsub();};
+    return ()=>{alive=false;if(unsub)unsub();};
   },[]);
 
   // Firestore real-time listener — fires instantly when any device saves
@@ -10135,7 +10343,9 @@ const App=()=>{
   const _hasRemoteData=useRef(false);      // true once the listener has seen a real 'state' doc
   const _applyMergedRef=useRef(null);      // lets "discard local & pull" re-run the merge on demand
   const _syncBlockedRef=useRef(false);      // a remote version could not be archived safely
+  const _baselineNeedsChoice=useRef(false);
   const [syncTick,setSyncTick]=useState(0); // bumped to force a save+push (e.g. to sync local up after reconcile)
+  useEffect(()=>{const resume=()=>setSyncTick(t=>t+1);window.addEventListener('bh-restore-end',resume);return()=>window.removeEventListener('bh-restore-end',resume);},[]);
   const [syncDetail,setSyncDetail]=useState(''); // human-readable reason when syncStatus==='error'
   const [syncNotice,setSyncNotice]=useState(''); // informational note (e.g. first login on this device)
   useEffect(()=>{
@@ -10145,26 +10355,34 @@ const App=()=>{
     _hasRemoteData.current=false;
     _lastRemoteArchivedSig.current='';
     _syncBlockedRef.current=false;
-    const col=_fbDb.collection('users').doc(fbUser.uid).collection('boardhub');
+    _baselineNeedsChoice.current=false;
+    let baselineKnown=_bhSyncBases.has(fbUser.uid);
+    const baseReady=bhMediaCacheGet('syncbase:'+fbUser.uid).then(saved=>{
+      if(!listenerAlive)return;
+      if(saved?.version===1&&saved.state&&typeof saved.state==='object'&&!Array.isArray(saved.state)&&!_bhSyncBases.has(fbUser.uid)){
+        _bhSyncBases.set(fbUser.uid,saved.state);baselineKnown=true;
+      }
+    });
+    const col=_fbDb.collection('users').doc(fbUser.uid).collection('boardhub')
+      .where(firebase.firestore.FieldPath.documentId(),'in',['state','notes','gallery']);
     setSyncStatus('syncing');
     let listenerAlive=true,mergeRun=0;
-    // Listen to the entire boardhub subcollection — covers the main 'state' doc
-    // plus the 'notes' and 'gallery' docs added in v3.1.
+    // Exactly three aggregate documents; unrelated documents cannot enter this query.
     // Backward compat: if a v3.0 install wrote everything into 'state', the
     // listener picks that up too and applies notes/gallery from there.
     const _remoteCache={};
-    // Largest _updated across the cached remote docs, as ISO (''=unknown)
-    const _remoteUpdatedAt=()=>{
-      let max=0;
-      Object.values(_remoteCache).forEach(d=>{
-        const u=d&&d._updated;
-        const t=u&&typeof u.toDate==='function'?u.toDate().getTime():(u?new Date(u).getTime():0);
-        if(t>max)max=t;
-      });
-      return max?new Date(max).toISOString():'';
-    };
-    const applyMerged=async()=>{
+    const applyMerged=async(expectedCommit=null)=>{
+      if(!listenerAlive||bhPersistenceBusy())return;
+      // The transaction promise can settle before its confirmed query event.
+      // Never replace freshly-saved edits with an older cached query result.
+      if(expectedCommit&&!Object.values(_remoteCache).some(d=>d?._clientCommit===expectedCommit))return;
       const thisRun=++mergeRun;
+      const editAtStart=_editGen.current;
+      const stillCurrent=()=>{
+        if(!listenerAlive||thisRun!==mergeRun||bhPersistenceBusy())return false;
+        if(editAtStart!==_editGen.current){_didInitialReconcile.current=false;return false;}
+        return true;
+      };
       const main=_remoteCache['state'];
       if(!main)return; // nothing yet
       // notes/gallery may live in their own docs (v3.1+) or still inside main (v3.0 legacy)
@@ -10174,13 +10392,14 @@ const App=()=>{
       // still deliver cache transitions in stages, so wait until all three
       // cached documents belong to the same commit. Legacy v3.2 data has no
       // revision and continues through the compatibility path below.
-      if(main._revision&&(!notesDoc||!galleryDoc||notesDoc._revision!==main._revision||galleryDoc._revision!==main._revision))return;
+      if(main._v!=='3.4'&&main._revision&&(!notesDoc||!galleryDoc||notesDoc._revision!==main._revision||galleryDoc._revision!==main._revision))return;
       const data={
         ...main,
         notes:(notesDoc&&isArr(notesDoc.notes)?notesDoc.notes:null)||main.notes||[],
         galleryPosts:(galleryDoc&&isArr(galleryDoc.galleryPosts)?galleryDoc.galleryPosts:null)||main.galleryPosts||[],
       };
       if(!data||typeof data._v!=='string')return;
+      if(!_bhSyncBases.has(fbUser.uid))_bhSyncBases.set(fbUser.uid,JSON.parse(JSON.stringify(bhSyncState(data))));
       _hasRemoteData.current=true;
       // ── INITIAL RECONCILE — must run BEFORE the pending-edit gate ─────────────
       // v22 checked _hasPendingLocalEdit first, so a stray pre-login edit skipped
@@ -10199,10 +10418,9 @@ const App=()=>{
       //       → CLOUD ALWAYS WINS. Local is archived to history first, never
       //         pushed. Timestamps are not consulted: a fresh local stamp proves
       //         nothing about whose data is more complete.
-      //   device already synced with this account (genuine offline-edit case)
-      //       → last-write-wins by timestamp (±2min skew, ties favor local):
-      //           local newer → keep local, archive cloud ('cloud-superseded')
-      //           remote newer → apply remote; local goes to the pre-sync snapshot
+      //   known account with offline edits → preserve edits and merge with the
+      //   last acknowledged durable baseline. Without a baseline, archive the
+      //   cloud and ask for an explicit choice rather than trusting device clocks.
       // In every branch, the losing side lands in the backup history first.
       // F2(A) second half: the first-contact branch falls THROUGH to the local
       // snapshot below. It has already archived the local state and set its own
@@ -10221,7 +10439,7 @@ const App=()=>{
               // Skip a pure-noise entry when local already mirrors the cloud.
               if(bhSig(cur)!==bhSig(cloudSnap)){
                 const stored=await bhCapture(cur,'local-prelogin');
-                if(!listenerAlive||thisRun!==mergeRun)return;
+                if(!stillCurrent())return;
                 if(!stored){_didInitialReconcile.current=false;setSyncDetail('Não foi possível proteger os dados locais antes de aplicar a nuvem. Nada foi substituído.');setSyncStatus('error');return;}
                 setSyncNotice('Este dispositivo entrou na conta pela primeira vez: a versão da nuvem foi aplicada e os dados que estavam aqui foram guardados no Histórico de Backups.');
               }
@@ -10237,13 +10455,9 @@ const App=()=>{
         }else{
           const localDirty=_bootDirty.current||_hasPendingLocalEdit.current;
           if(localDirty&&_localHadRealDataAtBoot.current){
-            const remoteAt=_remoteUpdatedAt();
-            let localAt='';try{localAt=localStorage.getItem(LAST_EDIT_KEY)||'';}catch{/*silent-ok: an empty stamp is handled explicitly downstream — last-write-wins cannot compare, so it preserves local*/}
-            const SKEW_MS=2*60*1000;
-            const localWins=(!remoteAt||!localAt)
-              ? true // can't compare → preserve local real data (previous safe default)
-              : new Date(localAt).getTime()+SKEW_MS>=new Date(remoteAt).getTime();
-            if(localWins){
+            // Device clocks cannot decide whether offline work is valid.
+            // Preserve it and merge against the last acknowledged baseline.
+            {
               // F3: if this archiving fails, the cloud state is passed over in
               // favour of the local one WITH NO COPY — the same hole F2(A) closed
               // in the neighbouring branch. We cannot abort the reconcile over
@@ -10251,10 +10465,15 @@ const App=()=>{
               try{
                 const{_updated,...cloudSnap}=data;
                 const stored=await bhCapture(cloudSnap,'cloud-superseded');
-                if(!listenerAlive||thisRun!==mergeRun)return;
+                if(!stillCurrent())return;
                 if(!stored){_didInitialReconcile.current=false;_syncBlockedRef.current=true;setSyncDetail('A versão da nuvem não pôde ser arquivada. O envio local foi pausado.');setSyncStatus('error');return;}
               }catch(e){bhLog('reconcile.arquivarNuvem',e,'the cloud was passed over with no copy in the history');_didInitialReconcile.current=false;_syncBlockedRef.current=true;setSyncStatus('error');return;}
               _hasPendingLocalEdit.current=true;
+              if(!baselineKnown){
+                _baselineNeedsChoice.current=true;_syncBlockedRef.current=true;
+                setSyncDetail('Há edições offline, mas esta instalação antiga não possui uma base de comparação. As duas versões foram preservadas. Exporte um backup e escolha Forçar sync ou Descartar local na tela de sincronização.');
+                setSyncStatus('error');return;
+              }
               try{localStorage.setItem(DIRTY_KEY,'1');}catch(e){bhLog('reconcile.marcarSujo',e,'local won this reconcile but is not flagged dirty, so the next boot may let the cloud overwrite it');}
               setSyncStatus('synced');
               setSyncTick(t=>t+1);
@@ -10280,23 +10499,24 @@ const App=()=>{
           let localSig='';try{const c=_latestState.current;if(c)localSig=bhSig(c);}catch{/*silent-ok: an empty signature makes bhConcurrentDecision archive rather than skip — it errs towards keeping a copy*/}
           if(bhConcurrentDecision({localSig,remoteSig,lastArchivedSig:_lastRemoteArchivedSig.current,
                                    remoteHasData:bhStateHasData(cloudSnap)})==='arquivar'){
-            _lastRemoteArchivedSig.current=remoteSig;
             const stored=await bhCapture(cloudSnap,'remoto-concorrente');
-            if(!listenerAlive||thisRun!==mergeRun)return;
+            if(!stillCurrent())return;
             if(!stored){
               _syncBlockedRef.current=true;
               setSyncDetail('A versão recebida de outro dispositivo não pôde ser arquivada. O envio automático foi pausado para não sobrescrevê-la.');
               setSyncStatus('error');
               return;
             }
+            _lastRemoteArchivedSig.current=remoteSig;
+            if(!_baselineNeedsChoice.current)_syncBlockedRef.current=false;
             setSyncNotice('Outro dispositivo salvou alterações enquanto você editava aqui. Suas edições locais foram mantidas, e a versão que veio da nuvem está no Histórico de Backups.');
           }
-        }catch(e){bhLog('reconcile.arquivarRemotoConcorrente',e,'a concurrent remote state was discarded without reaching the history');}
+        }catch(e){_syncBlockedRef.current=true;setSyncStatus('error');bhLog('reconcile.arquivarRemotoConcorrente',e,'cloud push paused because conflict backup failed');}
         return;
       }
       const isArr2=v=>Array.isArray(v);
       try{
-        const cur=lsLoad();
+        const cur=_latestState.current;
         // First contact already archived this exact local state above. Capturing
         // it again here used to turn a harmless dedup into a false failure.
         if(cur&&!justFirstContact){
@@ -10319,15 +10539,17 @@ const App=()=>{
             }catch(e){bhLog('reconcile.localSuperseded',e,'the local snapshot was archived as a plain pre-sync');}
           }
           const stored=await bhCapture(cur,reason);
-          if(!listenerAlive||thisRun!==mergeRun)return;
+          if(!stillCurrent())return;
           if(!stored){setSyncDetail('Não foi possível criar a cópia local exigida antes de aplicar a nuvem. Nada foi substituído.');setSyncStatus('error');return;}
           // The notice NAMES a label for the user to look for, so it may only
           // appear once the snapshot has landed or an equivalent recovery point
           // already covers it.
           if(reason==='concurrent-superseded')setSyncNotice('Outro dispositivo salvou alterações e a versão da nuvem foi aplicada aqui. O que você editou agora há pouco neste dispositivo está no Histórico de Backups, como "Local (edição simultânea)".');
         }
-      }catch(e){bhLog('reconcile.snapshotLocal',e,'the local state was NOT snapshotted before the remote overwrote it');}
+      }catch(e){bhLog('reconcile.snapshotLocal',e,'cloud application cancelled because backup failed');_syncBlockedRef.current=true;setSyncStatus('error');return;}
+      if(!stillCurrent())return;
       _hasPendingLocalEdit.current=false;
+      _bootDirty.current=false;
       _syncBlockedRef.current=false;
       // F2(A): from here on this device mirrors the cloud, so the signature
       // archived for a conflict no longer counts as "I already stored this one".
@@ -10347,13 +10569,15 @@ const App=()=>{
       if(data.tasks&&isArr2(data.tasks))setTasks(bhRecordArray(data.tasks));
       if(data.socialPosts&&isArr2(data.socialPosts))setSocialPosts(bhRecordArray(data.socialPosts));
       if(data.socialTemplates&&isArr2(data.socialTemplates))setSocialTemplatesState(bhRecordArray(data.socialTemplates));
-      if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(bhRecordArray(data.galleryPosts).map(normalizeFocusPostCopy));
-      if(data.galleryFolders&&isArr2(data.galleryFolders))setGalleryFolders(bhRecordArray(data.galleryFolders));
+      const nextFolders=isArr2(data.galleryFolders)?bhRecordArray(data.galleryFolders):_latestState.current.galleryFolders;
+      const nextPomo=data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData)
+        ?pomoSyncGalleryCategories(pomoRankMaintain(data.pomoData),nextFolders):_latestState.current.pomoData;
+      if(data.galleryPosts&&isArr2(data.galleryPosts))setGalleryPosts(repairProjectFocusPostScopes(bhRecordArray(data.galleryPosts).map(normalizeFocusPostCopy),nextPomo?.rank?.sessions));
+      if(data.galleryFolders&&isArr2(data.galleryFolders))setGalleryFolders(nextFolders);
       if(data.noteGroups&&isArr2(data.noteGroups))setNoteGroups(bhRecordArray(data.noteGroups));
-      if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(pomoRankMaintain(data.pomoData));
-      if(data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
-      // This device now mirrors this account: record it so later boots use
-      // last-write-wins instead of the first-contact rule, and drop the seed mark.
+      if(data.pomoData&&typeof data.pomoData==='object'&&!Array.isArray(data.pomoData))setPomoData(nextPomo);
+      if(data.identity===null||data.identity&&typeof data.identity.hubName==='string'){saveIdentity(data.identity);setIdentity(data.identity);}
+      // Record account ownership; later boots use the durable merge baseline.
       try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.setItem(LOCAL_OWNER_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.marcarEmDia',e,'the device may repeat the 1st-contact reconcile on the next boot');}
       _deviceSyncedUid.current=fbUser.uid;
       _localOwnerUid.current=fbUser.uid;
@@ -10362,7 +10586,17 @@ const App=()=>{
     };
     _applyMergedRef.current=applyMerged;
     const isArr=v=>Array.isArray(v);
-    const unsub=col.onSnapshot(async colSnap=>{
+    let deferredSnapshot=null;
+    const resumeSnapshot=()=>{const run=deferredSnapshot;deferredSnapshot=null;if(listenerAlive&&run)void run();};
+    window.addEventListener('bh-restore-end',resumeSnapshot);
+    const listenerToken=Symbol('boardhub-state');bhDiag.listen(listenerToken);bhDiag.record('listenerStarted',0,'account');
+    const unsub=col.onSnapshot({includeMetadataChanges:true},async function handleSnapshot(colSnap){
+      await baseReady;
+      if(!listenerAlive)return;
+      if(bhPersistenceBusy()){deferredSnapshot=()=>handleSnapshot(colSnap);return;}
+      // Do not combine a local pending batch with confirmed remote sections.
+      // Metadata events deliver its server-confirmed result afterwards.
+      if(colSnap.metadata.hasPendingWrites)return;
       // Brand-new account: the cloud legitimately has nothing. Without this the
       // status stayed stuck on "Sincronizando..." until the first local edit.
       if(colSnap.empty&&!colSnap.metadata.fromCache){
@@ -10371,38 +10605,45 @@ const App=()=>{
         // three cloud documents.
         const owner=_localOwnerUid.current;
         if(owner&&owner!==fbUser.uid){
+          const generation=_editGen.current;
           const cur=_latestState.current;
           if(cur&&bhStateHasData(cur)&&!await bhCapture(cur,'account-switch')){
             setSyncDetail('A troca de conta foi pausada porque os dados da conta anterior não puderam ser protegidos.');setSyncStatus('error');return;
           }
           if(!listenerAlive)return;
+          if(generation!==_editGen.current){setSyncDetail('O conteúdo mudou durante a troca de conta. Salve um backup e tente novamente.');setSyncStatus('error');return;}
           _remoteApplyId.current++;
-          setProjects([]);setClients([]);setMentors([]);setNotes([]);setTasks([]);setSocialPosts([]);setGalleryPosts([]);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);setNoteGroups(DEFAULT_NOTE_GROUPS);setPomoData(pomoEmpty());saveIdentity(null);setIdentity(null);
+          setProjects([]);setClients([]);setMentors([]);setNotes([]);setTasks([]);setSocialPosts([]);setSocialTemplatesState([]);setGalleryPosts([]);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);setNoteGroups(DEFAULT_NOTE_GROUPS);setPomoData(pomoEmpty());saveIdentity(null);setIdentity(null);
           _hasPendingLocalEdit.current=false;
           setSyncNotice('Esta conta ainda não tinha dados. O conteúdo local da conta anterior foi guardado no Histórico de Backups e uma área vazia foi aberta para esta conta.');
-        }else if(_localHadRealDataAtBoot.current){_hasPendingLocalEdit.current=true;setSyncTick(t=>t+1);}
+        }else if(_localHadRealDataAtBoot.current&&(_bootDirty.current||_hasPendingLocalEdit.current)){_hasPendingLocalEdit.current=true;setSyncTick(t=>t+1);}
         _didInitialReconcile.current=true;
         _deviceSyncedUid.current=fbUser.uid;_localOwnerUid.current=fbUser.uid;
-        try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.setItem(LOCAL_OWNER_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.emptyAccountOwner',e);}
+        try{localStorage.setItem(DIRTY_KEY,_hasPendingLocalEdit.current?'1':'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.setItem(LOCAL_OWNER_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('sync.emptyAccountOwner',e);}
         setSyncStatus('synced');
         return;
       }
       let hasUpdates=false;
-      colSnap.docChanges().forEach(change=>{
+      colSnap.docChanges({includeMetadataChanges:true}).forEach(change=>{
         const snap=change.doc;
         if(snap.metadata.hasPendingWrites)return; // skip our own echoes
         if(change.type==='removed')delete _remoteCache[snap.id];
-        else _remoteCache[snap.id]=snap.data();
+        else{
+          const value=snap.data();
+          bhDiag.record(colSnap.metadata.fromCache?'snapshotCache':'snapshotDocument',new Blob([JSON.stringify(value)]).size,'listener');
+          if(bhEqual(_remoteCache[snap.id],value))return;
+          _remoteCache[snap.id]=value;
+        }
         hasUpdates=true;
       });
-      if(hasUpdates)applyMerged();
+      if(hasUpdates&&!_bhPushActive.has(fbUser.uid))applyMerged();
     },err=>{
       console.error('[BoardHub] Firestore listener:',err);
       setSyncDetail(err&&err.message||'');
       setSyncStatus('error');
     });
-    return ()=>{listenerAlive=false;mergeRun++;_applyMergedRef.current=null;unsub();};
-  },[fbUser]);
+    return ()=>{listenerAlive=false;mergeRun++;deferredSnapshot=null;window.removeEventListener('bh-restore-end',resumeSnapshot);_applyMergedRef.current=null;unsub();bhDiag.unlisten(listenerToken);_bhSyncBases.delete(fbUser.uid);};
+  },[fbUser?.uid]);
 
   // Auto-save localStorage. Cloud delivery is handled by the stable pump below;
   // keeping a second render-debounced sender here allowed an older snapshot to
@@ -10410,6 +10651,8 @@ const App=()=>{
   const _retryTimer=useRef(null);
   const _pushAttempt=useRef(0);
   const _editGen=useRef(0); // F-1: bumped on every USER edit; a push only clears the dirty flag if this hasn't advanced since the push began
+  const _observedSave=useRef(null);
+  const _lastEditMs=useRef(0);
   useEffect(()=>{
     // Compare against _remoteApplyId to detect whether this render was triggered
     // by remote data being applied (vs. a genuine user edit).
@@ -10417,12 +10660,20 @@ const App=()=>{
     // and user edits are always separate renders.
     const isRemoteTrigger=_remoteApplyId.current!==_lastSeenApplyId.current;
     _lastSeenApplyId.current=_remoteApplyId.current;
+    const state={projects,clients,mentors,notes,tasks,socialPosts,socialTemplates:socialTemplatesState,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
+    const serialized=bhStableStringify(state);
+    if(bhPersistenceBusy())return;
+    if(isRemoteTrigger&&fbUser?.uid)bhSyncAck(fbUser.uid,state);
+    const changed=_observedSave.current!==serialized;
+    _observedSave.current=serialized;
+    if(!changed){bhDiag.record('writeSkipped',0,'render-unchanged');return;}
     if(_isMounted.current&&!isRemoteTrigger){
       // Only mark as a user edit after mount — the very first run is localStorage
       // hydration, not a change the user made, so we must not block Firestore from
       // overwriting it with the authoritative cloud state.
       _hasPendingLocalEdit.current=true;
       _editGen.current++; // F-1: a new edit; any in-flight push must not clear the flag on success
+      _lastEditMs.current=Date.now();bhDiag.record('localChange',0,'content');
       try{
         localStorage.setItem(DIRTY_KEY,'1');
         localStorage.setItem(LAST_EDIT_KEY,new Date().toISOString()); // feeds last-write-wins
@@ -10435,13 +10686,14 @@ const App=()=>{
     }
     _isMounted.current=true;
     const timer=setTimeout(()=>{
-      const state={projects,clients,mentors,notes,tasks,socialPosts,socialTemplates:socialTemplatesState,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
+      if(bhPersistenceBusy())return;
       saveLocal(state);
       // Checkpoint every ~5 minutes while changes are being made.
       try{
         const last=bhLastAt(); // the light key, not the whole history (P1-3)
-        if(!last||Date.now()-new Date(last).getTime()>5*60*1000)bhCapture(state,'auto');
+        if(!isRemoteTrigger&&(!last||Date.now()-new Date(last).getTime()>5*60*1000))bhCapture(state,'auto');
       }catch(e){bhBackupFailure(e);}
+      if(!_didInitialReconcile.current)_applyMergedRef.current?.();
     },2500);
     return ()=>{clearTimeout(timer);};
   },[projects,clients,mentors,notes,tasks,socialPosts,socialTemplatesState,galleryPosts,galleryFolders,pomoData,noteGroups,identity,syncTick,saveLocal]);
@@ -10469,27 +10721,35 @@ const App=()=>{
   useEffect(()=>{
     if(!fbUser)return;
     let alive=true;
+    let retryAt=0,failures=0;
     const pump=async()=>{
-      if(!alive||syncPumpBusyRef.current||_syncBlockedRef.current||!_didInitialReconcile.current||!_hasPendingLocalEdit.current||!_latestState.current)return;
+      if(!alive||bhPersistenceBusy()||Date.now()<retryAt||Date.now()-_lastEditMs.current<1500||syncPumpBusyRef.current||_syncBlockedRef.current||!_didInitialReconcile.current||!_hasPendingLocalEdit.current||!_latestState.current)return;
       syncPumpBusyRef.current=true;
       const pushedGen=_editGen.current;
       setSyncStatus('syncing');
       try{
-        await pushState(_latestState.current,fbUser.uid);
+        const committed=await pushState(_latestState.current,fbUser.uid);
         if(!alive)return;
+        failures=0;retryAt=0;
         if(bhPushSettled(pushedGen,_editGen.current)){
           _hasPendingLocalEdit.current=false;
           try{localStorage.setItem(DIRTY_KEY,'0');localStorage.setItem(SYNCED_UID_KEY,fbUser.uid);localStorage.setItem(LOCAL_OWNER_UID_KEY,fbUser.uid);localStorage.removeItem(SEEDED_KEY);}catch(e){bhLog('syncPump.mark',e);}
           _deviceSyncedUid.current=fbUser.uid;
           _localOwnerUid.current=fbUser.uid;
           setSyncDetail('');setSyncStatus('synced');
+          await _applyMergedRef.current?.(committed);
         }
-      }catch(e){setSyncDetail(e?.message||'Falha ao enviar dados.');setSyncStatus('error');}
+      }catch(e){
+        if(!alive)return;
+        failures++;retryAt=Date.now()+Math.min(60000,3000*2**Math.min(failures,5));
+        bhDiag.record('syncFailure',0,'retry-backoff');
+        setSyncDetail(e?.message||'Falha ao enviar dados.');setSyncStatus('error');
+      }
       finally{syncPumpBusyRef.current=false;}
     };
     const id=setInterval(pump,3000);pump();
     return()=>{alive=false;clearInterval(id);};
-  },[fbUser]);
+  },[fbUser?.uid]);
 
   useEffect(()=>{
     const check=()=>{const state=_latestState.current;if(state&&(!bhLastAt()||Date.now()-new Date(bhLastAt()).getTime()>5*60*1000))bhCapture(state,'auto');};
@@ -10625,11 +10885,14 @@ const App=()=>{
   // cleared on success (v22's SyncHub pushed directly and left them stale).
   const manualPush=useCallback(async()=>{
     if(!fbUser)throw new Error('Sem login Google ativo.');
+    if(bhPersistenceBusy())throw new Error('Aguarde a restauração terminar.');
+    if(!_didInitialReconcile.current)throw new Error('Aguarde a primeira leitura da nuvem antes de enviar.');
     const pushedGen=_editGen.current;
     setSyncStatus('syncing');
     try{
       _syncBlockedRef.current=false; // explicit, confirmed override from the user
-      await pushState(_latestState.current,fbUser.uid);
+      _baselineNeedsChoice.current=false;
+      const committed=await pushState(_latestState.current,fbUser.uid,{migrateMedia:true});
       if(_activeUidRef.current!==fbUser.uid)throw new Error('A conta mudou durante o envio; o resultado antigo foi ignorado.');
       _pushAttempt.current=0;
       const settled=bhPushSettled(pushedGen,_editGen.current);
@@ -10640,6 +10903,7 @@ const App=()=>{
       clearTimeout(_retryTimer.current);
       setSyncDetail('');
       setSyncStatus(settled?'synced':'syncing');
+      if(settled)await _applyMergedRef.current?.(committed);
     }catch(e){
       setSyncDetail(e&&e.message||'');
       setSyncStatus('error');
@@ -10659,6 +10923,7 @@ const App=()=>{
     clearTimeout(_retryTimer.current);
     _hasPendingLocalEdit.current=false;
     _syncBlockedRef.current=false;
+    _baselineNeedsChoice.current=false;
     try{localStorage.setItem(DIRTY_KEY,'0');}catch(e){bhLog('discardLocal.marcarEmDia',e,'the device stays flagged dirty and may re-run this reconcile on the next boot');}
     await _applyMergedRef.current();
     return true;
@@ -10667,13 +10932,20 @@ const App=()=>{
   const clearSave=async()=>{
     if(!await bhConfirm({title:'Apagar tudo',danger:true,confirmLabel:'Apagar tudo',
       message:'⚠️ Isso vai apagar TODOS os seus dados e restaurar o estado inicial. Essa ação é irreversível. Continuar?'}))return;
+    setRestoreBusy(true);
+    try{await bhWithRestore(async()=>{
+    const resetUid=_activeUidRef.current;
     const live=_latestState.current;
     if(live&&bhStateHasData(live)&&!await bhCapture(live,'pre-restore')){await bhAlert('Não foi possível criar a cópia de segurança. O reset foi cancelado.');return;}
+    if(_activeUidRef.current!==resetUid)throw new Error('A conta mudou; reset cancelado.');
     setProjects(SEED.projects);setClients(SEED.clients);setMentors(SEED.mentors);
     setNotes(SEED.notes);setTasks(SEED.tasks);setSocialPosts(SEED.socialPosts);setSocialTemplatesState(socialTemplates);setGalleryPosts(SEED.galleryPosts);setGalleryFolders(DEFAULT_GALLERY_FOLDERS);
     setNoteGroups(DEFAULT_NOTE_GROUPS);
     setPomoData(pomoEmpty());
     navigate('dashboard');
+    _hasPendingLocalEdit.current=true;_editGen.current++;_lastEditMs.current=Date.now();
+    _bhNoAutoBefore=Date.now()+5*60*1000;
+    });}catch(e){await bhAlert(e.message||'Reset cancelado.');}finally{setRestoreBusy(false);}
   };
 
   const appState={projects,clients,mentors,notes,tasks,socialPosts,socialTemplates:socialTemplatesState,galleryPosts,galleryFolders,pomoData,noteGroups,identity};
@@ -10701,7 +10973,7 @@ const App=()=>{
     if(Array.isArray(obj))return Promise.all(obj.map(ingestImages));
     if(obj&&typeof obj==='object'){const out={};for(const k of Object.keys(obj))out[k]=await ingestImages(obj[k]);return out;}
     if(typeof obj==='string'){
-      const dataRe=/data:(?:image\/(?:png|jpe?g|gif|webp)|video\/(?:mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+/gi;
+      const dataRe=BH_INLINE_MEDIA_RE;
       const matches=[...new Set(obj.match(dataRe)||[])];
       if(!matches.length)return obj;
       let result=obj;
@@ -10714,13 +10986,18 @@ const App=()=>{
     return obj;
   };
 
-  const handleImport=async (data,{incomingWins=false,mediaUpdate=false}={})=>{
+  const handleImportUnlocked=async (data,{incomingWins=false,mediaUpdate=false}={})=>{
     // Shape validation. v22 checked truthiness only — an object where an array
     // was expected passed the check and crashed every .filter() downstream.
     // Mirrors the isArr guards the remote listener already applied.
     if(!data||typeof data!=='object'||Array.isArray(data))return false;
+    for(const key of ['projects','clients','mentors','notes','tasks','socialPosts','socialTemplates','galleryPosts','galleryFolders','noteGroups']){
+      if(data[key]!==undefined&&!Array.isArray(data[key]))throw new Error('Backup inválido: '+key+' não é uma lista.');
+    }
     if(!['projects','clients','mentors','notes','tasks','socialPosts','socialTemplates','galleryPosts','galleryFolders','noteGroups'].some(k=>Array.isArray(data[k]))&&!data.pomoData)return false;
+    const importUid=_activeUidRef.current;
     const ingested=await ingestImages(data);
+    for(const key of collectIdbKeys(ingested))if(!await idbGet(key))throw new Error('Backup contém mídia local ausente. Restauração cancelada sem remover referências.');
     const A=Array.isArray;
     let applied=0;
     // An imported JSON did not previously archive the live state at all. Wait
@@ -10730,6 +11007,7 @@ const App=()=>{
       if(bhStateHasData(live)&&!await bhCapture(live,'pre-restore'))throw new Error('Cópia de segurança não gravada. Importação cancelada.');
       if(bhStateHasData(ingested)&&!await bhCapture(ingested,'import-source'))throw new Error('Origem não arquivada. Nada foi alterado.');
     }
+    if(_activeUidRef.current!==importUid)throw new Error('A conta mudou durante a restauração. Nenhum estado foi aplicado.');
     if(A(ingested.projects)){setProjects(current=>bhMergeRecords(current,bhRecordArray(ingested.projects),{incomingWins}));applied++;}
     if(A(ingested.clients)){setClients(current=>bhMergeRecords(current,bhRecordArray(ingested.clients),{incomingWins}));applied++;}
     if(A(ingested.mentors)){setMentors(current=>bhMergeRecords(current,bhRecordArray(ingested.mentors),{incomingWins}));applied++;}
@@ -10743,6 +11021,18 @@ const App=()=>{
     if(ingested.pomoData&&typeof ingested.pomoData==='object'&&!A(ingested.pomoData)&&ingested.pomoData.days){setPomoData(current=>pomoMergeProgress(current,ingested.pomoData));applied++;}
     if(ingested.identity&&typeof ingested.identity.hubName==='string'){saveIdentity(ingested.identity);setIdentity(ingested.identity);applied++;}
     return applied>0;
+  };
+  const handleImport=async(data,options)=>{
+    if(fbUser&&!_didInitialReconcile.current)throw new Error('Aguarde a leitura inicial da conta antes de restaurar.');
+    setRestoreBusy(true);
+    try{return await bhWithRestore(async()=>{
+      const applied=await handleImportUnlocked(data,options);
+      if(applied){
+        _bhNoAutoBefore=Date.now()+5*60*1000;
+        _hasPendingLocalEdit.current=true;_editGen.current++;_lastEditMs.current=Date.now();
+      }
+      return applied;
+    });}finally{setRestoreBusy(false);}
   };
 
   // Apply only the completed media-reference substitutions to the newest
@@ -10785,6 +11075,7 @@ const App=()=>{
           A genuinely new account arrives at 'synced' with no identity, and only
           then sees the setup. */}
       {!identity&&fbUser&&syncStatus!=='syncing'&&<SetupModal onDone={handleSetupDone}/>}
+      {restoreBusy&&<div role="dialog" aria-modal="true" aria-label="Restaurando backup" tabIndex={-1} ref={node=>node?.focus()} onKeyDown={e=>e.preventDefault()} style={{position:'fixed',inset:0,zIndex:200000,background:'rgba(0,0,0,.55)',display:'grid',placeItems:'center'}}><div role="status" style={{padding:24,background:'var(--surface)',borderRadius:12}}>Validando e restaurando o backup. Aguarde…</div></div>}
       {storageRecovery&&<div role="alert" style={{position:'fixed',top:12,left:isMobile?12:232,right:12,zIndex:120001,padding:12,background:'var(--surface)',border:'1px solid var(--danger-fg)',borderRadius:10,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{flex:1,minWidth:220}}>O estado local não pôde ser lido. Novos salvamentos foram pausados para não sobrescrever a única cópia.</span>{_lsBoot.raw&&<button className="btn btn-outline" onClick={exportUnreadableState}>Exportar bytes</button>}<button className="btn btn-danger" onClick={discardUnreadableState}>Descartar e continuar</button></div>}
       {backupError&&<div role="alert" style={{position:'fixed',bottom:16,left:'25%',right:16,zIndex:120000,padding:14,background:'var(--surface)',border:'1px solid var(--danger-fg)',borderRadius:10}}>{backupError} <button className="btn btn-outline" onClick={()=>{setBackupError('');navigate('sync');}}>Ver backups</button></div>}
       {showCmdPalette&&<CommandPalette projects={projects} notes={notes} mentors={mentors} clients={clients} galleryPosts={galleryPosts} onNavigate={navigate} onSelectProject={handleSelectProject} onSelectNote={handleSelectNote} onSelectGalleryPost={post=>handleOpenSessionPost(null,post)} onClose={()=>setShowCmdPalette(false)}/>} 
@@ -10815,37 +11106,7 @@ const App=()=>{
 // Mount immediately — first paint is not blocked by any image I/O. Images resolve
 // on demand: grids/covers are viewport-gated (<Img>/<BgImg>), opening a card warms
 // a bounded prefix of thumbnails, and full-res is fetched only in the lightbox.
-// OPT-6: fire the dashboard covers' thumbnail reads into _thumbCache BEFORE the
-// mount below, so the earliest render that can see them (via _syncUrl) finds them
-// resident instead of painting a grey box first. Only idb:// covers need it —
-// network covers load through the browser; capped at 16 (the first viewport). One
-// readonly transaction, kicked off to race createRoot. The !_thumbCache[k] guard
-// keeps it from racing the warmer or getThumbUrl into a duplicate object URL.
-const _bootCovers=[];
-for(const p of ((persisted&&persisted.projects)||[])){
-  if(p&&!p.deleted&&typeof p.cover==='string'&&p.cover.startsWith('idb://'))_bootCovers.push(p.cover.slice(6));
-}
-if(_bootCovers.length){
-  openIdb().then(db=>{
-    const store=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE);
-    _bootCovers.slice(0,16).forEach(k=>{
-      const r=store.get('thumb_'+k);
-      r.onsuccess=e=>{const tb=e.target.result;if(tb&&!_thumbCache[k]){_thumbCache[k]=URL.createObjectURL(tb);_touchThumb(k);}};
-      r.onerror=()=>{/*silent-ok: a cover that fails to preload just lazy-loads on mount*/};
-    });
-  }).catch(()=>{});
-}
-const _bootNetwork=[];
-for(const p of ((persisted&&persisted.projects)||[])){
-  if(p&&!p.deleted&&typeof p.cover==='string'&&/^https?:\/\//.test(p.cover))_bootNetwork.push(p.cover);
-  if(_bootNetwork.length>=8)break;
-}
-for(const post of ((persisted&&persisted.galleryPosts)||[])){
-  const src=post&&(post.bannerImage||(Array.isArray(post.images)&&post.images[0]));
-  if(typeof src==='string'&&/^https?:\/\//.test(src))_bootNetwork.push(src);
-  if(_bootNetwork.length>=14)break;
-}
-setTimeout(()=>warmSources(_bootNetwork,14),450);
+// Network images are loaded by visible surfaces, not a global boot prefetch.
 // F3.2: the ConfirmHost sits OUTSIDE the App, as its sibling. Inside, any
 // re-render or subtree unmount would take an open dialog down with it — and a
 // pending promise resolved as a cancellation in the middle of a user action.
@@ -10855,7 +11116,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/
 // 1200ms + requestIdleCallback). 200ms lets the first frame land; the warmer then
 // self-paces on setTimeout(0), yielding between batches instead of waiting for a
 // system-idle window that a busy boot may never grant.
-setTimeout(warmThumbCache,200);
+// No global thumbnail sweep at startup. Visible components and hover intent
+// resolve media on demand through the existing IntersectionObserver.
 </script>
 <!-- ── BOOT LOADER (P1-1) ─────────────────────────────────────────────────
   DIAGNOSIS: the single-file design forced @babel/standalone (~400KB of download)
